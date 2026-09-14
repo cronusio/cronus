@@ -1,6 +1,7 @@
 # Extensions (custom + generated)
 
 Unified registry for three kinds: skill | mcp-server | plugin.
+
 - `skills/` — custom and generated skills (generated ones await review).
 - `mcp/` — connected MCP server configs (Cronus is the client).
 - `plugins/` — installed code plugins.
