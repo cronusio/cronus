@@ -5,9 +5,7 @@
 - <https://github.com/anthropics/claude-code>
 - <https://github.com/google-gemini/gemini-cli>
 - <https://github.com/openai/codex>
-- <https://github.com/earendil-works/pi>
 - <https://github.com/QwenLM/qwen-code>
-- <https://github.com/QwenLM/Qwen-Agent>
 - <https://github.com/XiaomiMiMo/MiMo-Code>
 - <https://github.com/openclaw/openclaw>
 - <https://github.com/NVIDIA/NemoClaw>
@@ -20,6 +18,7 @@
 - <https://github.com/harness/harness>
 - <https://github.com/stablyai/orca>
 - <https://github.com/anomalyco/opencode>
+- <https://github.com/earendil-works/pi>
 - <https://github.com/paperclipai/paperclip>
 - <https://github.com/pewdiepie-archdaemon/odysseus>
 - <https://github.com/aporb/agentic-os>
@@ -64,6 +63,7 @@
 - <https://github.com/tinyhumansai/tinyagents>
 - <https://github.com/ShunsukeHayashi/gws-harness>
 - <https://github.com/omacom/omarchy>
+- <https://github.com/QwenLM/Qwen-Agent>
 
 ## Spec-Driven Development
 
