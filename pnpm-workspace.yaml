@@ -15,24 +15,24 @@ catalog:
   "@vitejs/plugin-react": ^6.1.1
 
 minimumReleaseAgeExclude:
-  - vite@8.2.2 || 8.3.0
-  - '@fallow-cli/darwin-arm64@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/darwin-x64@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/linux-arm64-gnu@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/linux-arm64-musl@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/linux-x64-gnu@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/linux-x64-musl@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/win32-arm64-msvc@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - '@fallow-cli/win32-x64-msvc@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1'
-  - fallow@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1
+  - vite@8.3.0
+  - '@fallow-cli/darwin-arm64@3.24.1'
+  - '@fallow-cli/darwin-x64@3.24.1'
+  - '@fallow-cli/linux-arm64-gnu@3.24.1'
+  - '@fallow-cli/linux-arm64-musl@3.24.1'
+  - '@fallow-cli/linux-x64-gnu@3.24.1'
+  - '@fallow-cli/linux-x64-musl@3.24.1'
+  - '@fallow-cli/win32-arm64-msvc@3.24.1'
+  - '@fallow-cli/win32-x64-msvc@3.24.1'
+  - fallow@3.24.1
   - '@vitest/expect@4.1.11'
-  - '@vitest/mocker@4.1.11 || 5.0.0'
+  - '@vitest/mocker@5.0.0'
   - '@vitest/pretty-format@4.1.11'
   - '@vitest/runner@4.1.11'
   - '@vitest/snapshot@4.1.11'
-  - '@vitest/spy@4.1.11 || 5.0.0'
+  - '@vitest/spy@5.0.0'
   - '@vitest/utils@4.1.11'
-  - vitest@4.1.11 || 5.0.0
+  - vitest@5.0.0
   - '@typescript/typescript-aix-ppc64@7.0.2'
   - '@typescript/typescript-darwin-arm64@7.0.2'
   - '@typescript/typescript-darwin-x64@7.0.2'
@@ -54,15 +54,15 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
-  - '@biomejs/biome@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-darwin-arm64@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-darwin-x64@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-linux-arm64-musl@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-linux-arm64@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-linux-x64-musl@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-linux-x64@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-win32-arm64@2.5.11 || 2.5.12 || 2.5.13'
-  - '@biomejs/cli-win32-x64@2.5.11 || 2.5.12 || 2.5.13'
+  - '@biomejs/biome@2.5.13'
+  - '@biomejs/cli-darwin-arm64@2.5.13'
+  - '@biomejs/cli-darwin-x64@2.5.13'
+  - '@biomejs/cli-linux-arm64-musl@2.5.13'
+  - '@biomejs/cli-linux-arm64@2.5.13'
+  - '@biomejs/cli-linux-x64-musl@2.5.13'
+  - '@biomejs/cli-linux-x64@2.5.13'
+  - '@biomejs/cli-win32-arm64@2.5.13'
+  - '@biomejs/cli-win32-x64@2.5.13'
   - '@tailwindcss/node@4.3.3'
   - '@tailwindcss/oxide-android-arm64@4.3.3'
   - '@tailwindcss/oxide-darwin-arm64@4.3.3'
@@ -80,12 +80,12 @@ minimumReleaseAgeExclude:
   - '@tailwindcss/vite@4.3.3'
   - tailwindcss@4.3.3
   - '@vitejs/plugin-react@6.1.1'
-  - react-dom@19.2.8 || 19.3.0
-  - react@19.2.8 || 19.3.0
-  - '@types/node@26.4.0 || 26.4.1 || 26.5.0 || 26.5.1'
-  - fallow-type-aware@3.20.0 || 3.22.0 || 3.23.0 || 3.24.1
+  - react-dom@19.3.0
+  - react@19.3.0
+  - '@types/node@26.5.1'
+  - fallow-type-aware@3.24.1
   - jsdom@30.0.1
-  - '@types/react-dom@19.2.4 || 19.2.6 || 19.2.7 || 19.3.0'
-  - '@types/react@19.2.18 || 19.3.0'
+  - '@types/react-dom@19.3.0'
+  - '@types/react@19.3.0'
   - '@testing-library/react@16.3.3'
   - scheduler@0.28.0

@@ -51,7 +51,6 @@
 - <https://github.com/affaan-m/ECC>
 - <https://github.com/SeloraHomes/ha-selora-ai>
 - <https://github.com/traycerai/traycer>
-- <https://gitverse.ru/gigachain/gigachain>
 - <https://github.com/china-qijizhifeng/agentic-harness-engineering>
 - <https://github.com/atanasovmi/Meta-Harness>
 - <https://github.com/bzantium/meta-harness>
@@ -64,6 +63,7 @@
 - <https://github.com/ShunsukeHayashi/gws-harness>
 - <https://github.com/omacom/omarchy>
 - <https://github.com/QwenLM/Qwen-Agent>
+- <https://gitverse.ru/gigachain/gigachain>
 
 ## Spec-Driven Development
 
