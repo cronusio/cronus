@@ -16,19 +16,19 @@
 
 | Компонент | Версия | Проверка |
 | --- | --- | --- |
-| Rust | `1.98.0` (закреплён в `rust-toolchain.toml`) | `rustc --version` |
+| Rust | `1.98.1` (закреплён в `rust-toolchain.toml`) | `rustc --version` |
 | компоненты Rust | `rustfmt`, `clippy` | `cargo fmt --version`, `cargo clippy --version` |
-| Node.js | `>= 22` | `node --version` |
+| Node.js | `>= 24` | `node --version` |
 | pnpm | `12.3.4` (поле `packageManager`) | `pnpm --version` |
 | C-тулчейн | MinGW-w64 GCC (сборка идёт под `x86_64-pc-windows-gnu`) | `gcc --version` **в PowerShell** |
 | WebView2 Runtime | входит в Windows 10/11 | — |
 
-`rustup` сам подхватит `1.98.0` из `rust-toolchain.toml` при первой команде
+`rustup` сам подхватит `1.98.1` из `rust-toolchain.toml` при первой команде
 `cargo` в каталоге проекта. Если тулчейн не установлен:
 
 ```powershell
-rustup toolchain install 1.98.0
-rustup component add rustfmt clippy --toolchain 1.98.0
+rustup toolchain install 1.98.1
+rustup component add rustfmt clippy --toolchain 1.98.1
 ```
 
 pnpm проще всего включить через corepack (идёт с Node):
@@ -71,7 +71,7 @@ git add --renormalize .
 
 **Все команды с нативной компиляцией C — `cargo` для `crates/` (там `rusqlite` с `bundled`), `cargo` для `apps/desktop/tauri` (шаг `windres` для `.exe`-ресурса) и любые `tauri …` — запускать в PowerShell.**
 
-*Причина: MSYS2-окружение Git Bash ломает загрузку `cc1.exe` mingw64 (выход 127), из-за чего `gcc` / `windres` молча падают, хотя тот же `gcc.exe` в PowerShell работает. Чистый `cargo check` из Git Bash, который внезапно падает на шаге компиляции C или ресурса, — это артефакт окружения, а не дефект кода.*
+> *Причина: MSYS2-окружение Git Bash ломает загрузку `cc1.exe` mingw64 (выход 127), из-за чего `gcc` / `windres` молча падают, хотя тот же `gcc.exe` в PowerShell работает. Чистый `cargo check` из Git Bash, который внезапно падает на шаге компиляции C или ресурса, — это артефакт окружения, а не дефект кода.*
 
 Чисто-`rustc` сборки (без свежей компиляции C) работают в любой оболочке.
 

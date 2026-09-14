@@ -5,6 +5,7 @@
 - <https://github.com/anthropics/claude-code>
 - <https://github.com/google-gemini/gemini-cli>
 - <https://github.com/openai/codex>
+- <https://github.com/earendil-works/pi>
 - <https://github.com/QwenLM/qwen-code>
 - <https://github.com/QwenLM/Qwen-Agent>
 - <https://github.com/XiaomiMiMo/MiMo-Code>
@@ -15,11 +16,13 @@
 - <https://github.com/tinyhumansai/openhuman>
 - <https://github.com/agentscope-ai/QwenPaw>
 - <https://github.com/diegosouzapw/OmniRoute>
+- <https://github.com/deepseek-ai/deepseek-harness>
+- <https://github.com/harness/harness>
+- <https://github.com/stablyai/orca>
+- <https://github.com/anomalyco/opencode>
 - <https://github.com/paperclipai/paperclip>
 - <https://github.com/pewdiepie-archdaemon/odysseus>
 - <https://github.com/aporb/agentic-os>
-- <https://github.com/earendil-works/pi>
-- <https://github.com/anomalyco/opencode>
 - <https://github.com/crewAIInc/crewAI>
 - <https://github.com/langchain-ai/langgraph>
 - <https://github.com/ag2ai/ag2>
@@ -36,7 +39,6 @@
 - <https://github.com/agentscope-ai/agentscope>
 - <https://github.com/agentscope-ai/AgentTeams>
 - <https://github.com/agentrq/agentrq>
-- <https://github.com/stablyai/orca>
 - <https://github.com/nexu-io/open-design>
 - <https://github.com/linear/linear>
 - <https://github.com/nextlevelbuilder/goclaw>
@@ -51,7 +53,6 @@
 - <https://github.com/SeloraHomes/ha-selora-ai>
 - <https://github.com/traycerai/traycer>
 - <https://gitverse.ru/gigachain/gigachain>
-- <https://github.com/harness/harness>
 - <https://github.com/china-qijizhifeng/agentic-harness-engineering>
 - <https://github.com/atanasovmi/Meta-Harness>
 - <https://github.com/bzantium/meta-harness>
@@ -62,7 +63,6 @@
 - <https://github.com/ruvnet/agent-harness-generator>
 - <https://github.com/tinyhumansai/tinyagents>
 - <https://github.com/ShunsukeHayashi/gws-harness>
-- <https://github.com/deepseek-ai/deepseek-harness>
 - <https://github.com/omacom/omarchy>
 
 ## Spec-Driven Development
