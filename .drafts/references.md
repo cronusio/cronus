@@ -152,6 +152,7 @@
 - <https://github.com/chaseai-yt/claudex-loop>
 - <https://github.com/calesthio/OpenMontag>
 - <https://github.com/tt-a1i/archify>
+- <https://github.com/rootprint/rootprint>
 
 ## UI/UX
 
