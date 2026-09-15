@@ -48,6 +48,7 @@ target/
 debug/
 **/*.rs.bk
 *.pdb
+*.stackdump
 # Note: IS committed (workspace ships binaries — reproducible builds).
 #Cargo.lock
 
