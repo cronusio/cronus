@@ -95,7 +95,6 @@
 ## Tools
 
 - <https://github.com/AlexsJones/llmfit>
-- <https://github.com/cjpais/Handy>
 - <https://github.com/shadcn/improve>
 - <https://github.com/nvidia/skillspector>
 - <https://github.com/zapier/zapier-platform>
@@ -153,10 +152,15 @@
 - <https://github.com/calesthio/OpenMontag>
 - <https://github.com/tt-a1i/archify>
 - <https://github.com/rootprint/rootprint>
+- <https://github.com/lfnovo/open-notebook>
+
+## Audio
+
+- <https://github.com/cjpais/Handy>
 
 ## UI/UX
 
-### Компоненты
+### Components
 
 - <https://github.com/shadcn-ui/ui>
 - <https://github.com/chakra-ui/chakra-ui>
@@ -173,7 +177,7 @@
 - <https://github.com/agmmnn/tauri-ui>
 - <https://madewithtauri.com>
 
-### Примеры GUI
+### Examples GUI
 
 - <https://github.com/hoppscotch/hoppscotch>
 - <https://github.com/gitbutlerapp/gitbutler>
