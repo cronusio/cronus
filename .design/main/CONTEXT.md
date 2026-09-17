@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-09-13
+**Generated:** 2026-09-17
 
 ## Active Technologies
 
@@ -35,6 +35,7 @@
 │   ├── project-names.md
 │   ├── qa-remediation-progress.md
 │   ├── references.md
+│   ├── release/
 │   ├── reverse-derivation-mechanism.md
 │   ├── technology-stack-research.md
 │   └── ui-ux.md
@@ -48,10 +49,6 @@
 ├── .magic/
 ├── .markdownlint.json
 ├── .qwen/
-├── .release/
-│   ├── program/
-│   ├── project/
-│   └── state/
 ├── AGENTS.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -59,6 +56,7 @@
 ├── Cargo.toml
 ├── LICENSE
 ├── README.md
+├── SECURITY.md
 ├── apps/
 │   └── desktop/
 ├── biome.json
@@ -78,6 +76,7 @@
 │   └── tui/
 ├── docs/
 │   ├── README.md
+│   ├── building.md
 │   ├── building.ru.md
 │   ├── simulation.md
 │   └── simulation.ru.md
@@ -113,3 +112,4 @@
 - T-31B02: `finish`'s report renders a discovery's class and a remedy explicitly labelled `proposed remedy (not applied)`; an unclassified, remedy-free discovery renders exactly as it did before this phase
 - T-31T01: full-cycle validation — a real `world new → run → note --class → verdict → finish` proves classification survives end to end with the run's outcome unaffected (USM-3); `cargo test -p cronus-simulation` green (36 lib + 14 e2e + 1 replay, 9 new); `cargo clippy -p cronus-simulation --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; production-path scan found zero new `unwrap`/`panic!`/`.expect()` outside test code
 - Verify: `cargo test -j 2 -p cronus-simulation` green across all three test targets; `cargo clippy -p cronus-simulation --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean (PowerShell, per the project's native-build discipline)
+

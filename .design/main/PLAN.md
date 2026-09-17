@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Version:** 2.78.0
-**Generated:** 2026-09-12
-**Based on:** .design/main/INDEX.md v1.0.202
+**Version:** 2.79.0
+**Generated:** 2026-09-17
+**Based on:** .design/main/INDEX.md v1.0.203
 **Status:** Active
 
 ## Overview
@@ -773,6 +773,24 @@ The harness records discoveries as free text. `RunState.notes` is a `Vec<String>
 | *(not in scope)* | Any realization of `l1-remedy-authority`, `l1-plan-rehearsal`, or `l1-whole-system-rehearsal`. All three are `concept-only` — authoring their L2s is `/magic.spec` work and must precede any phase that builds them. |
 
 > **Ordering is load-bearing.** The vocabulary lands before the record that embeds it, and the record before the wrapper flags that write it — a surface accepting a flag for a field with nowhere to go produces a parser that discards what it parsed. The two wrapper tasks are independent once the record is green: one writes the field, the other reads it.
+
+## Phase 32 — Command-Surface Audit Closure (`crates/tui` · `crates/cli` · `crates/domain`)
+
+*Realizes `l2-tui` 1.3.0 §4.5 and closes five previously-disclosed-but-unbuilt gaps against already-Stable specs, surfaced by a real build-and-run audit of the compiled CLI/TUI rather than a code review — the same "code-first audit" origin Phase 27 had, this time against the product's own runtime behavior instead of its source.*
+
+The audit ran the compiled binary as a user would: every command group, `--format json` on several verbs, and a live reproduction of an install/activate sequence against a deliberately malicious manifest. One real defect and five disclosed-but-unbuilt gaps came back, none needing new design — each already has an owning Stable spec; none had been built yet.
+
+| Spec | Scope in this phase |
+| --- | --- |
+| [l2-tui.md](specifications/l2-tui.md) 1.3.0 | New §4.5 realized: a global `/` key focuses the command bar directly from any panel (previously reachable only by `Tab`-cycling despite rendering as a live `/`-prompt on every frame — the actual reported defect); `Tab`-cycling behavior unchanged. |
+| *(disclosed, already Stable, unbuilt)* | [l2-tool-security.md](specifications/l2-tool-security.md) §4.1 (EXT-2) and [l2-extension-registry.md](specifications/l2-extension-registry.md) (EXT-2/EXT-3): the skill scanner has never run at `ext add`, and `ext activate` has never required an explicit grant — both real since the specs shipped, neither built. Blocked until now on a harder prerequisite the audit also found: `ExtensionRegistry` has no durable store at all — `ExtensionRegistry::new()` is constructed fresh per CLI invocation, so `ext add`/`ext list`/`ext activate` cannot see each other's effects across process runs. The storage location and format are already specified (`<ws>/extensions/plugins/<id>/config.json`, discovery layout in `l2-extension-registry.md` §4.4) — this phase is the first to build the reader/writer, not to design it. |
+| *(disclosed, already Stable, unbuilt)* | `l2-tool-security.md`'s own `ToolGuard` and `SkillScanner` disagree on one attack shape: `SkillScanner`'s CI-001 rule treats `$(` as a command-injection signature; `ToolGuard::SHELL_METACHARACTERS` (the runtime gate that actually sees live parameter values) does not check for `$`, `(`, `)`, or newline at all. Bringing the runtime layer in line with the static layer's own already-stated signature is this phase's job, not a new rule. |
+| *(disclosed, already Stable, unbuilt)* | `l2-cli.md` §4.2's own "uniform format handling" commitment (shipped v1.1.0) is not uniformly built: `registry show` (confirmed live against the compiled binary), `ext list`'s non-empty branch, `registry create`/`disable`/`enable`, and two `activation`/`ext activate` outcome branches all print prose regardless of `--format json`, each already flagged in its own code comment as a known, deferred gap. |
+| *(disclosed, already Stable, unbuilt)* | `l2-tui.md` §4.1's own board view (`triage → todo → ready → running → blocked → done → archive`, unchanged by this phase) has never had its 7th column wired to a data source — `core:board.archive` is a real, registered invocable nothing in the TUI calls. Separately, `board_column()`'s state-string match has no fallback: today one card in an unrecognized state fails the *entire* board projection to `Unavailable` rather than being skipped — the opposite of §4.1's own "never silently drop a row, but don't blank the panel for one" spirit applied one level down from where it was written. |
+
+**Explicitly out of scope, parked as observations, not tasks.** Three cosmetic inconsistencies the same audit found have no spec mandate either way and are not worth a forced decision: three different empty-list phrasings across commands ("No results." / "No extensions registered." / "no backups found"); `knowledge query` requiring a mandatory named `--collection` flag where comparable simple-case verbs are positional-only; `registry list` and `role list --presets` rendering structurally similar preset data in two different textual shapes. A future pass can pick these up if and when someone decides they're worth a uniform answer.
+
+> **Ordering is load-bearing.** Track B's persistence task must land before its own scanner-gate and consent-gate tasks — both are no-ops against a registry that forgets its own state between invocations, which is exactly the audit's own empirical finding (a scan-flagged manifest still "registered" clean, then immediately vanished from `ext list`). Track A (TUI keys), Track C (guard parity), Track D (format), and Track E (archive column) have no dependency on Track B or on each other.
 
 ## Backlog
 

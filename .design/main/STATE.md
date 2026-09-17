@@ -4,19 +4,20 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-09-13 09:21
-**Phase:** None - plan complete
-**Status:** Idle
+**Updated:** 2026-09-17 14:41
+**Phase:** 32 — Command-Surface Audit Closure
+**Status:** Active
 
 ## Current Position
 
 - **Task:** T-31T01 Full-cycle validation and quality gates
-- **Next Action:** No build phase open and Backlog is empty. l1-quality-standards + l2-quality-pipeline both stand Stable, back at their pre-existing built presence. The standing l2-role-catalog user-actor preset gap (l1-uninformed-actor's own named gap) remains the one recorded design item, whenever a human wants it. Otherwise the next motion is authorship -- a human decision about what Cronus builds next, which planning cannot compute for itself.
+- **Next Action:** Execute T-32A01 Global `/` key focuses the command bar directly via /magic.run main
 
 ## Progress
 
 ```
-Overall: [30/30] ████████ 100%
+Phase 32: [0/9] ░░░░░░░░ 0%
+Overall: [30/31] ████████ 97%
 ```
 
 - 2026-09-09 **Decision:** `/magic.task main` — **Registry sync + historical correction, no new phase (v2.72.0).** Pre-flight `ok:true` (290 specs, 290 Stable, 0 Draft; engine `.magic/.version` 2.1.80 == snapshot; Rules Parity RULES v1.6.0 == TASKS Based-on-RULES; registry unchanged at INDEX v1.0.193, matching PLAN.md's own already-current `Based on` pointer — no new spec content since the last sync). Pre-Planning Stabilization a genuine no-op (0 Draft). **Found and fixed a real, disclosed staleness the phase-closure left behind**: PLAN.md's own Phase 27/28/29 section headers never gained the `— Done` marker every completed phase since 16 carries; Phase 27's own section text and a Risk-section note both still predicted "corrected in Phase 29" for the four residual behaviours — a claim Phase 29's own planning had already disproven, but which this Overview-level prose never caught up to. Corrected all of it in this pass rather than leaving the archived record to contradict the plan's own narrative: three headers marked `— Done`; both stale predictions rewritten with `[CORRECTED]` markers naming what actually happened. TASKS.md's own Overview paragraph (line 24, "27 (root + CLI) → 28 (TUI + single binary) → 29 (desktop + residual corrections)") carried the identical stale claim — corrected there too, in T-29T01's own closing pass. Added one consolidated `Revision v2.72.0 (milestone sync)` paragraph closing out Phases 27/28/29 together, since none of the three ever received its own milestone-sync entry when it actually closed (each closure lived only in TASKS.md's decision log and its own phase file) — catching up three silent gaps in one entry rather than leaving them unaddressed or writing three separately. **No new phase opened, and none is mechanically available to open**: every currently-Stable spec is built, the Backlog is empty (0 RFC, 0 Draft) — the same "nothing left to plan" state the Risk section's own v2.68.0 note already predicted this exact scenario would look like. Computed next step (DA-6): none to compute mechanically — the pipeline's next motion is authorship (`/magic.spec`, a human decision about what Cronus builds next), narrated as a fact rather than proactively invoked (magic.md §5 — `/magic.spec` is never a workflow this agent starts on its own). `node .magic/scripts/executor.js generate-context --workspace=main` and `export-wiki` both run after the write-back. (Revert: `git restore .design/main/{PLAN,TASKS,STATE}.md`)
