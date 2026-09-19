@@ -418,3 +418,58 @@ fn sarif_clean_scan_produces_no_results() {
     let sarif = SarifLog::from_scan_result(&scan, "0.1.0");
     assert!(sarif.results.is_empty());
 }
+
+// ── Guard / scanner parity on command substitution ─────────────────────────────
+
+#[test]
+fn guard_flags_command_substitution_that_carries_no_other_metacharacter() {
+    let guard = ToolGuard::new(ToolExecutionLevel::Smart);
+    let result = guard.evaluate("bash", &[("command", "git status $(whoami)")]);
+    let ci = result.findings.iter().find(|f| f.rule_id == "CI-001");
+    assert!(ci.is_some(), "expected a CommandInjection finding");
+    assert!(ci.unwrap().severity >= Severity::High);
+    assert!(!result.is_safe);
+    assert!(guard.requires_approval(&result));
+}
+
+#[test]
+fn guard_and_scanner_agree_that_command_substitution_is_injection() {
+    let text = "git status $(whoami)";
+    let scan = SkillScanner::scan_content(text, "skill.md");
+    assert!(
+        scan.findings
+            .iter()
+            .any(|f| f.category == ScanCategory::CommandInjection),
+        "the static layer already calls this injection"
+    );
+    let guard = ToolGuard::default().evaluate("bash", &[("command", text)]);
+    assert!(
+        !guard.is_safe,
+        "the runtime layer must call the same string unsafe, not wave it through"
+    );
+}
+
+#[test]
+fn guard_flags_a_line_break_that_starts_a_second_command() {
+    let guard = ToolGuard::default();
+    for value in ["git status\nrm notes.txt", "git status\r\nrm notes.txt"] {
+        let result = guard.evaluate("bash", &[("command", value)]);
+        assert!(
+            !result.is_safe,
+            "a line break separates commands: {value:?}"
+        );
+    }
+}
+
+#[test]
+fn guard_leaves_benign_dollar_and_parenthesis_values_alone() {
+    let guard = ToolGuard::default();
+    for value in [r"C:\Program Files (x86)\App\notes.txt", "costs $5 (approx)"] {
+        let result = guard.evaluate("file_read", &[("path", value)]);
+        assert!(
+            result.is_safe,
+            "a bare `$` or parenthesis is not command substitution: {value:?} -> {:?}",
+            result.findings
+        );
+    }
+}

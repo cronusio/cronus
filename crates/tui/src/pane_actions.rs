@@ -37,6 +37,8 @@ pub enum PaneAction {
     FocusNext,
     /// Move keyboard focus to the previous panel in tab order.
     FocusPrev,
+    /// Move keyboard focus straight to the command bar from any panel.
+    FocusCommandBar,
     /// Exit the terminal session.
     Quit,
 }
@@ -45,9 +47,10 @@ impl PaneAction {
     /// Every action this surface declares — iterated by [`register`], and
     /// available for a test to enumerate what "reachable through the
     /// registry" is supposed to mean.
-    pub const ALL: [PaneAction; 3] = [
+    pub const ALL: [PaneAction; 4] = [
         PaneAction::FocusNext,
         PaneAction::FocusPrev,
+        PaneAction::FocusCommandBar,
         PaneAction::Quit,
     ];
 
@@ -55,6 +58,7 @@ impl PaneAction {
         match self {
             PaneAction::FocusNext => "focus-next",
             PaneAction::FocusPrev => "focus-prev",
+            PaneAction::FocusCommandBar => "focus-command",
             PaneAction::Quit => "quit",
         }
     }
@@ -63,6 +67,7 @@ impl PaneAction {
         match self {
             PaneAction::FocusNext => "Focus next",
             PaneAction::FocusPrev => "Focus previous",
+            PaneAction::FocusCommandBar => "Focus command bar",
             PaneAction::Quit => "Quit",
         }
     }
@@ -71,6 +76,7 @@ impl PaneAction {
         match self {
             PaneAction::FocusNext => "Move keyboard focus to the next panel.",
             PaneAction::FocusPrev => "Move keyboard focus to the previous panel.",
+            PaneAction::FocusCommandBar => "Move keyboard focus straight to the command bar.",
             PaneAction::Quit => "Exit the terminal session.",
         }
     }

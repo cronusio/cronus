@@ -403,10 +403,11 @@ pub fn declared_invocables() -> Vec<Invocable> {
         Invocable {
             id: id("ext.activate"),
             name: "Ext Activate",
-            summary: "Activate an extension",
+            summary: "Activate an extension — an explicit grant of what its manifest declares, \
+                       confirmed before it takes effect",
             group: "ext",
             locus: Locus::Installation,
-            binders: vec![text("id", false)],
+            binders: vec![text("id", false), flag("yes")],
             stability: Stability::Shipped,
             journal_raw_input: true,
         },
@@ -910,7 +911,8 @@ fn dispatch_leaf(group: &str, verb: &str, matches: &ArgMatches, ctx: &Context) -
         }
         ("ext", "activate") => {
             let ext_id = matches.get_one::<String>("id").cloned().unwrap_or_default();
-            crate::commands::ext::activate(ext_id, ctx)
+            let acknowledged = matches.get_flag("yes");
+            crate::commands::ext::activate(ext_id, acknowledged, ctx)
         }
         ("ext", "deactivate") => {
             let ext_id = matches.get_one::<String>("id").cloned().unwrap_or_default();

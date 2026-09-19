@@ -542,7 +542,7 @@ pub(crate) mod workspace {
 
     use cronus_core::workspace::{WorkspaceId, WorkspaceManager, WorkspaceTemplate};
 
-    use crate::output::Context;
+    use crate::output::{Context, json_escape};
 
     // Reached directly from `crate::installation::dispatch` now — the
     // installation half's own generated grammar owns the `workspace` group,
@@ -774,10 +774,6 @@ pub(crate) mod workspace {
         }
     }
 
-    fn json_escape(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('"', "\\\"")
-    }
-
     #[cfg(test)]
     mod tests {
         use std::path::Path;
@@ -845,9 +841,84 @@ pub(crate) mod workspace {
     }
 }
 
+// ─── consent ──────────────────────────────────────────────────────────────────
+
+/// The consent gate every grant-shaped verb shares, decided BEFORE anything is
+/// mutated — so a `RefuseNonInteractive`/`CancelledByUser` path structurally
+/// cannot change state (the property: "exits non-zero and mutates nothing").
+/// `confirm` is injected so the gate is testable without a real terminal.
+pub(crate) mod consent {
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum Gate {
+        Proceed,
+        RefuseNonInteractive,
+        CancelledByUser,
+    }
+
+    pub(crate) fn gate(
+        acknowledged: bool,
+        interactive: bool,
+        confirm: impl FnOnce() -> bool,
+    ) -> Gate {
+        if acknowledged {
+            return Gate::Proceed;
+        }
+        if !interactive {
+            // An unattended run would silently satisfy the consent moment a
+            // human must see — refuse rather than proceed.
+            return Gate::RefuseNonInteractive;
+        }
+        if confirm() {
+            Gate::Proceed
+        } else {
+            Gate::CancelledByUser
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::cell::Cell;
+
+        use super::{Gate, gate};
+
+        #[test]
+        fn non_interactive_without_acknowledgement_refuses() {
+            assert_eq!(gate(false, false, || true), Gate::RefuseNonInteractive);
+        }
+
+        #[test]
+        fn interactive_without_acknowledgement_asks_for_confirmation() {
+            assert_eq!(gate(false, true, || true), Gate::Proceed);
+            assert_eq!(gate(false, true, || false), Gate::CancelledByUser);
+        }
+
+        #[test]
+        fn the_acknowledgement_flag_skips_confirmation_entirely() {
+            let confirm_called = Cell::new(false);
+            let outcome = gate(true, true, || {
+                confirm_called.set(true);
+                true
+            });
+            assert_eq!(outcome, Gate::Proceed);
+            assert!(
+                !confirm_called.get(),
+                "the acknowledgement flag must skip the confirmation prompt entirely"
+            );
+        }
+
+        #[test]
+        fn the_acknowledgement_flag_also_works_non_interactively() {
+            // The flag is exactly what makes a script/CI-runner invocation
+            // legitimate — it must proceed even with interactive=false.
+            assert_eq!(gate(true, false, || true), Gate::Proceed);
+        }
+    }
+}
+
 // ─── ext ──────────────────────────────────────────────────────────────────────
 
 pub(crate) mod ext {
+    use std::io::{self, IsTerminal, Write};
     use std::path::PathBuf;
 
     use cronus_core::extensions::{
@@ -855,30 +926,58 @@ pub(crate) mod ext {
         ExtensionState,
     };
 
-    use crate::output::{Context, describe_io_error};
+    use crate::commands::consent::{self, Gate};
+    use crate::output::{Context, describe_io_error, json_escape};
 
     // Reached directly from `crate::installation::dispatch` now — the
     // installation half's own generated grammar owns the `ext` group
     // (including its nested `skill` sub-group), so no `ExtCommand`-shaped
     // wrapper is needed here any more.
 
-    pub(crate) fn list(ctx: &Context) -> i32 {
-        let registry = ExtensionRegistry::new();
-        let all = registry.list();
-        if all.is_empty() {
-            if ctx.is_json() {
-                println!("[]");
-            } else {
-                println!("No extensions registered.");
+    fn open_registry() -> Option<ExtensionRegistry> {
+        match ExtensionRegistry::load() {
+            Ok(registry) => Some(registry),
+            Err(e) => {
+                eprintln!("error: {e}");
+                None
             }
+        }
+    }
+
+    fn save_registry(registry: &ExtensionRegistry) -> bool {
+        match registry.save() {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("error: could not persist the extension registry: {e}");
+                false
+            }
+        }
+    }
+
+    pub(crate) fn list(ctx: &Context) -> i32 {
+        let Some(registry) = open_registry() else {
+            return 1;
+        };
+        let all = registry.list();
+        if ctx.is_json() {
+            let rows: Vec<String> = all
+                .iter()
+                .map(|(m, s)| {
+                    format!(
+                        "{{\"id\":\"{}\",\"name\":\"{}\",\"version\":\"{}\",\"state\":\"{}\"}}",
+                        json_escape(&m.id),
+                        json_escape(&m.name),
+                        json_escape(&m.version),
+                        s.as_str()
+                    )
+                })
+                .collect();
+            println!("[{}]", rows.join(","));
+        } else if all.is_empty() {
+            println!("No extensions registered.");
         } else {
-            // Known residual, not fixed here: unlike the empty-list branch
-            // above, this one ignores `--format json` entirely and always
-            // prints prose — corrected separately, after convergence,
-            // alongside the same defect at every other site that discards
-            // the requested format.
-            for (m, _s) in &all {
-                println!("{}: {} ({})", m.id, m.name, m.version);
+            for (m, s) in &all {
+                println!("{}: {} ({}) [{}]", m.id, m.name, m.version, s.as_str());
             }
         }
         0
@@ -899,13 +998,38 @@ pub(crate) mod ext {
                 return 1;
             }
         };
-        let mut registry = ExtensionRegistry::new();
+        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("ext");
+        let scan = cronus_core::tool_security::SkillScanner::scan_content(&json, fname);
+        if !scan.is_safe {
+            eprintln!(
+                "error: refused: the scan found {} finding(s) at risk {} ({}) — run 'cronus ext scan {}' for detail",
+                scan.findings.len(),
+                scan.risk_score,
+                scan.risk_band.as_str(),
+                path.display()
+            );
+            return 1;
+        }
+        let Some(mut registry) = open_registry() else {
+            return 1;
+        };
         match registry.register(manifest) {
             Ok(()) => {
+                if !save_registry(&registry) {
+                    return 1;
+                }
                 if ctx.is_json() {
-                    println!("{{\"result\":\"registered\"}}");
+                    println!(
+                        "{{\"result\":\"registered\",\"findings\":{},\"risk_band\":\"{}\"}}",
+                        scan.findings.len(),
+                        scan.risk_band.as_str()
+                    );
                 } else {
-                    println!("Extension registered.");
+                    println!(
+                        "Extension registered ({} scan finding(s), risk {}).",
+                        scan.findings.len(),
+                        scan.risk_band.as_str()
+                    );
                 }
                 0
             }
@@ -921,11 +1045,7 @@ pub(crate) mod ext {
         1
     }
 
-    // Known residual, not fixed here: `ctx` is accepted but never
-    // consulted, so `--format json` is silently discarded — corrected
-    // separately, after convergence, alongside the same defect at every
-    // other site that discards the requested format.
-    pub(crate) fn scan(path: PathBuf, _ctx: &Context) -> i32 {
+    pub(crate) fn scan(path: PathBuf, ctx: &Context) -> i32 {
         let content = match std::fs::read_to_string(&path) {
             Ok(s) => s,
             Err(e) => {
@@ -935,27 +1055,80 @@ pub(crate) mod ext {
         };
         let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("ext");
         let result = cronus_core::tool_security::SkillScanner::scan_content(&content, fname);
-        println!("safe: {}", result.is_safe);
-        println!("risk_score: {}", result.risk_score);
-        println!("findings: {}", result.findings.len());
+        if ctx.is_json() {
+            println!(
+                "{{\"safe\":{},\"risk_score\":{},\"risk_band\":\"{}\",\"findings\":{}}}",
+                result.is_safe,
+                result.risk_score,
+                result.risk_band.as_str(),
+                result.findings.len()
+            );
+        } else {
+            println!("safe: {}", result.is_safe);
+            println!("risk_score: {}", result.risk_score);
+            println!("findings: {}", result.findings.len());
+        }
         0
     }
 
-    pub(crate) fn activate(id: String, ctx: &Context) -> i32 {
-        let mut registry = ExtensionRegistry::new();
+    fn declared(items: &[String]) -> String {
+        if items.is_empty() {
+            "(none declared)".to_string()
+        } else {
+            items.join(", ")
+        }
+    }
+
+    fn confirm_grant(manifest: &ExtensionManifest) -> bool {
+        println!(
+            "Activating '{}' ({} v{}) grants it what its manifest declares:",
+            manifest.id,
+            manifest.kind.as_str(),
+            manifest.version
+        );
+        println!("  filesystem: {}", declared(&manifest.permissions.fs));
+        println!("  network:    {}", declared(&manifest.permissions.network));
+        println!("  secrets:    {}", declared(&manifest.permissions.secrets));
+        print!("Type 'yes' to confirm, anything else to cancel: ");
+        let _ = io::stdout().flush();
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input).is_err() {
+            return false;
+        }
+        input.trim().eq_ignore_ascii_case("yes")
+    }
+
+    pub(crate) fn activate(id: String, acknowledged: bool, ctx: &Context) -> i32 {
+        let Some(mut registry) = open_registry() else {
+            return 1;
+        };
+        let Some(manifest) = registry.manifest(&id).cloned() else {
+            eprintln!("error: extension not found: {id}");
+            return 1;
+        };
+        let interactive = io::stdin().is_terminal();
+        match consent::gate(acknowledged, interactive, || confirm_grant(&manifest)) {
+            Gate::RefuseNonInteractive => {
+                eprintln!("cronus ext activate refuses to run non-interactively without --yes");
+                return 1;
+            }
+            Gate::CancelledByUser => {
+                eprintln!("cancelled — extension not activated");
+                return 1;
+            }
+            Gate::Proceed => {}
+        }
         // State machine: Discovered → Permitted → Active. Try the intermediate step first.
         let _ = registry.transition(&id, ExtensionState::Permitted);
         match registry.transition(&id, ExtensionState::Active) {
             Ok(()) => {
+                if !save_registry(&registry) {
+                    return 1;
+                }
                 if ctx.is_json() {
-                    // Known residual, not fixed here: `id` is
-                    // interpolated into a hand-built JSON literal without
-                    // escaping — a `"` or `\` in an extension id would
-                    // emit invalid JSON. Corrected separately, after
-                    // convergence, by real `Outcome` serialization.
                     println!(
                         "{{\"result\":\"activated\",\"id\":\"{}\"}}",
-                        crate::output::json_escape(&id)
+                        json_escape(&id)
                     );
                 } else {
                     println!("Activated: {id}");
@@ -970,9 +1143,14 @@ pub(crate) mod ext {
     }
 
     pub(crate) fn deactivate(id: String, ctx: &Context) -> i32 {
-        let mut registry = ExtensionRegistry::new();
+        let Some(mut registry) = open_registry() else {
+            return 1;
+        };
         match registry.transition(&id, ExtensionState::Inactive) {
             Ok(()) => {
+                if !save_registry(&registry) {
+                    return 1;
+                }
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"deactivated\",\"id\":\"{}\"}}",
@@ -991,9 +1169,11 @@ pub(crate) mod ext {
     }
 
     fn parse_manifest(json: &str) -> Option<ExtensionManifest> {
-        let id = extract_str(json, "id")?;
-        let name = extract_str(json, "name").unwrap_or_else(|| id.clone());
-        let version = extract_str(json, "version").unwrap_or_else(|| "0.0.0".to_string());
+        let value: serde_json::Value = serde_json::from_str(json).ok()?;
+        let field = |key: &str| value.get(key)?.as_str().map(str::to_string);
+        let id = field("id")?;
+        let name = field("name").unwrap_or_else(|| id.clone());
+        let version = field("version").unwrap_or_else(|| "0.0.0".to_string());
         Some(ExtensionManifest {
             id,
             kind: ExtensionKind::Skill,
@@ -1005,12 +1185,41 @@ pub(crate) mod ext {
         })
     }
 
-    fn extract_str(json: &str, key: &str) -> Option<String> {
-        let pattern = format!("\"{}\":\"", key);
-        let start = json.find(&pattern)? + pattern.len();
-        let rest = &json[start..];
-        let end = rest.find('"')?;
-        Some(rest[..end].to_string())
+    #[cfg(test)]
+    mod tests {
+        use super::parse_manifest;
+
+        #[test]
+        fn a_pretty_printed_manifest_parses() {
+            let manifest = parse_manifest(
+                "{\n  \"id\": \"demo/x\",\n  \"name\": \"X\",\n  \"version\": \"2.0.0\"\n}",
+            )
+            .expect("pretty-printed JSON is still JSON");
+            assert_eq!(manifest.id, "demo/x");
+            assert_eq!(manifest.name, "X");
+            assert_eq!(manifest.version, "2.0.0");
+        }
+
+        #[test]
+        fn an_escaped_quote_in_a_field_is_kept_whole() {
+            let manifest =
+                parse_manifest(r#"{"id":"demo/x","name":"say \"hi\""}"#).expect("a valid manifest");
+            assert_eq!(manifest.name, "say \"hi\"");
+        }
+
+        #[test]
+        fn name_and_version_default_when_absent() {
+            let manifest = parse_manifest(r#"{"id":"demo/x"}"#).expect("id alone is enough");
+            assert_eq!(manifest.name, "demo/x");
+            assert_eq!(manifest.version, "0.0.0");
+        }
+
+        #[test]
+        fn a_missing_id_or_non_object_json_is_not_a_manifest() {
+            assert!(parse_manifest(r#"{"name":"no id"}"#).is_none());
+            assert!(parse_manifest(r#"["id","demo/x"]"#).is_none());
+            assert!(parse_manifest("not json at all").is_none());
+        }
     }
 
     pub(crate) mod skill {
@@ -1352,7 +1561,7 @@ pub(crate) mod registry {
         if ctx.is_json() {
             let items: Vec<String> = agents
                 .iter()
-                .map(|a| format!("{{\"name\":\"{}\"}}", a.name))
+                .map(|a| format!("{{\"name\":\"{}\"}}", crate::output::json_escape(&a.name)))
                 .collect();
             println!("[{}]", items.join(","));
         } else {
@@ -1363,17 +1572,25 @@ pub(crate) mod registry {
         0
     }
 
-    // Known residual, not fixed here: `ctx` is accepted but never
-    // consulted, so `--format json` is silently discarded — corrected
-    // separately, after convergence, alongside the same defect at every
-    // other site that discards the requested format.
-    pub(crate) fn show(name: String, _ctx: &Context) -> i32 {
+    pub(crate) fn show(name: String, ctx: &Context) -> i32 {
         let registry = AgentRegistry::load();
         match registry.resolve(&name) {
             Ok(a) => {
-                println!("name:        {}", a.name);
-                println!("description: {}", a.description.as_deref().unwrap_or(""));
-                println!("mode:        {}", a.mode.as_str());
+                if ctx.is_json() {
+                    let description = match &a.description {
+                        Some(d) => format!("\"{}\"", crate::output::json_escape(d)),
+                        None => "null".to_string(),
+                    };
+                    println!(
+                        "{{\"name\":\"{}\",\"description\":{description},\"mode\":\"{}\"}}",
+                        crate::output::json_escape(&a.name),
+                        a.mode.as_str()
+                    );
+                } else {
+                    println!("name:        {}", a.name);
+                    println!("description: {}", a.description.as_deref().unwrap_or(""));
+                    println!("mode:        {}", a.mode.as_str());
+                }
                 0
             }
             Err(e) => {
@@ -1393,11 +1610,6 @@ pub(crate) mod registry {
             return 1;
         }
         if ctx.is_json() {
-            // Known residual, not fixed here: `def_name` is interpolated
-            // into a hand-built JSON literal without escaping — a `"` or
-            // `\` in an agent name would emit invalid JSON. Corrected
-            // separately, after convergence, by real `Outcome`
-            // serialization.
             println!(
                 "{{\"result\":\"created\",\"name\":\"{}\"}}",
                 crate::output::json_escape(&def_name)
@@ -1459,6 +1671,7 @@ pub(crate) mod activation_cmd {
     };
 
     use crate::cli::ActivationModeArg;
+    use crate::commands::consent::{self, Gate};
     use crate::output::Context;
 
     // Reached directly from `crate::installation::dispatch` now — the
@@ -1513,38 +1726,6 @@ pub(crate) mod activation_cmd {
         0
     }
 
-    /// The outcome of `enable`'s consent gate, decided BEFORE any registry is
-    /// constructed or touched — so a `RefuseNonInteractive`/`CancelledByUser`
-    /// path structurally cannot mutate anything (the Verify property: "exits
-    /// non-zero and mutates nothing"). `confirm` is injected so the gate is
-    /// testable without a real terminal or a real OS call.
-    #[derive(Debug, PartialEq, Eq)]
-    enum EnableGate {
-        Proceed,
-        RefuseNonInteractive,
-        CancelledByUser,
-    }
-
-    fn enable_gate(
-        acknowledged: bool,
-        interactive: bool,
-        confirm: impl FnOnce() -> bool,
-    ) -> EnableGate {
-        if acknowledged {
-            return EnableGate::Proceed;
-        }
-        if !interactive {
-            // BA-5: an unattended `enable` would silently satisfy the
-            // consent moment a human must see — refuse rather than proceed.
-            return EnableGate::RefuseNonInteractive;
-        }
-        if confirm() {
-            EnableGate::Proceed
-        } else {
-            EnableGate::CancelledByUser
-        }
-    }
-
     fn confirm_disclosure(mode: ActivationMode) -> bool {
         println!(
             "Enabling {} background activation lets Cronus run while you are not present.",
@@ -1570,23 +1751,19 @@ pub(crate) mod activation_cmd {
         };
         let interactive = io::stdin().is_terminal();
 
-        match enable_gate(acknowledged, interactive, || confirm_disclosure(target)) {
-            EnableGate::RefuseNonInteractive => {
+        match consent::gate(acknowledged, interactive, || confirm_disclosure(target)) {
+            Gate::RefuseNonInteractive => {
                 eprintln!(
                     "cronus activation enable refuses to run non-interactively without \
                      --acknowledge-unattended-execution"
                 );
                 return 1;
             }
-            EnableGate::CancelledByUser => {
-                // Known residual, not fixed here: ignores `--format json`
-                // and always prints prose — corrected separately, after
-                // convergence, alongside the same defect at every other
-                // site that discards the requested format.
-                println!("cancelled — activation not changed");
+            Gate::CancelledByUser => {
+                eprintln!("cancelled — activation not changed");
                 return 1;
             }
-            EnableGate::Proceed => {}
+            Gate::Proceed => {}
         }
 
         let registry = default_activation_registry();
@@ -1600,16 +1777,18 @@ pub(crate) mod activation_cmd {
                 0
             }
             Ok(TransitionOutcome::RequiresApproval(m)) => {
-                // Known residual, not fixed here: unlike the `Activated`
-                // arm just above, this one ignores `--format json` and
-                // always prints prose — corrected separately, after
-                // convergence, alongside the same defect at every other
-                // site that discards the requested format.
-                println!(
-                    "registered ({}), but the OS requires your approval before it will run — \
-                     see your system's background-items settings",
-                    mode_str(m)
-                );
+                if ctx.is_json() {
+                    println!(
+                        "{{\"outcome\":\"requires-approval\",\"mode\":\"{}\"}}",
+                        mode_str(m)
+                    );
+                } else {
+                    println!(
+                        "registered ({}), but the OS requires your approval before it will run — \
+                         see your system's background-items settings",
+                        mode_str(m)
+                    );
+                }
                 0
             }
             Ok(TransitionOutcome::Deactivated) => 0, // enable() never returns this in practice
@@ -1635,49 +1814,6 @@ pub(crate) mod activation_cmd {
                 eprintln!("activation disable failed: {}", transition_error_str(&err));
                 1
             }
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use std::cell::Cell;
-
-        use super::{EnableGate, enable_gate};
-
-        #[test]
-        fn non_interactive_without_acknowledgement_refuses() {
-            let gate = enable_gate(false, false, || true);
-            assert_eq!(gate, EnableGate::RefuseNonInteractive);
-        }
-
-        #[test]
-        fn interactive_without_acknowledgement_asks_for_confirmation() {
-            assert_eq!(enable_gate(false, true, || true), EnableGate::Proceed);
-            assert_eq!(
-                enable_gate(false, true, || false),
-                EnableGate::CancelledByUser
-            );
-        }
-
-        #[test]
-        fn the_acknowledgement_flag_skips_confirmation_entirely() {
-            let confirm_called = Cell::new(false);
-            let gate = enable_gate(true, true, || {
-                confirm_called.set(true);
-                true
-            });
-            assert_eq!(gate, EnableGate::Proceed);
-            assert!(
-                !confirm_called.get(),
-                "the acknowledgement flag must skip the confirmation prompt entirely"
-            );
-        }
-
-        #[test]
-        fn the_acknowledgement_flag_also_works_non_interactively() {
-            // The flag is exactly what makes a script/CI-runner invocation
-            // legitimate — it must proceed even with interactive=false.
-            assert_eq!(enable_gate(true, false, || true), EnableGate::Proceed);
         }
     }
 }

@@ -269,3 +269,47 @@ fn list_cards_empty_board_returns_empty_vec() {
     let cards = board.list_cards().unwrap();
     assert!(cards.is_empty());
 }
+
+// ── list_archived_cards ───────────────────────────────────────────────────────
+
+#[test]
+fn list_archived_cards_holds_only_archived_cards_and_is_empty_before_any_archival() {
+    let board = temp_board("archive-list");
+    board.init().unwrap();
+    assert!(
+        board.list_archived_cards().unwrap().is_empty(),
+        "no archive directory yet means no archived cards"
+    );
+
+    board.add_card("c11", "t", T0).unwrap();
+    for (i, state) in [
+        CardState::Todo,
+        CardState::Ready,
+        CardState::Running,
+        CardState::Done,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        board
+            .move_card("c11", state, "a", None, T0 + 1 + i as u64)
+            .unwrap();
+    }
+    board.add_card("c12", "t", T0 + 10).unwrap();
+    board.archive_done_cards().unwrap();
+
+    let archived: Vec<String> = board
+        .list_archived_cards()
+        .unwrap()
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(archived, ["c11"], "only the archived card is listed");
+    let active: Vec<String> = board
+        .list_cards()
+        .unwrap()
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(active, ["c12"], "the archived card left the live list");
+}

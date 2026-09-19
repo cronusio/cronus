@@ -31,7 +31,8 @@ use crate::pane_actions::{self, PaneAction};
 use crate::terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
 use crate::view::{self, BoardView, Focus, OfficeView, Projection, SessionsView, StatusView};
 use cronus_contract::{
-    ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, OutcomeValue, Surface,
+    ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, OutcomeValue,
+    Surface,
 };
 use cronus_core::invocable::{Dispatcher, InvocableRegistry};
 use cronus_domain::{Capabilities, Engine};
@@ -257,8 +258,10 @@ impl App {
     }
 
     /// Route a key press by the focused region; returns whether a redraw is
-    /// needed. Tab / Shift+Tab cycle focus from anywhere. Outside the command
-    /// bar, Esc quits; inside it, keys edit the command line (Esc cancels).
+    /// needed. Tab / Shift+Tab cycle focus from anywhere, and `/` jumps
+    /// straight to the command bar from any other panel. Outside the command
+    /// bar, Esc quits; inside it, keys edit the command line (Esc cancels, and
+    /// `/` is ordinary text).
     ///
     /// Which key triggers which action is decided right here — key bindings
     /// stay local presentation. What does NOT
@@ -269,6 +272,9 @@ impl App {
         match key {
             Key::Tab => self.dispatch_pane_action(PaneAction::FocusNext),
             Key::BackTab => self.dispatch_pane_action(PaneAction::FocusPrev),
+            Key::Char('/') if self.view.focus != Focus::CommandBar => {
+                self.dispatch_pane_action(PaneAction::FocusCommandBar)
+            }
             _ if self.view.focus == Focus::CommandBar => self.handle_command_key(key),
             Key::Esc => self.dispatch_pane_action(PaneAction::Quit),
             _ => false,
@@ -297,6 +303,10 @@ impl App {
                 }
                 PaneAction::FocusPrev => {
                     self.view.focus = self.view.focus.prev();
+                    true
+                }
+                PaneAction::FocusCommandBar => {
+                    self.view.focus = Focus::CommandBar;
                     true
                 }
                 PaneAction::Quit => {
@@ -394,34 +404,86 @@ impl<C: Capabilities> SnapshotSource for CapabilitySource<C> {
 /// Dispatch `core:board.list` through the shared registry/dispatcher and
 /// project its result — never a store opened directly by this crate, which
 /// would re-derive the domain fact of where the board lives (finding F-4's
-/// exact defect, on the sibling surface). The verb has no declared binders,
-/// so `Outcome::Rejected` is unreachable in practice; handled anyway for
-/// exhaustive, honest coverage of every `Outcome`/`Dispatched` shape rather
-/// than a partial match that would panic if that ever changed.
+/// exact defect, on the sibling surface). Two reads: the live cards, then the
+/// archived ones (`--archived`) that the separate archive store holds and the
+/// Archive column shows. Either read being unavailable makes the whole board
+/// unavailable with its reason — the panel is one projection — but a single
+/// live card in a state this surface has no column for does not: it is set
+/// aside by id in `unmapped` so the cards it can place still render.
 fn dispatch_board(registry: &InvocableRegistry, dispatcher: &Dispatcher) -> Projection<BoardView> {
-    dispatch_projection(registry, dispatcher, "core:board.list", |value| {
-        let OutcomeValue::List(items) = value else {
-            return None;
-        };
-        let mut cards = Vec::with_capacity(items.len());
-        for item in items {
-            let OutcomeValue::Record(fields) = item else {
+    let live = dispatch_projection(
+        registry,
+        dispatcher,
+        "core:board.list",
+        ArgValues::new(),
+        |value| {
+            let OutcomeValue::List(items) = value else {
                 return None;
             };
-            let id = record_text(fields, "id")?;
-            let column = board_column(record_text(fields, "state")?)?;
-            cards.push(view::BoardCard {
-                id: id.to_string(),
-                // `core:board.list`'s current outcome shape carries no
-                // `task_ref` field — a disclosed limitation of that
-                // invocable's response, not something this panel derives
-                // locally; the same gap the command line's own output has.
-                title: String::new(),
-                column,
-            });
+            let mut cards = Vec::with_capacity(items.len());
+            let mut unmapped = Vec::new();
+            for item in items {
+                let OutcomeValue::Record(fields) = item else {
+                    return None;
+                };
+                let id = record_text(fields, "id")?;
+                match board_column(record_text(fields, "state")?) {
+                    Some(column) => cards.push(view::BoardCard {
+                        id: id.to_string(),
+                        // `core:board.list`'s current outcome shape carries no
+                        // `task_ref` field — a disclosed limitation of that
+                        // invocable's response, not something this panel
+                        // derives locally; the same gap the command line's
+                        // own output has.
+                        title: String::new(),
+                        column,
+                    }),
+                    None => unmapped.push(id.to_string()),
+                }
+            }
+            Some(BoardView { cards, unmapped })
+        },
+    );
+    let Projection::Available(mut board) = live else {
+        return live;
+    };
+
+    let mut archived_args = ArgValues::new();
+    archived_args.insert("archived", ArgValue::Flag);
+    let archived = dispatch_projection(
+        registry,
+        dispatcher,
+        "core:board.list",
+        archived_args,
+        |value| {
+            let OutcomeValue::List(items) = value else {
+                return None;
+            };
+            let mut ids = Vec::with_capacity(items.len());
+            for item in items {
+                let OutcomeValue::Record(fields) = item else {
+                    return None;
+                };
+                ids.push(record_text(fields, "id")?.to_string());
+            }
+            Some(ids)
+        },
+    );
+    match archived {
+        Projection::Available(ids) => {
+            board
+                .cards
+                .extend(ids.into_iter().map(|id| view::BoardCard {
+                    id,
+                    title: String::new(),
+                    column: view::BoardColumn::Archive,
+                }));
+            Projection::Available(board)
         }
-        Some(BoardView { cards })
-    })
+        Projection::Unavailable { reason } => Projection::Unavailable {
+            reason: format!("archive: {reason}"),
+        },
+    }
 }
 
 /// Dispatch `core:role.list` (no `--presets` flag: hired instances, not the
@@ -431,30 +493,36 @@ fn dispatch_office(
     registry: &InvocableRegistry,
     dispatcher: &Dispatcher,
 ) -> Projection<OfficeView> {
-    dispatch_projection(registry, dispatcher, "core:role.list", |value| {
-        let OutcomeValue::List(items) = value else {
-            return None;
-        };
-        let mut agents = Vec::with_capacity(items.len());
-        for item in items {
-            let OutcomeValue::Record(fields) = item else {
+    dispatch_projection(
+        registry,
+        dispatcher,
+        "core:role.list",
+        ArgValues::new(),
+        |value| {
+            let OutcomeValue::List(items) = value else {
                 return None;
             };
-            agents.push(view::AgentActivity {
-                agent: record_text(fields, "display_name")?.to_string(),
-                // No live task-tracking exists in the domain layer yet
-                // (`HiredInstance` carries no "current task" field) — an
-                // honest absence, not a locally-derived default; the
-                // panel's own "idle" fallback already renders this
-                // correctly.
-                task: String::new(),
-            });
-        }
-        Some(OfficeView { agents })
-    })
+            let mut agents = Vec::with_capacity(items.len());
+            for item in items {
+                let OutcomeValue::Record(fields) = item else {
+                    return None;
+                };
+                agents.push(view::AgentActivity {
+                    agent: record_text(fields, "display_name")?.to_string(),
+                    // No live task-tracking exists in the domain layer yet
+                    // (`HiredInstance` carries no "current task" field) — an
+                    // honest absence, not a locally-derived default; the
+                    // panel's own "idle" fallback already renders this
+                    // correctly.
+                    task: String::new(),
+                });
+            }
+            Some(OfficeView { agents })
+        },
+    )
 }
 
-/// Dispatch one no-argument invocable and turn its result into a
+/// Dispatch one invocable and turn its result into a
 /// [`Projection`]: a registry miss or a real `Outcome::Unavailable`/
 /// `Rejected`/`Stream` all become `Unavailable` with a legible reason; a
 /// `Value` that does not match `parse`'s expected shape is *also*
@@ -464,11 +532,12 @@ fn dispatch_projection<T>(
     registry: &InvocableRegistry,
     dispatcher: &Dispatcher,
     id: &str,
+    args: ArgValues,
     parse: impl FnOnce(&OutcomeValue) -> Option<T>,
 ) -> Projection<T> {
     let invocation = Invocation {
         id: InvocableId::new(id).expect("a literal invocable id must be well-formed"),
-        args: ArgValues::new(),
+        args,
         caller: Surface::Tui,
     };
     match dispatcher.dispatch(registry, &invocation) {
@@ -483,7 +552,7 @@ fn dispatch_projection<T>(
         },
         Dispatched::Ran(Outcome::Rejected(rejection)) => Projection::Unavailable {
             reason: format!(
-                "{id} rejected its own no-argument call: {} ({:?})",
+                "{id} rejected its own call: {} ({:?})",
                 rejection.binder, rejection.mode
             ),
         },
@@ -967,6 +1036,109 @@ mod tests {
         assert_eq!(app.view().focus, Focus::Board, "Shift+Tab steps focus back");
     }
 
+    /// The command bar is reachable in one keystroke from any panel: `/`
+    /// focuses it, and the key that moved focus is consumed by the move — it is
+    /// not typed into the line it just opened.
+    #[test]
+    fn the_slash_key_focuses_the_command_bar_from_any_panel_without_typing_it() {
+        for start in [Focus::Board, Focus::Office, Focus::Status, Focus::Sessions] {
+            let (registry, dispatcher) = registry_with_pane_actions();
+            let mut app = App::new(
+                ViewModel {
+                    focus: start,
+                    ..Default::default()
+                },
+                registry,
+                dispatcher,
+                Vec::new(),
+            );
+            let mut source = ScriptedSource::new(vec![None]);
+            let mut renderer = RecordingRenderer::default();
+
+            let result = app
+                .tick(
+                    &[TermEvent::Key(Key::Char('/'))],
+                    &mut source,
+                    &mut renderer,
+                )
+                .unwrap();
+
+            assert_eq!(app.view().focus, Focus::CommandBar, "from {start:?}");
+            assert_eq!(app.view().command_input, "", "the jump key is not text");
+            assert!(result.redrawn, "a focus change requests a redraw");
+        }
+    }
+
+    /// Once the command bar already holds focus, `/` is what it looks like:
+    /// an ordinary character in the line being typed.
+    #[test]
+    fn the_slash_key_is_ordinary_text_once_the_command_bar_has_focus() {
+        let (registry, dispatcher) = registry_with_pane_actions();
+        let mut app = App::new(
+            ViewModel {
+                focus: Focus::CommandBar,
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        let mut source = ScriptedSource::new(vec![]);
+        let mut renderer = RecordingRenderer::default();
+
+        for c in "/a".chars() {
+            app.tick(&[TermEvent::Key(Key::Char(c))], &mut source, &mut renderer)
+                .unwrap();
+        }
+
+        assert_eq!(app.view().command_input, "/a");
+        assert_eq!(app.view().focus, Focus::CommandBar);
+    }
+
+    /// The reported defect end to end: a user looking at a panel types `/` and
+    /// then a command, and the command runs — previously every key typed
+    /// against the rendered prompt was swallowed until focus had been tabbed
+    /// onto it.
+    #[test]
+    fn a_command_can_be_typed_straight_from_a_panel_after_the_slash_key() {
+        let (mut registry, mut dispatcher) = registry_with_probe();
+        pane_actions::register(&mut registry, &mut dispatcher);
+        let mut app = App::new(ViewModel::default(), registry, dispatcher, test_catalog());
+        let mut source = ScriptedSource::new(vec![]);
+        let mut renderer = RecordingRenderer::default();
+        assert_eq!(app.view().focus, Focus::Board);
+
+        for c in "/test probe hello".chars() {
+            app.tick(&[TermEvent::Key(Key::Char(c))], &mut source, &mut renderer)
+                .unwrap();
+        }
+        app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
+            .unwrap();
+
+        assert_eq!(app.view().command_feedback.as_deref(), Some("probe: hello"));
+    }
+
+    /// The direct-entry key is a registered action like every other pane
+    /// action, so an unregistered one leaves focus exactly where it was.
+    #[test]
+    fn an_unregistered_focus_command_action_never_moves_focus() {
+        let (registry, dispatcher) = empty_registry_and_dispatcher();
+        let mut app = App::new(ViewModel::default(), registry, dispatcher, Vec::new());
+        let mut source = ScriptedSource::new(vec![None]);
+        let mut renderer = RecordingRenderer::default();
+
+        let result = app
+            .tick(
+                &[TermEvent::Key(Key::Char('/'))],
+                &mut source,
+                &mut renderer,
+            )
+            .unwrap();
+
+        assert!(!result.redrawn, "no dispatch ran, so nothing changed");
+        assert_eq!(app.view().focus, Focus::Board, "focus must not move");
+    }
+
     /// The registry, not the key match, decides whether focus moves at all:
     /// with no pane actions registered, Tab must leave focus exactly where
     /// it was and request no redraw — proving `handle_key` really resolves
@@ -1307,6 +1479,7 @@ mod tests {
                         title: String::new(),
                         column: view::BoardColumn::Running,
                     }],
+                    ..Default::default()
                 }),
                 office: Projection::Available(OfficeView {
                     agents: vec![view::AgentActivity {
@@ -1388,14 +1561,16 @@ mod tests {
         ));
     }
 
-    /// Registers a fixture `core:board.list` handler returning exactly
-    /// `pairs` as `(id, state)` records — the same field shape the real
-    /// invocable produces — so `dispatch_board` is proven against a real
-    /// dispatch path, not a stub of it.
+    /// Registers a fixture `core:board.list` handler with the real
+    /// invocable's shape: `(id, state)` records for the live cards and, when
+    /// called with the `archived` flag, the archive store's cards or its
+    /// failure — so `dispatch_board` is proven against a real dispatch path,
+    /// not a stub of it.
     fn register_board_list(
         registry: &mut InvocableRegistry,
         dispatcher: &mut Dispatcher,
-        pairs: Vec<(&'static str, &'static str)>,
+        live: Vec<(&'static str, &'static str)>,
+        archived: Result<Vec<&'static str>, &'static str>,
     ) {
         let id = InvocableId::new("core:board.list").expect("well-formed test id");
         registry
@@ -1407,7 +1582,11 @@ mod tests {
                     summary: "Test-only board.list fixture.",
                     group: "board",
                     locus: Locus::Semantic,
-                    binders: Vec::new(),
+                    binders: vec![Binder {
+                        name: "archived",
+                        kind: BinderKind::Flag,
+                        optional: true,
+                    }],
                     stability: Stability::Shipped,
                     journal_raw_input: true,
                 },
@@ -1415,17 +1594,25 @@ mod tests {
             .expect("test fixture registers cleanly");
         dispatcher.attach(
             id,
-            Arc::new(move |_args| {
+            Arc::new(move |args| {
+                let record = |cid: &str, state: &str| {
+                    OutcomeValue::Record(vec![
+                        ("id".to_string(), OutcomeValue::Text(cid.to_string())),
+                        ("state".to_string(), OutcomeValue::Text(state.to_string())),
+                    ])
+                };
+                if matches!(args.get("archived"), Some(ArgValue::Flag)) {
+                    return match &archived {
+                        Ok(ids) => Outcome::Value(OutcomeValue::List(
+                            ids.iter().map(|cid| record(cid, "done")).collect(),
+                        )),
+                        Err(reason) => Outcome::Unavailable {
+                            reason: reason.to_string(),
+                        },
+                    };
+                }
                 Outcome::Value(OutcomeValue::List(
-                    pairs
-                        .iter()
-                        .map(|(cid, state)| {
-                            OutcomeValue::Record(vec![
-                                ("id".to_string(), OutcomeValue::Text(cid.to_string())),
-                                ("state".to_string(), OutcomeValue::Text(state.to_string())),
-                            ])
-                        })
-                        .collect(),
+                    live.iter().map(|(cid, state)| record(cid, state)).collect(),
                 ))
             }),
         );
@@ -1435,7 +1622,7 @@ mod tests {
     fn dispatch_board_reports_a_genuinely_empty_result_as_available() {
         let mut registry = InvocableRegistry::new();
         let mut dispatcher = Dispatcher::new();
-        register_board_list(&mut registry, &mut dispatcher, Vec::new());
+        register_board_list(&mut registry, &mut dispatcher, Vec::new(), Ok(Vec::new()));
 
         assert_eq!(
             dispatch_board(&registry, &dispatcher),
@@ -1452,6 +1639,7 @@ mod tests {
             &mut registry,
             &mut dispatcher,
             vec![("k1", "running"), ("k2", "todo")],
+            Ok(Vec::new()),
         );
 
         let Projection::Available(board) = dispatch_board(&registry, &dispatcher) else {
@@ -1469,6 +1657,85 @@ mod tests {
                 .cards
                 .iter()
                 .any(|c| c.id == "k2" && c.column == view::BoardColumn::Todo)
+        );
+    }
+
+    /// The Archive column reads the separate archive store: archived cards
+    /// land in it whatever state they carry, beside the live ones.
+    #[test]
+    fn dispatch_board_places_archived_cards_in_the_archive_column() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        register_board_list(
+            &mut registry,
+            &mut dispatcher,
+            vec![("k1", "running")],
+            Ok(vec!["a1", "a2"]),
+        );
+
+        let Projection::Available(board) = dispatch_board(&registry, &dispatcher) else {
+            panic!("expected an available board");
+        };
+        assert_eq!(board.cards.len(), 3);
+        let archived: Vec<&str> = board
+            .cards_in(view::BoardColumn::Archive)
+            .map(|c| c.id.as_str())
+            .collect();
+        assert_eq!(archived, ["a1", "a2"]);
+        assert!(
+            board
+                .cards_in(view::BoardColumn::Running)
+                .any(|c| c.id == "k1")
+        );
+    }
+
+    /// One card in a state this surface has no column for must not blank the
+    /// cards it can place: the panel stays available, and the card is
+    /// named rather than silently dropped.
+    #[test]
+    fn dispatch_board_sets_aside_one_unrecognized_state_instead_of_failing_the_board() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        register_board_list(
+            &mut registry,
+            &mut dispatcher,
+            vec![("k1", "running"), ("weird", "sideways")],
+            Ok(Vec::new()),
+        );
+
+        let Projection::Available(board) = dispatch_board(&registry, &dispatcher) else {
+            panic!("one unplaceable card must not make the whole board unavailable");
+        };
+        assert_eq!(
+            board
+                .cards
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            ["k1"]
+        );
+        assert_eq!(board.unmapped, ["weird"]);
+    }
+
+    /// An archive store that cannot be read is unavailable, not an empty
+    /// Archive column — an empty column would read as "nothing archived".
+    #[test]
+    fn dispatch_board_is_unavailable_when_the_archive_cannot_be_read() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        register_board_list(
+            &mut registry,
+            &mut dispatcher,
+            vec![("k1", "running")],
+            Err("archive directory unreadable"),
+        );
+
+        let Projection::Unavailable { reason } = dispatch_board(&registry, &dispatcher) else {
+            panic!("an unreadable archive must not render as an empty column");
+        };
+        assert!(
+            reason.contains("archive") && reason.contains("unreadable"),
+            "{reason}"
         );
     }
 

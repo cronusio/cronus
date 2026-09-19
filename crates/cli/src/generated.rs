@@ -80,6 +80,7 @@ pub(crate) fn binder_help(invocable_id: &str, binder_name: &str) -> Option<&'sta
     let tail = invocable_id.strip_prefix("core:").unwrap_or(invocable_id);
     Some(match (tail, binder_name) {
         ("board.show" | "board.move" | "board.block" | "board.done", "id") => "card id",
+        ("board.list", "archived") => "list archived cards instead of live ones",
         ("board.add", "id") => "id to give the new card",
         ("board.add", "task_ref") => "task reference the card tracks",
         ("board.move", "state") => "target state",
@@ -159,6 +160,7 @@ pub(crate) fn binder_help(invocable_id: &str, binder_name: &str) -> Option<&'sta
         ("registry.create", "description") => "what the agent does",
         ("ext.add" | "ext.scan" | "ext.skill.import", "path") => "manifest / package path",
         ("ext.remove" | "ext.activate" | "ext.deactivate", "id") => "extension id",
+        ("ext.activate", "yes") => "confirm the grant (required non-interactively)",
         ("ext.skill.create", "prompt") => "natural-language description of the skill",
         ("ext.skill.status", "id") => "skill id (omit for all)",
         ("completion", "shell") => "bash, zsh, fish, powershell, or elvish",

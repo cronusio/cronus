@@ -485,8 +485,15 @@ static SENSITIVE_FILE_PATTERNS: &[&str] = &[
 /// Path traversal patterns.
 static PATH_TRAVERSAL_PATTERNS: &[&str] = &["../", "..\\", "%2e%2e", "%2f"];
 
-/// Shell metacharacters that indicate injection in arguments.
-static SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '>', '<', '`'];
+/// Shell metacharacters that indicate injection in arguments. A line break
+/// starts a second command exactly as `;` does.
+static SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '>', '<', '`', '\n', '\r'];
+
+/// Command-substitution openers. `$(` runs a command inside an argument and is
+/// a signature the static scanner already treats as injection; a bare `$` or
+/// parenthesis is far too common in benign values (`Program Files (x86)`,
+/// prices) to flag on its own.
+static SHELL_SUBSTITUTION_PATTERNS: &[&str] = &["$("];
 
 /// Privilege escalation patterns.
 static PRIV_ESC_PATTERNS: &[&str] = &[
@@ -588,7 +595,11 @@ impl ToolGuard {
             }
 
             // Shell metacharacters (command injection)
-            if value.chars().any(|c| SHELL_METACHARACTERS.contains(&c)) {
+            if value.chars().any(|c| SHELL_METACHARACTERS.contains(&c))
+                || SHELL_SUBSTITUTION_PATTERNS
+                    .iter()
+                    .any(|p| value.contains(p))
+            {
                 if !guardians_used.contains(&"shell_evasion_guardian".to_string()) {
                     guardians_used.push("shell_evasion_guardian".to_string());
                 }

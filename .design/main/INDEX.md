@@ -1,6 +1,6 @@
 # Workspace Specifications Registry
 
-**Version:** 1.0.202
+**Version:** 1.0.203
 **Status:** Active
 
 ## Overview

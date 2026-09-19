@@ -448,11 +448,21 @@ impl Board {
 
     /// List all active cards (not archived).
     pub fn list_cards(&self) -> Result<Vec<Card>> {
-        if !self.cards_dir().exists() {
+        Self::read_cards(&self.cards_dir())
+    }
+
+    /// List archived cards — still readable after archival (KAN-4). An
+    /// archive directory that does not exist yet holds no cards.
+    pub fn list_archived_cards(&self) -> Result<Vec<Card>> {
+        Self::read_cards(&self.archive_dir())
+    }
+
+    fn read_cards(dir: &Path) -> Result<Vec<Card>> {
+        if !dir.exists() {
             return Ok(Vec::new());
         }
         let mut cards = Vec::new();
-        for entry in fs::read_dir(self.cards_dir())?.flatten() {
+        for entry in fs::read_dir(dir)?.flatten() {
             if entry.path().extension().is_some_and(|e| e == "json")
                 && let Ok(json) = fs::read_to_string(entry.path())
                 && let Some(card) = Card::from_json(&json)

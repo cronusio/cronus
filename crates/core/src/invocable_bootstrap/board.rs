@@ -5,7 +5,7 @@ use cronus_domain::invocable::{Dispatcher, InvocableRegistry, Registrant};
 use cronus_domain::kanban::{Board, CardState};
 use cronus_domain::tool_security::now_ms;
 
-use super::{core_id, opt_text_arg, text_arg};
+use super::{core_id, flag_arg, opt_text_arg, text_arg};
 
 /// A card belongs to a specific project's work, not the machine — resolves
 /// against the current workspace (F-02), same as every other project-scoped
@@ -33,10 +33,14 @@ fn register_list(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) 
     let invocable = Invocable {
         id: id.clone(),
         name: "List",
-        summary: "List board cards.",
+        summary: "List board cards, or the archived ones with --archived.",
         group: "board",
         locus: Locus::Semantic,
-        binders: Vec::new(),
+        binders: vec![Binder {
+            name: "archived",
+            kind: BinderKind::Flag,
+            optional: true,
+        }],
         stability: Stability::Shipped,
         journal_raw_input: true,
     };
@@ -45,11 +49,22 @@ fn register_list(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) 
         .expect("core:board.list registers cleanly at bootstrap — a duplicate id here is a bug");
     dispatcher.attach(
         id,
-        Arc::new(|_args| {
+        Arc::new(|args| {
             let board = open_board();
-            // A store failure and a genuinely empty board render the same
-            // way here — the exact pre-existing behavior.
-            let cards = board.list_cards().unwrap_or_default();
+            let cards = if flag_arg(args, "archived") {
+                match board.list_archived_cards() {
+                    Ok(cards) => cards,
+                    Err(e) => {
+                        return Outcome::Unavailable {
+                            reason: e.to_string(),
+                        };
+                    }
+                }
+            } else {
+                // A store failure and a genuinely empty board render the same
+                // way here — the exact pre-existing behavior.
+                board.list_cards().unwrap_or_default()
+            };
             Outcome::Value(OutcomeValue::List(
                 cards
                     .into_iter()

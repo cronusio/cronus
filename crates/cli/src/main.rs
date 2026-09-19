@@ -9,7 +9,7 @@ mod output;
 use clap::{Command, CommandFactory};
 use cronus_contract::{Dispatched, Invocable, Outcome, OutcomeValue};
 use cronus_core::invocable::Registrant;
-use output::OutputFormat;
+use output::{OutputFormat, json_escape};
 
 /// Which of the launcher's top-level modes a raw `argv` resolves to,
 /// decided before any composition or I/O runs — a pure function of the
@@ -617,10 +617,6 @@ fn render_text_inline(value: &OutcomeValue) -> String {
             .join(", "),
         record @ OutcomeValue::Record(_) => render_text_line(record),
     }
-}
-
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn exit_code(code: i32) -> std::process::ExitCode {

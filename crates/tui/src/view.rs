@@ -246,6 +246,10 @@ pub struct BoardCard {
 pub struct BoardView {
     /// Every card currently on the board.
     pub cards: Vec<BoardCard>,
+    /// Ids of live cards whose state this surface has no column for. Carried
+    /// rather than dropped, so a card the board cannot place stays visible as
+    /// a note instead of vanishing from an otherwise successful-looking view.
+    pub unmapped: Vec<String>,
 }
 
 impl BoardView {
@@ -264,7 +268,14 @@ pub fn board_columns(inner: Rect) -> [Rect; 7] {
 /// columns, each listing its cards. Pure function of the [`Projection<BoardView>`].
 pub fn render_board(area: Rect, buf: &mut Buffer, board: &Projection<BoardView>, focused: bool) {
     render_panel(area, buf, "Board", focused, board, |inner, buf, board| {
-        let columns = board_columns(inner);
+        let (columns_area, note_area) = if board.unmapped.is_empty() || inner.height < 2 {
+            (inner, None)
+        } else {
+            let [columns_area, note_area] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            (columns_area, Some(note_area))
+        };
+        let columns = board_columns(columns_area);
         for (column, column_area) in BoardColumn::ALL.iter().zip(columns) {
             let mut lines = vec![Line::from(column.short()).bold()];
             for card in board.cards_in(*column) {
@@ -276,6 +287,14 @@ pub fn render_board(area: Rect, buf: &mut Buffer, board: &Projection<BoardView>,
                 lines.push(Line::from(label));
             }
             Paragraph::new(lines).render(column_area, buf);
+        }
+        if let Some(note_area) = note_area {
+            let note = format!(
+                "{} card(s) in an unrecognized state: {}",
+                board.unmapped.len(),
+                board.unmapped.join(", ")
+            );
+            Paragraph::new(note).render(note_area, buf);
         }
     });
 }
@@ -507,6 +526,14 @@ mod tests {
         (rect.y..rect.bottom()).any(|y| row_text(buf, rect, y).contains(needle))
     }
 
+    /// Every row inside `rect`, joined by newlines.
+    fn area_text(buf: &Buffer, rect: Rect) -> String {
+        (rect.y..rect.bottom())
+            .map(|y| row_text(buf, rect, y))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn card(id: &str, column: BoardColumn) -> BoardCard {
         BoardCard {
             id: id.to_string(),
@@ -529,6 +556,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, &col)| card(&format!("k{i}"), col))
                 .collect(),
+            ..Default::default()
         };
         let area = Rect::new(0, 0, 70, 10);
         let buf = render_board_buffer(&board, area);
@@ -555,6 +583,7 @@ mod tests {
 
         let before = BoardView {
             cards: vec![card("m1", BoardColumn::Todo)],
+            ..Default::default()
         };
         let buf_before = render_board_buffer(&before, area);
         assert!(area_contains(&buf_before, todo_area, "m1"));
@@ -563,6 +592,7 @@ mod tests {
         // Same card, moved one column over in the next snapshot.
         let after = BoardView {
             cards: vec![card("m1", BoardColumn::Running)],
+            ..Default::default()
         };
         let buf_after = render_board_buffer(&after, area);
         assert!(
@@ -572,6 +602,30 @@ mod tests {
         assert!(
             area_contains(&buf_after, running_area, "m1"),
             "card re-rendered under the Running column"
+        );
+    }
+
+    /// A card the board has no column for is named in a note under the
+    /// columns, and the cards it could place still render where they belong.
+    #[test]
+    fn board_render_names_cards_it_could_not_place_and_still_places_the_rest() {
+        let board = BoardView {
+            cards: vec![card("ok1", BoardColumn::Todo)],
+            unmapped: vec!["odd1".to_string(), "odd2".to_string()],
+        };
+        let area = Rect::new(0, 0, 70, 10);
+        let buf = render_board_buffer(&board, area);
+
+        let inner = Block::bordered().inner(area);
+        let text = area_text(&buf, inner);
+        assert!(
+            text.contains("2 card(s) in an unrecognized state"),
+            "{text}"
+        );
+        assert!(text.contains("odd1") && text.contains("odd2"), "{text}");
+        assert!(
+            text.contains("ok1"),
+            "the placed card still renders: {text}"
         );
     }
 
