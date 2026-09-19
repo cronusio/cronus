@@ -1,6 +1,6 @@
 # Agent Constitution
 
-**Version:** 1.0.10
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-memory-model.md
@@ -16,6 +16,8 @@ The concrete mechanism for workspace-scoped agent identity and cross-session mem
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Workspace directory layout that hosts the constitution files.
 - [l2-memory-store.md](l2-memory-store.md) - Structured memory (vector+FTS); constitution files are unstructured counterpart.
 - [l2-scheduler.md](l2-scheduler.md) - Heartbeat action that reads HEARTBEAT.md periodic tasks.
+- [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.1.0] AG-10: a write into a file the agent later loads as standing instruction is a privileged sink (§4.25).
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the confinement keeps these files unwritable to any confined child even inside a writable root (§4.5 there).
 
 ## 1. Motivation
 
@@ -27,7 +29,7 @@ A fresh session context has no memory of prior interactions. Structured memory (
 - Each file has YAML frontmatter: `summary` (one-line, for index display) and `read_when` (list of load conditions).
 - BOOTSTRAP.md is a first-run ritual: it is read on first session, guides initial setup, then is **deleted** — its own last instruction is to delete itself. Subsequent sessions find it absent and do nothing.
 - HEARTBEAT.md is optional: an empty file (or one containing only comments) suppresses all heartbeat calls — the agent never proactively pings if it has nothing to check.
-- The agent may update PROFILE.md and MEMORY.md over time; SOUL.md and HEARTBEAT.md have a stable workspace-level template and are typically user-edited.
+- The agent may update PROFILE.md and MEMORY.md over time; SOUL.md and HEARTBEAT.md have a stable workspace-level template and are typically user-edited. `[MODIFIED v1.1.0]` SOUL.md and HEARTBEAT.md are human-written only — the agent has no write path to them (SEC-10) — and an agent write to PROFILE.md or MEMORY.md that derives from untrusted content is staged for human acceptance instead of applied (§4.25).
 
 ## 3. Invariant Compliance (Layer 2 only)
 
@@ -36,6 +38,8 @@ A fresh session context has no memory of prior interactions. Structured memory (
 | MOD-1 Workspace isolation | Constitution files are per-workspace; employees of different offices carry different profiles. |
 | MEM-1 Multi-scope | Constitution files are workspace-scope; global-scope preferences live in the home workspace. |
 | SEC-1 Secret isolation | Constitution files never store secrets (secrets go to `.env` / keychain). MEMORY.md may store aliases, not credentials. |
+| SEC-10 Authority self-containment | SOUL.md and HEARTBEAT.md have no agent write path; the agent may only *request* a change, and the request is data (§4.25). |
+| AG-10 (l1-action-gating) Provenance at privileged sinks | A write to a standing-instruction file derived from untrusted content is staged for human acceptance, never applied silently (§4.25). |
 
 ## 4. Detailed Design
 
@@ -916,11 +920,35 @@ Agents that ask questions before acting slow down workflows and transfer cogniti
 
 **Anti-pattern:** Prefacing with "Before I start, I have a few questions…" is always wrong. Generate first; ask only if the above blocker conditions are met after trying.
 
+### 4.25 Standing-instruction files are a persistence sink [ADDED v1.1.0]
+
+The constitution files are read at the start of *every* session and treated as the agent's own working principles, so text written into one of them is obeyed by every future run, long after the conversation that produced it is gone. The strongest form of prompt-injection persistence is therefore not a hostile page in this session — it is a hostile sentence the agent was induced to **save**. A write to one of these files is a **privileged sink** (`l1-action-gating` AG-10).
+
+| File | Who may write | Rule |
+| --- | --- | --- |
+| SOUL.md, HEARTBEAT.md | the human only | the agent has no write path (SEC-10); a change it wants is a *request* — data, not a write |
+| PROFILE.md, MEMORY.md | the agent, per §2 | ordinary while the write's provenance is clean; **staged** when it is not (below) |
+| BOOTSTRAP.md | the first-run ritual | deletes itself; not an agent write target thereafter |
+
+```text
+[REFERENCE]
+write_constitution(file, new_text, actor):
+    if file in {SOUL, HEARTBEAT} and actor is the agent:
+        return request_change(file, new_text)              // SEC-10: recorded, surfaced to the human, never applied by the agent
+    if provenance_of(new_text) is untrusted_or_unknown:    // AG-10: the runtime tracks the derivation (CP-4); the model does not declare it
+        stage(<ws>/constitution/.pending/<file>.<n>, new_text)   // the pending shape of l2-learning-loop's skill proposals
+        return staged                                      // unattended callers stage without asking (AG-9): no prompt, no hang, no silent write
+    write_then_rename(file, new_text); audit(who, when, derived_from)   // AG-7
+```
+
+Acceptance of a staged write is a human act on **that exact content** (CB-1): it is shown with its source, and accepting it applies it; a later, different staged text is a new decision. The session-start load (§4.7) never reads `.pending/`. The distribution of rules into *other tools'* instruction files (§4.13) and managed-marker injection (§4.16) are installation-locus actions the human starts from the command line; they are not tools the agent can call.
+
 ## 5. Drawbacks & Alternatives
 
 - **Plaintext size vs. structured memory:** PROFILE.md and MEMORY.md grow unbounded. Long-term, entries should be migrated to the structured memory store; the constitution files remain the user-visible identity layer.
 - **Concurrent writes (multi-agent):** two agents updating PROFILE.md simultaneously could cause lost updates. Mitigation: the `manager` role (orchestrator) is the designated writer; others read-only unless specifically granted write access.
 - **SOUL.md drift:** if the user edits SOUL.md, the agent's behavior changes on next session. This is by design — SOUL.md is a first-class configuration surface.
+- **Staging costs a review step (v1.1.0):** a session that has read untrusted material and then wants to remember something must wait for a person. That is the price of not letting a saved sentence outlive its source; clean-provenance updates — the common case — are unaffected, and reading, summarizing and reasoning over untrusted content never stage anything (AG-10(c)).
 - **Alternative — store identity in structured DB:** more queryable, but not user-editable without tooling. Plain files win for transparency and auditability.
 - **Disclosed simplification (FR-6)** `[ADDED]`: the 8-step activation sequence currently executes as a no-op seam — constitution files are read and validated, but activation performs no session side effects until agent-session wiring lands. Upgrade trigger: binding activation to session start in the session subsystem; the sequence contract is unchanged.
 
@@ -937,4 +965,5 @@ Agents that ask questions before acting slow down workflows and transfer cogniti
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-09-19 | New §4.25 — standing-instruction files are a persistence sink. These files are loaded as the agent's own principles at every session start, so a sentence saved into one outlives the conversation and the source that induced it; a write to one is a privileged sink under `l1-action-gating` AG-10. SOUL.md and HEARTBEAT.md are human-written only (no agent write path, SEC-10; a wanted change is a request, which is data); an agent write to PROFILE.md or MEMORY.md derived from untrusted content is staged under `.pending/` for human acceptance of that exact content, unattended callers stage without asking (AG-9), and clean-provenance updates are unchanged. Rule distribution into other tools' files (§4.13) and managed-marker injection (§4.16) recorded as human-initiated installation actions the agent cannot call. §2 and §3 updated; SEC-10 and AG-10 rows added. Distilled from a cross-check of eight external agent command-line tools: protecting the files that carry standing instructions from agent writes, as a prompt-injection persistence vector, was found in the most security-mature of them. |
 | 1.0.10 | 2026-07-16 | Disclosed simplification (FR-6) recorded in §5: the 8-step activation sequence executes as a no-op seam pending agent-session wiring; upgrade trigger = binding activation to session start. History table added with this entry. |

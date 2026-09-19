@@ -1,6 +1,6 @@
 # Sandbox Network Policy
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md
@@ -16,6 +16,7 @@ The concrete sandbox network egress policy: a deny-by-default schema (version, f
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Isolated execution environments that the policy is applied to.
 - [l2-agent-autonomy.md](l2-agent-autonomy.md) - Approval gate used when an agent requests policy expansion.
 - [l2-doctor.md](l2-doctor.md) - Health probe that verifies policy enforcement is active.
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.0.1] the mechanism that enforces this policy per platform (§4.3 of `l2-security` now points there); its denial classification (§4.8) feeds this spec's §4.9, and its coverage table states what the policy does not reach.
 
 ## 1. Motivation
 
@@ -36,6 +37,7 @@ The egress gate in `l2-security.md §4.2` is a logical gate; this spec provides 
 | SEC-3 No exfiltration | Deny-by-default; `network_policies` allowlist is the only path to outbound network. |
 | SEC-6 Sandboxed execution | Binary allowlisting confines each executable to its named policy entries only. |
 | SEC-7 Auditable | Every access failure is classified and logged with `AccessFailureClassification`. |
+| SEC-12 Heuristics labeled; coverage stated | This spec is a policy schema, not a boundary by itself: enforcement and its enumerated coverage are `l2-execution-sandbox`. `PolicyContext` (§4.8) is generated from the selected backend's coverage declaration, so the text the model sees about confinement cannot exceed what is enforced (SEC-12(d)). |
 
 ## 4. Detailed Design
 
@@ -61,8 +63,11 @@ SandboxPolicy {
 
   // Optional OS-native isolation compatibility:
   // "strict"       — abort sandbox creation if kernel isolation cannot be applied.
-  // "best_effort"  — proceed without kernel isolation; emit a WARNING.
+  // "best_effort"  — [MODIFIED v1.1.0] NOT a silent downgrade (ES-8 of l1-execution-sandbox): proceed only on the axes
+  //                  the human lists in `accept_unconfined`; each accepted axis is recorded, stamped on every surface
+  //                  that runs under it, and shown by `cronus sandbox status`. An axis not listed still refuses.
   isolation_compatibility: "strict" | "best_effort",
+  accept_unconfined: Vec<"fs" | "net" | "proc" | "priv" | "resource">,   // [ADDED v1.1.0] only meaningful with best_effort; default empty
 
   // Named network policy entries. Deny-by-default: any traffic not matched by
   // a listed entry is blocked.
@@ -276,7 +281,7 @@ Every access failure classification is written to the audit log with the full `A
 
 - **File-based policy vs compiled rules:** the YAML/JSON schema is human-readable and auditable; compiled rules would be faster but opaque. Speed is not a concern for policy enforcement (checked at connection setup, not per-packet).
 - **Binary allowlisting via absolute canonical path:** a binary binary replaced at its path between resolution and spawn could bypass the check. Mitigation: pin the canonical path at fork time and verify it has not changed at exec time.
-- **`isolation_compatibility: "best_effort"` on constrained hosts:** reduces enforcement guarantees. Production deployments should prefer `strict`.
+- **`isolation_compatibility: "best_effort"` on constrained hosts:** reduces enforcement guarantees, and `[MODIFIED v1.1.0]` it no longer means "proceed with a warning": a run degrades only on the axes the human names in `accept_unconfined`, each visibly and persistently labeled (`l2-execution-sandbox` §4.1, §4.2). Production deployments should prefer `strict`.
 - **Alternative — single allowlist for all binaries:** simpler, but loses per-process least-privilege. Any compromised binary gains the full endpoint set allowed by any entry.
 
 ## Canonical References
@@ -287,3 +292,11 @@ Every access failure classification is written to the audit log with the full `A
 | `[PARENT-SEC]` | `.design/main/specifications/l2-security.md` | Egress gate + sandbox this spec expands |
 | `[WORKSPACE]` | `.design/main/specifications/l2-execution-workspace.md` | Sandbox environments |
 | `[AUTONOMY]` | `.design/main/specifications/l2-agent-autonomy.md` | Approval gate for policy expansion |
+| `[BACKEND]` | `.design/main/specifications/l2-execution-sandbox.md` | The enforcement mechanism per platform |
+
+## Document History
+
+| Version | Date | Notes |
+| --- | --- | --- |
+| 1.1.0 | 2026-09-19 | `isolation_compatibility: "best_effort"` reconciled with `l1-execution-sandbox` ES-8 (fail closed for untrusted code): it read as "proceed without kernel isolation; emit a warning", a silent downgrade the L1 forbids and that `l2-execution-sandbox` refuses. It now proceeds only on the axes the human lists in the new `accept_unconfined` field — each recorded, stamped on every surface that runs under it, and shown by `cronus sandbox status`; an axis not listed still refuses. Found while decomposing `l2-execution-sandbox` into tasks. |
+| 1.0.1 | 2026-09-19 | Cross-reference only — `l2-execution-sandbox` is the enforcement mechanism this policy schema lacked; Related Specifications and Canonical References extended. No invariant or schema changed. (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

@@ -1,6 +1,6 @@
 # Process Integrity & Hardening
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -13,6 +13,7 @@ Hardening of the agent's own running process so that secrets held in memory cann
 - [l1-security.md](l1-security.md) - SEC-1 keeps secrets out of files/logs; this spec keeps them out of crash dumps and other processes' reach while in memory.
 - [l1-storage-model.md](l1-storage-model.md) - STO-6 secret isolation at rest; process integrity is the runtime complement.
 - [l2-sandbox-policy.md](l2-sandbox-policy.md) - The sandbox confines agent-run code; process integrity protects the supervising process itself.
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the spawn path where PI-5/PI-8 are applied to every child, and the engine self-hardening sequence that realizes PI-1…PI-4 and PI-6.
 
 ## 1. Motivation
 
@@ -37,6 +38,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **PI-5 (Child inheritance):** processes the agent spawns (tools, shells, sandboxes) inherit the sanitized environment and MUST NOT silently re-expose a stripped injection vector to themselves or their descendants.
 - **PI-6 (Visible degradation):** where the host OS cannot honor a hardening step, the system records the gap in an auditable way and continues with reduced protection rather than failing to start — but the reduced posture is surfaced, never silent.
 - **PI-7 (Scope boundary):** process integrity protects the live process; it does not replace secret-at-rest isolation (SEC-1 / STO-6) or the execution sandbox (SEC-6). The three are layered defenses, each covering what the others cannot.
+- **PI-8 (A child carries only what it was meant to carry — the engine's own credentials are not inherited by default):** [ADDED v1.1.0] PI-5 says a child does not regain a stripped *injection* vector; this is its counterpart for *secrets*. A process the agent spawns inherits an explicit allowlist of the environment plus deliberate, recorded pass-throughs — not the parent's whole environment. **Secret-shaped variables** (by name — token, key, secret, password, credential, certificate — **and by value shape** — a private-key block, a provider-issued key, a bearer or session token, a credential embedded in a URL) and **the engine's own credentials** (the model-provider keys and session tokens it uses to do its own work) are stripped by default (SEC-1); the user's *general* environment may be passed to a child that is by declared design the user's own shell, as an audited exception, never as the default for agent-run code. Stripping is the default and pass-through is the exception, so a new secret-bearing variable is safe by omission rather than by someone remembering to list it. A stripped variable is recorded by name only, never by value (SEC-5), so the operator can see what a child did not receive.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -53,6 +55,8 @@ pre_main_hardening():           // runs before main(), before any secret/input (
     record_unsupported_steps()  // PI-6: note any step the OS refused
 spawn_child(cmd):
     env := sanitized_env()      // PI-5: children inherit the scrubbed environment
+    env := allowlist(env) + passthrough(cmd)   // PI-8: an explicit allowlist, not the parent's whole environment
+    env := strip_secret_shaped(env)            // PI-8: by name and by value shape; the engine's own credentials never pass by default
     exec(cmd, env)
 ```
 
@@ -63,6 +67,7 @@ spawn_child(cmd):
 | Crash → core dump on disk | full address space (secrets) dumped | dumps disabled (PI-1) |
 | Local debugger attaches | reads/writes live memory | attach refused (PI-2) |
 | Malicious preload/loader env | injects code into process + children | vectors stripped, not inherited (PI-3/PI-5) |
+| Agent-run child reads the engine's own keys from its environment | a subverted tool exfiltrates the provider key it inherited | secret-shaped and engine-own variables not inherited by default (PI-8) |
 
 ### 4.3 Degradation Reporting
 
@@ -80,9 +85,11 @@ When a step cannot be applied (unsupported OS, missing capability), PI-6 require
 | --- | --- | --- |
 | `[SECURITY]` | `.design/main/specifications/l1-security.md` | Secret isolation and sandboxed execution that PI complements in-memory. |
 | `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | Secret-at-rest isolation (STO-6); PI is its runtime counterpart. |
+| `[EXEC-SANDBOX]` | `.design/main/specifications/l2-execution-sandbox.md` | The Layer-2 realization: engine self-hardening and the child spawn path (PI-1…PI-8). |
 
 ## Document History
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-09-19 | Core Team | Added PI-8 (a child carries only what it was meant to carry). PI-3/PI-5 kept injection vectors out of the environment; nothing kept the engine's own *credentials* out of it, so every agent-run child inherited the provider keys and session tokens the engine uses for its own work and a subverted tool could read them from its environment. PI-8: a child inherits an explicit allowlist plus recorded pass-throughs; secret-shaped variables (by name and by value shape) and the engine's own credentials are stripped by default, pass-through is the audited exception (so a new secret-bearing variable is safe by omission), a child that is by design the user's own shell may receive the general environment as a declared exception, and a stripped variable is recorded by name only. §4.1 spawn sequence and §4.2 map extended. Distilled from a cross-check of eight external agent command-line tools: subprocess environment filtering by variable name and by value pattern, with a separate hard blocklist for code-injection variables, recurred across the strongest of them. |
 | 1.0.0 | 2026-06-26 | Core Team | Initial spec — process integrity & hardening: disable crash dumps, refuse tracer attach, scrub injection-vector environment variables, early enforcement, child inheritance, visible degradation, layered-defense scope boundary (PI-1…PI-7). |

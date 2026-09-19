@@ -1,6 +1,6 @@
 # Security
 
-**Version:** 1.0.8
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md
@@ -14,6 +14,7 @@ The concrete security mechanisms: where secrets are stored and how they are excl
 - [l1-security.md](l1-security.md) - The model this implements.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `.env` location; state-tier boundary.
 - [l2-technology-stack.md](l2-technology-stack.md) - Sandbox backends per OS.
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the concrete confinement backend per platform, its selection and refusal rules and its enumerated coverage; replaces the open backend question §4.3 used to carry.
 - [l2-backup.md](l2-backup.md) - Backups exclude secrets.
 - [l2-tool-security.md](l2-tool-security.md) - Two-layer runtime defense (skill scanner + tool guard) that enforces SEC-3/SEC-6 at the tool-call level.
 
@@ -36,8 +37,13 @@ The model's guarantees need concrete enforcement points: file locations, ignore 
 | SEC-3 No exfiltration | A single egress gate; default-deny outbound except user-authorized paths. |
 | SEC-4 Data vs telemetry | Telemetry payloads are built from a program-metrics allowlist; user content is never included. |
 | SEC-5 No leakage | Output/log writers run secret redaction. |
-| SEC-6 Sandboxed execution | Shell/code runs via a sandbox backend (e.g. OS-native isolation/containers); escalation is explicit and approved. |
+| SEC-6 Sandboxed execution | Shell/code runs via the backend selected by `l2-execution-sandbox` (native confinement per platform by default; container and remote alternates; refusal when none is available); escalation is explicit and approved. |
 | SEC-7 Auditable | Auth use, egress, and sandbox escalations append to an audit log. |
+| SEC-8 Confinement-mode duality | `l2-execution-sandbox` §4.1: embedded native and container backends and the `remote` backend sit behind one port; a client-local path mounts only into embedded confinement. *(Row added in v1.1.0; SEC-8…SEC-11 had gone unmapped since they were added to the L1.)* |
+| SEC-9 Learnable, scoped, revocable promotion | Realized in `l2-agent-autonomy` §4.6 (durable allow-rules); interpreters, shells, launchers and evaluators are promotable only as the exact resolved invocation (SEC-9(g)). |
+| SEC-10 Authority self-containment | The workspace trust model (§4.8) lets a project's settings load without letting them relax trust-sensitive keys; the sandbox policy file is host-written (`l2-sandbox-policy`); the autonomy level is not model-elevatable (`l2-agent-autonomy` §4.1). |
+| SEC-11 Error-disclosure boundary | **Pending.** It binds every surface that serves an external caller (the ACP relay, a hub client connection, the messaging gateway); the local CLI and TUI render to the machine's own user. Recorded so the invariant is visibly unrealized rather than silently unmapped. |
+| SEC-12 Heuristics labeled; coverage stated | The sandbox requirement (§4.3) is realized, with its enumerated coverage, in `l2-execution-sandbox` §4.9; the trust dialog reports ignored relaxations instead of presenting them as applied (§4.8); no security text in this corpus calls a heuristic containment. |
 
 ## 4. Detailed Design
 
@@ -56,7 +62,7 @@ graph TD
 
 ### 4.3 Execution sandbox
 
-Agent-run commands/code execute in a sandbox with least privilege (no network unless granted, scoped filesystem); escalation requires an approval (consistent with the orchestration approval gate). Concrete backend per OS is from the stack. <!-- TBD: confirm default sandbox backend per OS (container vs OS-native) -->
+Agent-run commands/code execute in a sandbox with least privilege (no network unless granted, scoped filesystem); escalation requires an approval (consistent with the orchestration approval gate). `[MODIFIED v1.1.0]` The concrete backend per platform, its selection and refusal rules, its enforced coverage and the escape corpus are **`l2-execution-sandbox`**: native confinement built from primitives available without administrator rights is the default on each platform, a container runtime and a remote manager are selectable alternates, and a host that cannot confine refuses to run untrusted code rather than degrading. The policy that backend enforces is `l2-sandbox-policy`. This section keeps the requirement and no longer carries the backend as an open question.
 
 ### 4.4 SSRF protection
 
@@ -80,10 +86,15 @@ BLOCKED_RANGES = [
   "10.0.0.0/8",       // RFC-1918 private (optional, operator configurable)
   "172.16.0.0/12",    // RFC-1918 private (optional)
   "192.168.0.0/16",   // RFC-1918 private (optional)
+  "0.0.0.0/8",        // "this network" / unspecified address                  [ADDED v1.1.0]
+  "100.64.0.0/10",    // carrier-grade NAT shared space (some clouds serve metadata here)   [ADDED v1.1.0]
+  "fc00::/7",         // IPv6 unique-local                                           [ADDED v1.1.0]
 ]
 ```
 
 Link-local blocking is mandatory and not operator-configurable — it prevents cloud-metadata endpoint access (`169.254.169.254`). Private IP blocking (RFC-1918 ranges) is enabled by default but can be disabled for deployments that legitimately reach internal services.
+
+`[ADDED v1.1.0]` **The checked address is the connected address.** An IPv4-mapped or IPv4-compatible IPv6 address (`::ffff:a.b.c.d`) is unwrapped to its IPv4 form before the range check, and non-canonical IPv4 literals (octal, hexadecimal, single-integer and short forms) are parsed by the **same** parser the connector uses, so a literal that the guard reads as public cannot be read by the connector as loopback. The validated IP is the one connected to (the DNS-rebinding rule below), and named cloud-metadata hostnames are blocked by name as well as by resolved address.
 
 #### Injectable resolver
 
@@ -252,6 +263,9 @@ Entry {
   path:       String,        // canonical absolute path of the trusted folder
   trust_level: TrustLevel,   // see below
   granted_at: Timestamp,
+  scope_hash: Map<String, String>,  // artifact id → SHA-256 of every other trust-scope artifact at grant time:
+                                    //   the security-relevant subset of settings, each MCP server's resolved declaration
+                                    //   (transport, command, args, url, environment key names), each command file, each skill  [ADDED v1.1.0]
   hooks_hash: Map<String, String>,  // hook-file-path → SHA-256 at time of trust grant
                                     // (same mechanism as l2-plugin-hooks.md §4.13)
 }
@@ -262,7 +276,7 @@ TrustLevel: "trusted" | "trusted-parent" | "denied"
   // "denied"         — this directory is explicitly untrusted; run in safe mode.
 ```
 
-Trust decisions apply at directory granularity. A `trusted-parent` entry at `/projects/` automatically trusts `/projects/foo/`, `/projects/bar/`, etc. Lookup walks from the project root upward, first match wins.
+Trust decisions apply at directory granularity. A `trusted-parent` entry at `/projects/` automatically trusts `/projects/foo/`, `/projects/bar/`, etc. Lookup walks from the project root upward, first match wins. `[ADDED v1.1.0]` A `trusted-parent` grant covers project **settings** at directory granularity but **never pre-approves executable artifacts**: hooks, tool-server declarations, commands and skills found in a project beneath it each take their own fingerprint approval on first sight in that project, so cloning a repository under a trusted parent does not let its hooks fire silently.
 
 #### Discovery phase
 
@@ -291,15 +305,17 @@ The discovery scan flags settings that elevate risk:
 
 ```text
 [REFERENCE]
-Security warnings (emitted when .cronus/settings.json contains):
-  approval_mode: "yolo"          → "Auto-approve all tool calls is enabled"
-  sandbox.enabled: false         → "Tool sandboxing is disabled"
+Security warnings (emitted when .cronus/settings.json REQUESTS any of the following; see the rule below — a request to loosen is reported, not applied):
+  approval_mode: "yolo"          → "Project requests auto-approval of all tool calls — ignored: user and managed tiers decide"
+  sandbox.enabled: false         → "Project requests tool sandboxing off — ignored: user and managed tiers decide"
   hooks with async: true         → "Async (non-blocking) hooks are present — they run without awaiting approval"
   any hook command containing environment variable expansion not from the approved set
                                  → "Hook command references untrusted env vars"
 ```
 
 Any security warning must be displayed prominently in the trust dialog before the user can grant trust.
+
+`[ADDED v1.1.0]` **Trusting a folder lets its settings load; it does not let them relax the safety envelope.** The keys above — and every other key that lowers enforced safety (autonomy level, execution level `off`, guardrail disables, durable allow-rules, sandbox off, a wider egress policy) — are *trust-sensitive*: they are honored only from the **user tier or the managed tier** (`l1-policy-governance` PG-1/PG-6, SEC-10). A project settings file may set them **tighter** than the user tier; a value that would loosen one is ignored, reported in the trust dialog and in the doctor report as `project_relaxation_ignored`, and never applied silently. A repository that ships a permissive settings file gains nothing by being trusted, because the authority plane is written by the human principal and not by whoever wrote the repository.
 
 #### Trust dialog (interactive)
 
@@ -315,11 +331,11 @@ Trust dialog flow:
        [T] Trust this folder: grants TrustLevel "trusted" for <project_root> only.
        [P] Trust parent folder: grants TrustLevel "trusted-parent" for <project_root>/.
        [D] Don't trust (safe mode): records TrustLevel "denied"; project settings are ignored.
-  5. Write the chosen entry to trusted_workspaces.json.
+  5. Write the chosen entry, with the fingerprints of every discovered artifact, to trusted_workspaces.json.
   6. Proceed according to the outcome (§ safe mode below).
 ```
 
-Non-interactive mode (headless / CI): if `CRONUS_TRUST_MODE=auto-trust` env var is set, the runtime grants `"trusted"` silently and logs the grant. If `CRONUS_TRUST_MODE=deny`, it grants `"denied"` silently. Any other value or absence → prompt is required; headless mode fails with a clear error if a TTY is unavailable.
+Non-interactive mode (headless / CI): if `CRONUS_TRUST_MODE=auto-trust` env var is set, the runtime grants `"trusted"` silently and logs the grant together with the discovery scan and its warnings. `[ADDED v1.1.0]` The variable is read **only from the process environment at startup** — never from a file inside the folder being opened, so a project cannot vouch for itself (SEC-10). If `CRONUS_TRUST_MODE=deny`, it grants `"denied"` silently. Any other value or absence → prompt is required; headless mode fails with a clear error if a TTY is unavailable.
 
 #### Safe mode (denied workspace)
 
@@ -339,9 +355,9 @@ In safe mode:
 
 Safe mode does not prevent the user from running the agent; it prevents untrusted project configuration from influencing execution.
 
-#### Hook fingerprint rotation
+#### Trust-scope fingerprint rotation
 
-When a previously trusted hook file is modified (its SHA-256 changes relative to `hooks_hash` in the registry entry), the hook is treated as **new and untrusted**. The user is prompted once to review and re-approve the changed hook:
+`[MODIFIED v1.1.0]` The fingerprint check covers the whole trust scope, not only hooks: `l1-component-scanning` CS-10 (an admitted component's later mutation re-opens its verdict) applies to every artifact the trust grant let load. When a previously trusted hook file is modified (its SHA-256 changes relative to `hooks_hash` in the registry entry), the hook is treated as **new and untrusted**. The user is prompted once to review and re-approve the changed hook:
 
 ```text
 [REFERENCE]
@@ -361,6 +377,8 @@ Outcome: "approve" updates hooks_hash entry; "deny" disables this hook for the s
 ```
 
 This guards against supply-chain attacks where a malicious `git pull` replaces a trusted hook with a harmful command.
+
+`[ADDED v1.1.0]` The same check runs over `scope_hash` for the rest of the trust scope. A project-declared **tool-server (MCP) entry is approved per server and bound to the hash of its resolved declaration**: editing its command, arguments, URL or environment key names returns that one server to *pending* until re-approved, so a configuration swap cannot ride on a stale approval. A change to the security-relevant subset of the project settings (approval mode, sandbox and guardrail switches, permission rules, the tool-server and hook tables) re-opens the trust dialog with the old and new values side by side. Where approval records conflict, **a rejection wins over an approval**. A tool-server entry that would launch a local subprocess is never started in a folder that is untrusted or denied, whatever was approved before.
 
 ### 4.9 Telemetry data contract
 
@@ -668,8 +686,8 @@ Rationale: calling platform APIs at startup on an incompatible OS version can em
 
 - **Redaction gaps:** unknown secret formats could slip; mitigated by allowlist-based telemetry and conservative defaults.
 - **Alternative — no sandbox:** rejected; agents execute untrusted code.
-- **Workspace trust adds friction on first use:** mitigated by the `trusted-parent` option (grant once per projects directory) and the `CRONUS_TRUST_MODE=auto-trust` env var for CI environments.
-- **Hook fingerprint rotation prompts on every `git pull`:** intentional — silent re-trust of changed hooks would defeat the guard. Teams that frequently update hooks should commit `hooks_hash` values to their project config so approvals propagate via version control.
+- **Workspace trust adds friction on first use:** mitigated by the `trusted-parent` option (grant once per projects directory, which covers settings but not executable artifacts) and the `CRONUS_TRUST_MODE=auto-trust` env var for CI environments, read from the process environment only.
+- **Fingerprint rotation prompts on every `git pull` that changes a hook, a tool-server entry or a security-relevant setting:** intentional — silent re-trust of changed executable content would defeat the guard. `[MODIFIED v1.1.0]` An earlier revision advised teams to commit their approved fingerprints into the project's own configuration so approvals would propagate through version control. That is withdrawn: a fingerprint list read from the project is a repository vouching for its own hooks, and a malicious repository would simply commit the hashes of its malicious hooks (SEC-10). Teams that update hooks often distribute approved fingerprints through the **managed tier** (`l1-policy-governance` PG-4/PG-5), which a user cannot mistake for project content; a fingerprint list found in the project itself is ignored.
 
 ## Canonical References
 
@@ -677,3 +695,10 @@ Rationale: calling platform APIs at startup on an incompatible OS version can em
 | --- | --- | --- |
 | `[SECURITY]` | `.design/main/specifications/l1-security.md` | Invariants this implements |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | Secret/state locations |
+| `[EXEC-SANDBOX]` | `.design/main/specifications/l2-execution-sandbox.md` | The execution sandbox backend §4.3 points to |
+
+## Document History
+
+| Version | Date | Notes |
+| --- | --- | --- |
+| 1.1.0 | 2026-09-19 | §4.3 now points at `l2-execution-sandbox` and no longer carries the sandbox backend as an open question. §4.8 workspace trust: **trusting a folder no longer lets its settings relax the safety envelope** — trust-sensitive keys (approval mode, sandbox off, autonomy and execution levels, guardrail disables, durable allow-rules, a wider egress policy) are honored only from the user or managed tier, a project may only tighten, and a loosening value is reported as `project_relaxation_ignored`; the fingerprint rotation covers the **whole trust scope** (`scope_hash`) instead of hooks alone — tool-server declarations are approved per server and bound to the hash of their resolved declaration, security-relevant setting changes re-open the dialog, rejection wins on conflict, and a subprocess-launching entry never starts in an untrusted folder; `trusted-parent` covers settings but never pre-approves executable artifacts; the auto-trust variable is read only from the process environment; and the earlier advice to commit approved fingerprints into the project's own configuration is **withdrawn** — it let a repository vouch for its own hooks (SEC-10). §4.4 SSRF: unique-local, unspecified and carrier-grade-NAT ranges added, mapped-address unwrapping, one parser for guard and connector, metadata hostnames blocked by name. Distilled from a cross-check of eight external agent command-line tools against this corpus (the trust model itself was already here; these are the places it was narrower than the converged practice). (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

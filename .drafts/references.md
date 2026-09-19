@@ -17,6 +17,8 @@
 - <https://github.com/deepseek-ai/deepseek-harness>
 - <https://github.com/harness/harness>
 - <https://github.com/stablyai/orca>
+- <https://github.com/omacom/omarchy>
+- <https://github.com/herdrdev/herdr>
 - <https://github.com/anomalyco/opencode>
 - <https://github.com/earendil-works/pi>
 - <https://github.com/paperclipai/paperclip>
@@ -61,7 +63,6 @@
 - <https://github.com/ruvnet/agent-harness-generator>
 - <https://github.com/tinyhumansai/tinyagents>
 - <https://github.com/ShunsukeHayashi/gws-harness>
-- <https://github.com/omacom/omarchy>
 - <https://github.com/QwenLM/Qwen-Agent>
 - <https://gitverse.ru/gigachain/gigachain>
 

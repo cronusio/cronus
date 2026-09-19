@@ -1,6 +1,6 @@
 # Extension Registry
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-extensions.md
@@ -17,6 +17,8 @@ The concrete extension system: the manifest format, where extensions live (progr
 - [l2-workflow-runtime.md](l2-workflow-runtime.md) - Skills authored as workflows run here.
 - [l2-cli.md](l2-cli.md) - Command grammar standard.
 - [l2-skill-system.md](l2-skill-system.md) - Canonical skill stores (`<program>/skills/`, `<state>/skills/`), execution stack, and conversion pipeline.
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.3.0] the backend that confines a tool-server subprocess and a hook command; its coverage table says which extension paths are confined and which are not.
+- [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.3.0] AG-10: text a dynamic token interpolates from outside is an untrusted-derived operative argument at an exec sink (§4.11).
 
 ## 1. Motivation
 
@@ -41,6 +43,8 @@ The model needs a concrete registry with a uniform manifest so all three kinds c
 | EXT-7 Skill generation | The curator distills patterns into candidate skills written to `<state>/skills/`. |
 | EXT-8 Provenance & audit | Each entry records `source`; activations and tool calls append to the audit log. |
 | EXT-9 Manifest contract | `extension.json` validated against a schema before activation. |
+| EXT-10 Service connector kind | **Pending.** No connector kind (authentication taxonomy, trigger/create/search operations, polling or subscription delivery) is defined at this layer yet; it lands with the automation pipeline's connector work. *(Row added in v1.3.0; EXT-10 and EXT-11 had gone unmapped since they were added to the L1.)* |
+| EXT-11 Attested provenance | **Pending.** Activation verifies the pinned content hash and the install-time scan (`l2-tool-security` §4.1); verifying a signed witness (`l1-attestation`) before activation is not yet specified here. |
 
 ## 4. Detailed Design
 
@@ -436,6 +440,10 @@ Dynamic tokens in the body:
   ${PLUGIN_ROOT}       // plugin-root-relative path for scripts and templates
 ```
 
+**`allowed-tools` is a request, not a grant** `[ADDED v1.3.0]`. The list declares what the command would *like* to use without asking; it never creates permission by being present (SEC-10 — an extension's author is not the human principal). It is shown to the person at activation and again on first use as the *requested* scope; an approval records ordinary allow-rules under SEC-9 (the narrowest scope offered, the resolved invocation as the key, program carriers exact-only), and the declaration itself never creates a rule. It is honored only after the extension holds its explicit activation grant (EXT-3) and only while the folder or source it came from is trusted (`l2-security` §4.8). A wildcard family such as a whole tool's argument space is a request the approval UI shows for what it is, not an entitlement the frontmatter can assert.
+
+**Dynamic tokens are sinks, not conveniences** `[ADDED v1.3.0]`. `` !`<command>` `` executes at expansion time: it is an execution at a privileged sink (`l1-action-gating` AG-10) and runs under the **same** guard, tier and confinement as a tool call (`l1-code-execution` CE-3 confinement parity; `l2-execution-sandbox`) — never through a private path. Text interpolated into it from `@<path>` or from any external content is an untrusted-derived operative argument and lifts the expansion to approval; `$ARGUMENTS` typed by the invoking person are the principal's own input. `@<path>` inclusion obeys path containment (`l2-tool-security` §4.2), and the included content reaches the model wrapped as untrusted data (§4.6 there), not as instruction.
+
 Naming: verb-noun (`review-pr`, `generate-docs`); one responsibility per command; complex multi-step flows delegate to an agent definition (§4.10).
 
 ### 4.12 MCP server transport variants
@@ -464,6 +472,10 @@ The `connect` configuration in `.mcp.json` or the `mcpServers` manifest field ac
 **Tool naming**: registered MCP tools are prefixed as `mcp__<plugin-name>_<server-name>__<tool-name>`. Commands pre-allow specific tools via `allowed-tools`; prefer explicit names over wildcard `__*` grants.
 
 **Security**: use HTTPS/WSS only; reference credentials via environment variables (`${MY_API_KEY}`); document required env vars in the plugin README.
+
+**Server-initiated requests** `[ADDED v1.3.0]`. A tool server can ask the host to run a model completion on its behalf (sampling). That lets a server spend the user's model budget and shape a prompt of its own, so it is a per-server policy — `sampling: deny | ask | allow` — that defaults to **ask**. `allow` is authored only in the user or managed tier (SEC-10, `l2-security` §4.8: a project-declared entry cannot relax it). The request's prompt is untrusted data (wrapped per `l2-tool-security` §4.6 as `mcp:{server}:{...}`); the completion runs under that server's budget scope (`l2-budget-engine`), is granted **no tools**, is size- and rate-capped, and is audited with the server identity.
+
+**Launch and environment** `[ADDED v1.3.0]`. A stdio server launches through the sandbox backend by default when it is not shipped with the product (`l2-execution-sandbox` §4.9); an unconfined launch is a governed exception, never a manifest option. The `env` map is a declaration of pass-throughs (PI-8): the server receives exactly the variables it names, resolved from the secret store at launch, and never the engine's own credentials. A project-declared server is approved per server, bound to the hash of its resolved declaration (`l2-security` §4.8), and is never started in an untrusted folder.
 
 ### 4.13 Channel plugin kind
 
@@ -962,3 +974,4 @@ of the default system prompt; the LLM learns about them only from the tool schem
 | --- | --- | --- |
 | 1.1.0 | 2026-07-04 | Bounded-concurrent bulk install/verify (§Catalog operations): resolve/download/hash-verify/scan run concurrently per item under a cap; registration stays serialized through the registry's single writer; per-item failure isolation. History table added with this entry. |
 | 1.2.0 | 2026-07-08 | `[MODIFIED]` Skill store paths re-rooted to tier top level per the skill system spec: `<state>/extensions/skills/` → `<state>/skills/`, `<program>/extensions/skills/` → `<program>/skills/` (§4.2 Locations, §4.4 Skill generation, §4.9.1 override resolution, EXT-5/EXT-7 compliance rows); non-skill kinds remain under `extensions/`. Related Specifications link to the skill system spec added. Path alignment — status remains Stable. |
+| 1.3.0 | 2026-09-19 | Reconciled with a cross-check of eight external agent command-line tools. `allowed-tools` in a command definition is now a **request shown for approval, never a grant** (an extension's author is not the human principal, SEC-10) and is honored only after activation and only in a trusted source; dynamic `` !`command` `` expansion is an **execution at a privileged sink** under the same guard, tier and confinement as a tool call, with externally-sourced interpolated text lifting it to approval (AG-10), and `@path` inclusion is contained and wrapped as untrusted; MCP **server-initiated sampling** is a per-server `deny \| ask \| allow` policy defaulting to ask, `allow` only from the user or managed tier, the request treated as untrusted, tool-less and budget-scoped; stdio servers launch through the sandbox backend by default with `env` as declared pass-throughs (PI-8) and per-server hash-bound approval; compliance rows added for EXT-10 and EXT-11 as **Pending** (they had gone unmapped since they were added to the L1). |
