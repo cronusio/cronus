@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Cronus JS/TS workspace — desktop app (Tauri) and shared UI (React).",
-  "packageManager": "pnpm@12.3.4",
+  "packageManager": "pnpm@12.5.1",
   "engines": {
     "node": ">=24"
   },
