@@ -21,9 +21,9 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = ""
-repository = "https://github.com/teratron/cronus"
-homepage = "https://github.com/teratron/cronus"
-documentation = "https://teratron.github.io/cronus"
+repository = "https://github.com/cronusio/cronus"
+homepage = "https://github.com/cronusio/cronus"
+documentation = "https://cronusio.github.io/cronus"
 readme = "README.md"
 
 [workspace.dependencies]

@@ -68,7 +68,7 @@
 
 ## Spec-Driven Development
 
-- <https://github.com/teratron/magic-spec>
+- <https://github.com/cronusio/magic-spec>
 - <https://github.com/github/spec-kit>
 - <https://github.com/bmad-code-org/BMAD-METHOD>
 - <https://github.com/Fission-AI/OpenSpec>

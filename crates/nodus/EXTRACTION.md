@@ -16,7 +16,7 @@ cargo doc --no-deps -p nodus  # zero warnings
 ## 1. Create the standalone repository
 
 ```sh
-gh repo create teratron/nodus --public --description "Declarative workflow DSL and Rust runtime" --clone
+gh repo create cronusio/nodus --public --description "Declarative workflow DSL and Rust runtime" --clone
 cd nodus
 ```
 
@@ -42,7 +42,7 @@ Remove `EXTRACTION.md` from the standalone repo — it is a monorepo-internal do
 ```sh
 cd path/to/nodus
 git add .
-git commit -m "feat: initial standalone release (extracted from teratron/cronus)"
+git commit -m "feat: initial standalone release (extracted from cronusio/cronus)"
 git push origin main
 ```
 

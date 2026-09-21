@@ -90,7 +90,7 @@ fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
 
     let ambiguous = temp_git_repo(
         "dvo2-ambiguous",
-        "[remote \"a\"]\n\turl = https://github.com/teratron/cronus.git\n[remote \"b\"]\n\turl = https://github.com/other/repo.git\n",
+        "[remote \"a\"]\n\turl = https://github.com/cronusio/cronus.git\n[remote \"b\"]\n\turl = https://github.com/other/repo.git\n",
     );
     // Two remotes, neither named `origin`: no unambiguous bound upstream —
     // fails closed even though one candidate URL is actually canonical.
@@ -104,7 +104,7 @@ fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
 
     let genuine = temp_git_repo(
         "dvo2-genuine",
-        "[remote \"origin\"]\n\turl = https://github.com/teratron/cronus.git\n",
+        "[remote \"origin\"]\n\turl = https://github.com/cronusio/cronus.git\n",
     );
     assert!(matches!(
         repo_authenticity(&genuine),
@@ -180,7 +180,7 @@ fn dvo4_unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
 #[test]
 fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
     let genuine = RepoAuthenticity::Genuine {
-        upstream: "https://github.com/teratron/cronus".to_string(),
+        upstream: "https://github.com/cronusio/cronus".to_string(),
     };
 
     let default_off = GateInputs {

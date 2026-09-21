@@ -100,7 +100,7 @@ function Shell({ theme: t0, colorScheme: c0, layout }: Restored) {
       activeSubsystem={activeSubsystem}
       onSelectSubsystem={setActiveSubsystem}
       floorName={floor?.name}
-      floorSlug={floor ? `teratron/${floor.name}` : undefined}
+      floorSlug={floor ? `cronusio/${floor.name}` : undefined}
       floorInitials="OS"
       badges={previewBadges}
       tallies={previewTallies}

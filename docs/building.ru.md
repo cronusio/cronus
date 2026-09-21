@@ -47,7 +47,7 @@ corepack prepare pnpm@12.3.4 --activate
 ## 2. Первичная настройка
 
 ```powershell
-git clone https://github.com/teratron/cronus
+git clone https://github.com/cronusio/cronus
 cd cronus
 
 # JS/TS-зависимости всего монорепо (packages/* + apps/*)

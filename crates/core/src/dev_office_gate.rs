@@ -20,7 +20,7 @@ use cronus_domain::extensions::{
 /// office to consider it genuine. Compiled into the build — not user
 /// config — so a user cannot retarget the office by editing a file; a fork
 /// that wants its own dev office rebuilds with its own identity here.
-const CANONICAL_UPSTREAM: &str = "https://github.com/teratron/cronus";
+const CANONICAL_UPSTREAM: &str = "https://github.com/cronusio/cronus";
 
 /// Resolve whether `cwd` sits inside a genuine checkout of the canonical
 /// upstream. Walks upward from `cwd` for the nearest worktree marker, reads
@@ -125,8 +125,8 @@ fn parse_remote_section(inner: &str) -> Option<String> {
 
 /// Compare a candidate remote URL against the canonical identity after
 /// normalizing scheme, SSH shorthand (`git@host:owner/repo`), a trailing
-/// `.git`, a trailing slash, and case — so `git@github.com:teratron/cronus.git`
-/// and `https://github.com/teratron/cronus` are recognized as the same
+/// `.git`, a trailing slash, and case — so `git@github.com:cronusio/cronus.git`
+/// and `https://github.com/cronusio/cronus` are recognized as the same
 /// identity rather than requiring one exact clone-URL spelling.
 fn upstream_matches_canonical(candidate: &str, canonical: &str) -> bool {
     normalize_git_url(candidate) == normalize_git_url(canonical)
@@ -274,12 +274,12 @@ mod tests {
         let repo = temp_repo("genuine");
         write_config(
             &repo,
-            "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = https://github.com/teratron/cronus.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+            "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = https://github.com/cronusio/cronus.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
         );
         assert_eq!(
             repo_authenticity(&repo),
             RepoAuthenticity::Genuine {
-                upstream: "https://github.com/teratron/cronus.git".to_string()
+                upstream: "https://github.com/cronusio/cronus.git".to_string()
             }
         );
     }
@@ -289,7 +289,7 @@ mod tests {
         let repo = temp_repo("ssh-form");
         write_config(
             &repo,
-            "[remote \"origin\"]\n\turl = git@github.com:teratron/cronus.git\n",
+            "[remote \"origin\"]\n\turl = git@github.com:cronusio/cronus.git\n",
         );
         assert!(matches!(
             repo_authenticity(&repo),
@@ -321,7 +321,7 @@ mod tests {
         let repo = temp_repo("ambiguous");
         write_config(
             &repo,
-            "[remote \"a\"]\n\turl = https://github.com/teratron/cronus.git\n[remote \"b\"]\n\turl = https://github.com/someone-else/fork.git\n",
+            "[remote \"a\"]\n\turl = https://github.com/cronusio/cronus.git\n[remote \"b\"]\n\turl = https://github.com/someone-else/fork.git\n",
         );
         // Two remotes, neither named `origin`: no unambiguous bound upstream,
         // fail-closed even though one of them happens to match canonical.
@@ -333,7 +333,7 @@ mod tests {
         let repo = temp_repo("multi-with-origin");
         write_config(
             &repo,
-            "[remote \"origin\"]\n\turl = https://github.com/teratron/cronus.git\n[remote \"fork\"]\n\turl = https://github.com/someone-else/fork.git\n",
+            "[remote \"origin\"]\n\turl = https://github.com/cronusio/cronus.git\n[remote \"fork\"]\n\turl = https://github.com/someone-else/fork.git\n",
         );
         assert!(matches!(
             repo_authenticity(&repo),
@@ -353,7 +353,7 @@ mod tests {
         let repo = temp_repo("subdir");
         write_config(
             &repo,
-            "[remote \"origin\"]\n\turl = https://github.com/teratron/cronus\n",
+            "[remote \"origin\"]\n\turl = https://github.com/cronusio/cronus\n",
         );
         let nested = repo.join("crates").join("domain").join("src");
         fs::create_dir_all(&nested).unwrap();

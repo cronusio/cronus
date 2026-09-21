@@ -81,7 +81,7 @@ name    = "nodus"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/teratron/cronus"
+repository = "https://github.com/cronusio/cronus"
 ```
 
 Remove lines of the form `version.workspace = true`, `edition.workspace = true`, etc. The replacement values come from the workspace root `Cargo.toml` (verified in T-2C01).
@@ -97,7 +97,7 @@ Add the following fields to the `[package]` section:
 
 ```toml
 description = "Declarative workflow DSL and Rust runtime for AI-augmented automation pipelines"
-homepage    = "https://github.com/teratron/cronus"
+homepage    = "https://github.com/cronusio/cronus"
 documentation = "https://docs.rs/nodus"
 keywords    = ["workflow", "dsl", "automation", "ai", "declarative"]
 categories  = ["parser-implementations", "development-tools"]
@@ -194,9 +194,9 @@ The workflow must not reference any workspace-level paths (`Cargo.toml` at monor
 Write a step-by-step human procedure for extracting the crate. The document must cover:
 
 1. **Pre-checks**: verify Phase 3 validation tasks (T-3T01, T-3T02) are green.
-2. **Create repository**: `gh repo create teratron/nodus --public --clone`
+2. **Create repository**: `gh repo create cronusio/nodus --public --clone`
 3. **Copy contents**: copy `crates/nodus/` into the new repo root (excluding `.github/workflows/ci.yml` which goes to `.github/workflows/`).
-4. **Initial commit**: `git add . && git commit -m "feat: initial standalone release (extracted from teratron/cronus)"`.
+4. **Initial commit**: `git add . && git commit -m "feat: initial standalone release (extracted from cronusio/cronus)"`.
 5. **Tag release**: `git tag -a v0.1.0 -m "nodus v0.1.0" && git push origin main --tags`.
 6. **Publish**: `cargo publish`.
 7. **Update Cronus**: replace `path = "../nodus"` (or equivalent) in Cronus `Cargo.toml` with `nodus = "0.1.0"`; run `cargo update && cargo test`.
