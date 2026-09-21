@@ -155,6 +155,7 @@
 - <https://github.com/rootprint/rootprint>
 - <https://github.com/lfnovo/open-notebook>
 - <https://github.com/xaidan777/ArcEngine>
+- <https://github.com/D4Vinci/Scrapling>
 
 ## Audio
 
