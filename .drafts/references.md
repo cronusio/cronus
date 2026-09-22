@@ -50,7 +50,6 @@
 - <https://github.com/langchain-ai/langchain>
 - <https://github.com/aaif-goose/goose>
 - <https://github.com/microsoft/agent-framework>
-- <https://github.com/affaan-m/ECC>
 - <https://github.com/SeloraHomes/ha-selora-ai>
 - <https://github.com/traycerai/traycer>
 - <https://github.com/china-qijizhifeng/agentic-harness-engineering>
@@ -158,6 +157,8 @@
 - <https://github.com/D4Vinci/Scrapling>
 - <https://github.com/remotion-dev/remotion>
 - <https://github.com/xiamuceer-j/MuMuAINovel>
+- <https://github.com/affaan-m/ECC>
+- <https://github.com/worldflowai/everything-claude-code>
 
 ## Audio
 
