@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-09-09
+**Generated:** 2026-09-24
 
 ## Active Technologies
 
@@ -15,7 +15,6 @@
 │   ├── rules/
 │   ├── skills/
 │   └── workflows/
-├── .artifacts/
 ├── .cargo/
 │   └── config.toml
 ├── .claude/
@@ -24,7 +23,6 @@
 │   ├── .version
 │   ├── INDEX.md
 │   ├── RULES.md
-│   ├── graph-snapshot.json
 │   ├── main/
 │   ├── nodus/
 │   └── workspace.json
@@ -34,8 +32,11 @@
 │   ├── UX-дизайн - 6 психологических принципов.md
 │   ├── heartbeat.md
 │   ├── project-names.md
+│   ├── qa-remediation-progress.md
 │   ├── references.md
+│   ├── release/
 │   ├── reverse-derivation-mechanism.md
+│   ├── swarm.md
 │   ├── technology-stack-research.md
 │   └── ui-ux.md
 ├── .env.example
@@ -47,11 +48,6 @@
 ├── .gitignore
 ├── .magic/
 ├── .markdownlint.json
-├── .qwen/
-├── .release/
-│   ├── program/
-│   ├── project/
-│   └── state/
 ├── AGENTS.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -59,6 +55,7 @@
 ├── Cargo.toml
 ├── LICENSE
 ├── README.md
+├── SECURITY.md
 ├── apps/
 │   └── desktop/
 ├── biome.json
@@ -73,20 +70,27 @@
 │   ├── domain/
 │   ├── model-local/
 │   ├── nodus/
+│   ├── simulation/
 │   ├── store-local/
 │   └── tui/
 ├── docs/
 │   ├── README.md
-│   └── building.ru.md
-├── installer/
+│   ├── building.md
+│   ├── building.ru.md
+│   ├── simulation.md
+│   └── simulation.ru.md
 ├── package.json
 ├── packages/
 │   └── ui/
 ├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml
 ├── rust-toolchain.toml
-└── scripts/
-    └── check-domain-boundary.mjs
+├── scripts/
+│   └── check-domain-boundary.mjs
+└── simulations/
+    ├── README.md
+    ├── broad/
+    └── short/
 ```
 
 ## Recent Changes

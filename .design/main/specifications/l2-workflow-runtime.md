@@ -1,6 +1,6 @@
 # Workflow Runtime
 
-**Version:** 1.3.3
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-workflow-language.md
@@ -17,6 +17,13 @@ The concrete realization of the workflow language: a Rust runtime **crate inside
 - [l2-orchestration.md](l2-orchestration.md) - Delegated work / `/goal` loops execute workflows.
 - [l2-model-router.md](l2-model-router.md) - Generation/analysis steps route models here.
 - [l2-cli.md](l2-cli.md) - Command grammar standard for `workflow` commands.
+- [../../nodus/specifications/l2-nodus-commands.md](../../nodus/specifications/l2-nodus-commands.md) - [ADDED v1.4.0] The nodus-side command-execution seam that §4.2's command bridge implements.
+- [l2-model-runtime.md](l2-model-runtime.md) - [ADDED v1.4.0] The model bridge — the placement precedent for the command bridge and the `GEN`/`ANALYZE` binding (§4.2.1).
+- [l2-tool-receipts.md](l2-tool-receipts.md) - [ADDED v1.4.0] The dispatch seam the command bridge executes through, and the decision path §4.2.4 composes into it.
+- [l2-agent-autonomy.md](l2-agent-autonomy.md) - [ADDED v1.4.0] Risk classes and the gate for interactive, background and cron contexts (§4.2.4).
+- [l2-tool-security.md](l2-tool-security.md) - [ADDED v1.4.0] The tool guard, path containment and hard blocks that sit in the decision path.
+- [l2-skill-system.md](l2-skill-system.md) - [ADDED v1.4.0] The skill command surface (`CommandSpec`, grants) the command bridge also answers.
+- [l1-execution-locus.md](l1-execution-locus.md) - [ADDED v1.4.0] LOC-1/LOC-2: why one command bridge per run is one world.
 
 ## 1. Motivation
 
@@ -39,7 +46,7 @@ The language must run on every Cronus target — including the mobile thin clien
 | WFL-4 Preferences soft | Preferences are advisory inputs to steps; never override hard constraints. |
 | WFL-5 Validate before run | `run` invokes the validator (lint rules) first; parse/undefined-var errors halt. |
 | WFL-6 Bounded execution | The executor enforces max-iteration/budget limits and honors halt/pause. |
-| WFL-7 Subsystem-bound | Command handlers dispatch to memory, HITL, orchestration, quality, and the model router. |
+| WFL-7 Subsystem-bound | Command handlers dispatch to memory, HITL, orchestration, quality, and the model router. The binding is made through the nodus provider seams (§4.2.1–§4.2.5): the model bridge for generation, the command bridge for every other command — each calling the subsystem that owns the capability and inheriting its gates, never restating them. |
 | WFL-8 Result contract | Every run returns a structured result (success/failure) and runs the declared error handler. |
 | WFL-9 Human view | The client surface renders the human form via the transpiler. |
 
@@ -72,6 +79,102 @@ graph TD
 ```
 
 The runtime is the scripting layer; each command handler calls the owning subsystem (WFL-7), so workflows compose existing capabilities rather than duplicating them.
+
+`[ADDED v1.4.0]` The diagram says *what* binds to *whom*; the rest of this section says *how*, now that the nodus crate has a seam a host can bind through (`l2-nodus-commands.md` in the nodus workspace — specified there, not yet built). A host implements a small number of provider traits and installs them through the composed entry point (`run_with_options`). Nothing below moves logic into nodus, and nothing below restates an owning subsystem's rules: each binding calls the subsystem that owns the capability and inherits its gates.
+
+#### 4.2.1 Which seam each step class reaches
+
+| Step class | nodus seam | Bound to | State |
+| --- | --- | --- | --- |
+| `GEN`, `ANALYZE` | `ModelProvider` | The model bridge over `contract::InferenceBackend` (`l2-model-runtime` §4.1–§4.2) | Bridge built; the `workflow run` verb does not install it yet (§4.8) |
+| `ASK`, `CONFIRM` | `DialogProvider` | The interactive surface's question and approval channel. A run with no surface that can answer keeps nodus's built-in resolution — the step's `+default`, otherwise a pause — and is never auto-answered (AG-9) | Not wired |
+| `SETTLE` | `SettlementRail` | None: no settlement rail exists and `l1-value-settlement` VS-8 makes one opt-in, so the built-in rail, which settles nothing, stays | By design |
+| every other command | `CommandProvider` | The command bridge (§4.2.2–§4.2.5) | Specified here, not built |
+| `^validator` rules the core does not evaluate | `CommandProvider::validate` | Quality (WFL-7). A rule with no evaluator is *unavailable* and fails closed — the product never assumes a check it did not run (INV-9) | Not built |
+
+#### 4.2.2 The command bridge
+
+The command bridge is the host's `CommandProvider`. It follows the placement of the model bridge (`l2-model-runtime` §4.1): the adapter lives in the facade tier, the pure tables it consults — command to owning subsystem, command to risk class, failure to code — live in the domain tier, and nodus gains no dependency (nodus LP-1; tier rules in `l2-crate-topology` §4.1).
+
+- **One bridge per run, and it is one world.** A run's world-touching commands must observe one filesystem, one process table and one identity. The bridge is therefore built for a run and bound to that run's execution locus, resolved as every other world-touching capability resolves it — never "the host the process happens to be on" (`l1-execution-locus` LOC-1, LOC-2, LOC-8; the providers are `l2-execution-workspace` §4.1). `CommandProvider::world()` reports the locus identity, so every step record names where it acted. The bridge is never layered over a simulation.
+- **A run context, not only arguments.** Building the bridge takes a run context: who invoked the run (a surface or an agent); which of the three execution contexts the autonomy gate already distinguishes it runs in — *interactive*, where an answering surface exists, or *background* or *cron*, where none does (`l2-agent-autonomy` §4.3) — and an interactive run whose surface cannot answer at that moment counts as unattended (AG-9); its autonomy level — the invoking session's, or for a run with no session behind it the level its owner configured, and `supervised` where none is (the conservative default, AG-4); its locus; its role, when an agent invoked it (the role authority `l2-version-control` §4.3 applies); its run identity (§4.2.5); and, when the workflow is a skill's procedure, that skill's manifest grants (`l2-skill-system` §4.5). A workflow run directly by a person carries no manifest grants: grants scope an *extension* (EXT-6), and a person's authority here is the autonomy level and the guard.
+- **No command is bound ahead of its gate.** A command is bound only when its owning subsystem is shipped *and* every stage of the decision path for its class (§4.2.4) is wired into the dispatch gate, with the class computed from resolved parameters as `l2-agent-autonomy` §4.2 requires. Otherwise the bridge answers `Unsupported`, which nodus turns into the typed `NODUS:UNDEFINED_CMD`: the workflow fails naming the command, and nothing is answered with a placeholder. An action the core cannot yet perform has no answer — INV-9's rule, applied at the step (`l2-invocable-registry` §4.2) — so binding proceeds command by command and an unbound command is a visible refusal rather than a silent success.
+- **Simulation is a different run.** `workflow test` runs on nodus's built-in simulated provider and labels itself so (HO-12). `workflow run` installs the bridge when a run context and a locus are available and reports `mode: real` only if nothing that answered it was a stand-in; it never mixes the two in one run (LOC-2). Where no bridge can be built, the verb runs on the built-ins exactly as it does today and says `mode: simulated`.
+
+#### 4.2.3 What each command binds to
+
+| nodus commands | Owner | Class (`l2-agent-autonomy` §4.2) | A failure becomes |
+| --- | --- | --- | --- |
+| `RECALL` | Memory recall (`l2-memory-store` §4.2) | `read` | `MEMORY_FAILED` — a store error is never an empty recall |
+| `REMEMBER` | The memory write path (`l2-memory-store` §4.3) | `write` | `MEMORY_FAILED` |
+| `FORGET` | The memory forget operation (`l2-memory-store` §4.13) | `destructive` (a data purge) | `MEMORY_FAILED` |
+| `QUERY_KB` | Knowledge retrieval (`l2-knowledge-store` §4.3) | `read` | `KB_UNAVAILABLE` — unavailable is not "no results" |
+| `READ_FILE`, `FILE_EXISTS`, `SCAN_DIR` | Files inside the run's locus, path containment per `l2-tool-security` §4.2 | `read` | `COMMAND_FAILED` |
+| `WRITE`, `MKDIR`, `COPY`, `MOVE` | The same, under `l2-execution-workspace` | `write`; `destructive` when the resolved parameters replace or remove | `COMMAND_FAILED` |
+| `GIT`, `QUERY_GIT`, `VERSION_BUMP` | The version-control layer, under the run's role authority (`l2-version-control` §4.3): a workflow never holds more git authority than the role it runs under | by the resolved operation | `GIT_UNAVAILABLE` |
+| `NOTIFY` | The inbox (`l2-inbox`): a workflow writing to another actor | `write` | `COMMAND_FAILED` |
+| `ROUTE` | Orchestration (`l2-orchestration`) | `write` | `ROUTE_NOT_FOUND` for a target that resolves to nothing |
+| `ESCALATE` | The same interactive channel as `ASK` and `CONFIRM` | — | `ESCALATION_FAILED` when no surface can answer (AG-9) |
+| `EXECUTE`, `EXECUTE_TEST` | Confined execution (`l2-execution-sandbox`) | by the resolved invocation | `COMMAND_FAILED` |
+| `TRANSPILE` | The runtime's own transpiler, in process | `read` | `COMMAND_FAILED` |
+
+**Host-declared commands.** The skill command surface (`l2-skill-system` §4.3) is the second source of commands. Each `CommandSpec` registers into the nodus vocabulary as a host-declared command (`SchemaProvider`, nodus LP-4), and the bridge answers it through that spec — typed parameters validated first, then the caller's grants — as one more stage of the decision path (§4.2.4). The nodus name is derived once, deterministically, when the surface is registered: the spec id upper-cased with each separator replaced by an underscore (`fs.read_file` becomes `FS_READ_FILE`). A derived name that collides with a builtin is discarded by the vocabulary, so the derivation is never left to each skill.
+
+**The commands not in the table have no owner design in this workspace and stay unbacked**, each failing typed until it names one: `FETCH` (the only fetcher that exists is scoped to knowledge ingestion, not a capability a workflow can reach; when a general one is named it passes the egress gate, SEC-3, and is `read` or `network` by its resolved parameters), `PUBLISH` (no publishing owner exists), `STORE` and `LOAD` (reserved for the durable-state seam, nodus LP-15), `ENV` (environment values may be secrets, SEC-1, so it needs an allowlist first), `DATE`, `COUNTER`, `HASH`, `WAIT`, `DEBUG`, `APPEND`, `SIMULATE`, and the model-shaped `REFINE`, `TRANSLATE`, `SUMMARIZE`, `FILL`, `GENERATE_DOC`, `SCORE`, `COMPARE`, `EXTRACT`, `FILTER`, `PARSE`, `PARSE_MD_HEADER` and `PARSE_INDEX`, which need a prompt composed per command — a nodus-side design (`l2-nodus-commands.md` §4.12).
+
+#### 4.2.4 The decision path
+
+Every command the bridge answers passes one decision path, once, and a refusal at any stage names the stage:
+
+```mermaid
+graph TD
+    STEP[step reaches a seam-owned command] --> ARGS[nodus resolves the arguments]
+    ARGS --> GATE[nodus tool_use gate permits in this binding]
+    GATE --> SPEC[typed parameters and manifest grants for a spec-backed command]
+    SPEC --> CLASS[risk class from the resolved parameters]
+    CLASS --> GUARD[tool guard]
+    GUARD --> AUTON[autonomy gate for the run's context]
+    AUTON -->|Allow| EXEC[execute inside the run's locus]
+    AUTON -->|Prompt attended| APPROVE[approval bounded by its TTL]
+    APPROVE -->|allowed| EXEC
+    APPROVE -->|denied or unanswered| REFUSE[typed failure]
+    AUTON -->|Prompt unattended| REFUSE
+    AUTON -->|Block| REFUSE
+    EXEC --> MINT[mint the receipt and audit]
+    REFUSE --> MINT
+```
+
+- **The decision is made where the receipt is minted.** `l2-tool-receipts` §4.4 already says the gate in front of `ReceiptedDispatch::invoke` stands for the *whole* decision path and that the guard and the autonomy gate join it when they are realized over real tool execution. The command bridge is that realization for workflow commands, so the decision runs once, inside dispatch, and its verdict is bound into the receipt as an input (TR-7). nodus's own `tool_use` gate therefore *permits* in this binding: a second decision in front of the first would either raise an approval twice or leave a refusal without a receipt, and a blocked call is receipted too (TR-1). The host's policy for the other effect classes is unchanged.
+- **The permit is safe only because the bridge has no other way to act.** With nodus's gate permitting, the dispatch gate is the only check between a step and its effect. The bridge therefore holds no execution path of its own: every effect goes through `ReceiptedDispatch::invoke`, the only public execution path (TR-1), and a command whose class has an unwired stage is not bound at all (§4.2.2) — so the permit is only ever given for a command whose decision path is complete.
+- **A refusal is typed, short and content-free.** A refused command returns `Failed` with `NODUS:POLICY_DENIED` and a reason naming the stage — `policy`, `hard_block`, `guard`, `grant`, `needs_approval_unattended` or `approval_denied` — and never the arguments (SEC-1).
+- **Unattended means refused, never assumed.** In an unattended run — background, cron, or an interactive run whose surface cannot answer — every `Prompt` cell resolves to a visible refusal, and nothing is auto-allowed to keep the run moving (`l2-agent-autonomy` §4.3, §4.6; AG-4, AG-9). In an interactive run the bridge blocks in `execute` for the approval — nodus imposes no timeout on a provider (`l2-nodus-commands.md` §4.12), and the approval's own TTL is the bound. An approval that is not answered in time fails the command as `COMMAND_FAILED` with the reason *not answered in time*, not as a refusal: an unanswered prompt is not a policy decision.
+- **A failing guard fails toward approval, never through** (`l2-tool-security` §4.2), and an approval binds the resolved invocation the run presented (CB-1) — the values nodus resolved are what an allow-rule freezes.
+
+#### 4.2.5 Identity, receipts and the record
+
+- **Run identity.** The verb gives every run a durable `run_id`. A resumed run — nodus resumes by re-invocation from the top (`l2-nodus-dialog.md` §3, DG-4) — passes the same `run_id`, so the effect keys nodus presents (`l2-nodus-commands.md` §4.6) repeat exactly.
+- **A durable effect record.** The bridge honours nodus's at-most-once-per-key obligation with a durable, workspace-scoped record in the state tier: effect key, state, and — once complete — the outcome value when it is bounded and redacted, otherwise its digest. For a command that changes something the record is written as *in flight* **before** the effect runs and completed after; reads keep none. A repeated presentation returns the recorded outcome, or `COMMAND_FAILED` with *already applied, result not retained* when only a digest survives. A presentation that finds a record still in flight — a crash between the two writes — fails as `COMMAND_FAILED` with *outcome unknown*, and never acts again: that is nodus's `attempt` above 1 made concrete. The receipt ledger cannot serve here: its key rotates on restart and it verifies only within the live session (`l2-tool-receipts` TR-5).
+- **Receipts and world.** The receipt token `ReceiptedDispatch` mints (safe to log, TR-9) rides the answer's `receipt` onto the step's `StepEnd` (nodus HO-9): nodus stores and echoes, and never mints (`l2-tool-receipts` §4.8). The step also names its locus. Neither carries argument or result content.
+- **What the verb reports.** `mode` is read from the run's own manifest (HO-12): `simulated` if any stand-in answered, `real` otherwise. A run in which a command failed as unbacked ends `partial` with the command named, and the outcome that reaches a surface passes the boundary redaction (INV-7, `l2-invocable-registry` §4.12).
+
+#### 4.2.6 Conformance
+
+Each statement is verifiable without a real subsystem, against a scripted subsystem double:
+
+- A command whose class has an unwired decision stage is answered `Unsupported`, and the run's step error is `NODUS:UNDEFINED_CMD` naming it.
+- A refused command mints exactly one receipt, tagged blocked, appends exactly one audit entry, never runs its action, and reaches nodus as `Failed` with `NODUS:POLICY_DENIED` and a stage-naming reason that carries no argument.
+- In an unattended run a `Prompt` outcome is a refusal and nothing runs; in an interactive run it waits for the approval and an unanswered one fails as *not answered in time*, not as a refusal.
+- Re-invoking a run with the same `run_id` after a committing command completed returns the recorded outcome without running the action again; a record left in flight fails as *outcome unknown*.
+- A run in which any command was answered by a stand-in reports `mode: simulated`; a run answered only by the bridge reports `mode: real`.
+- Two commands of one run resolve their locus to the same value, and the value equals what `world()` reports.
+
+#### 4.2.7 What this section does not settle
+
+- **Per-run context must reach the verb.** The `workflow.run` handler receives arguments only; the invoking surface (and so the interactive, background or cron context), the locus and the grants must reach it. The smallest change is a context parameter on the handler, which `l2-invocable-registry` §4.5 owns; it is recorded here and not amended there.
+- **The decision path is a dependency.** The guard and the autonomy gate joining the dispatch gate is `l2-tool-receipts` §4.4's own forward statement; until it lands, no command whose class needs those stages is bound (§4.2.2).
+- **The interactive question channel.** `ASK`, `CONFIRM` and `ESCALATE` bind to an interactive surface's channel, whose owning specification is not named in this workspace beyond OFF-6; it needs its own binding.
+- **The unbacked commands** each need an owner design (§4.2.3); the model-shaped ones need a nodus-side prompt design first.
+- **Long-lived approvals.** An approval that outlives the call — a durable allow-rule — is `l2-agent-autonomy` §4.6's; this section only carries the resolved invocation to it.
 
 ### 4.3 Embeddability
 
@@ -425,7 +528,7 @@ These 11 codes are the current crate surface. The upstream **v0.7** registry def
 | `run_with_provider` | `(source, filename, input?, provider) -> Result<RunResult, …>` | Like `run` but with a custom `ModelProvider` |
 | `run_with_options` | `(source, filename, input?, RunOptions) -> Result<RunResult, …>` | Every seam at once — model, audit, dialog, policy, settlement, vocabulary, capability manifest — with the built-ins as defaults; the same validation and input gate as `run`. The entry point a host uses to run a real model under its policy gate |
 
-The `ModelProvider` trait is the extension point for real model integration; the built-in `StubProvider` is used for tests and early development. The product's `workflow run` is to go through `run_with_provider` with the host's inference bridge (`l2-model-runtime` §4.1–§4.2), and stub output is to be labelled as stub output in the run's result and in its manifest's execution mode (`l1-nodus-observability` HO-12) — never presented as a model's answer (INV-9). **Partial:** `workflow run` goes through the composed entry point (`run_with_options`), so it passes the same validation and input gate as every other run — a workflow with a required `@in:` field and no `--input` is reported `failed` with `E022` and exits non-zero — and the result says what answered it: `mode` is `simulated` when the model behind the run is the built-in stub and `real` otherwise, read from the run's own manifest (HO-12), and a run that finished with recorded step errors is reported `partial`, not `ok`. What remains: no inference backend is wired to the verb yet, so every model step still returns stub text — now labelled as such (the fallible bridge to the inference backend exists and reports a failed call as a step error, `l2-model-runtime` §4.2) — and the verb supplies no policy gate, though `run_with_options` accepts one (`l2-nodus-runtime` §4.5).
+The `ModelProvider` trait is the extension point for real model integration; the built-in `StubProvider` is used for tests and early development. The product's `workflow run` is to go through `run_with_provider` with the host's inference bridge (`l2-model-runtime` §4.1–§4.2), and stub output is to be labelled as stub output in the run's result and in its manifest's execution mode (`l1-nodus-observability` HO-12) — never presented as a model's answer (INV-9). **Partial:** `workflow run` goes through the composed entry point (`run_with_options`), so it passes the same validation and input gate as every other run — a workflow with a required `@in:` field and no `--input` is reported `failed` with `E022` and exits non-zero — and the result says what answered it: `mode` is `simulated` when the model behind the run is the built-in stub and `real` otherwise, read from the run's own manifest (HO-12), and a run that finished with recorded step errors is reported `partial`, not `ok`. What remains: no inference backend is wired to the verb yet, so every model step still returns stub text — now labelled as such (the fallible bridge to the inference backend exists and reports a failed call as a step error, `l2-model-runtime` §4.2) — and the verb supplies no policy gate, though `run_with_options` accepts one (`l2-nodus-runtime` §4.5). The wiring that closes both — the model bridge, the command bridge and the decision path in front of it — is §4.2.
 
 #### Executor boot sequence
 
@@ -518,6 +621,7 @@ Single-character `;` inline comments (the crate recognizes only `;;`) and the `\
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.4.0 | 2026-09-24 | Design pass (2026-09-24): §4.2 gains the Cronus-side binding of the nodus command-execution seam (`l2-nodus-commands.md`), specified there and not built. §4.2.1 names the nodus seam each step class reaches. §4.2.2 specifies the command bridge: one per run and bound to the run's execution locus (LOC-2), built from a run context rather than arguments alone, with no command bound ahead of its gate, and simulation kept a different run. §4.2.3 binds each command to the owning subsystem with its risk class and failure code, and lists the commands that stay unbacked until an owner is named. §4.2.4 composes the decision path into the receipt-minting dispatch so one decision yields one receipt, refusals are typed and content-free, and unattended runs refuse rather than assume. §4.2.5 fixes run identity, a durable effect record for at-most-once, and the receipt and world the record carries. §4.2.6 states what a conforming bridge must satisfy against a scripted subsystem double, and §4.2.7 lists what stays open, including that the verb's handler cannot yet see per-run context. The Post-Update Review moved `FETCH` to the unbacked commands (no general fetch capability exists for a workflow to reach), added the autonomy level and the unattended-interactive case to the run context, made the effect record write *in flight* before the effect so a crash window fails as *outcome unknown* instead of acting twice, and required that the bridge hold no execution path outside dispatch, since nodus's `tool_use` gate permits in this binding. WFL-7's row and the Library API paragraph point to it, and Related Specifications gains the seven links it cites. No requirement of the language changed; nothing is built. |
 | 1.3.3 | 2026-09-24 | Realization sync (2026-09-24): `workflow run` goes through the composed entry point: it passes the input gate, labels its result `simulated` or `real` from the run's own manifest, and reports a run with step errors as `partial` instead of `ok`. API table gains `run_with_options`. |
 | 1.3.2 | 2026-09-24 | Consistency pass (2026-09-24): The platform-capability table told generated code that `tokio` and `thiserror` were already Cronus dependencies; neither is, and the core is synchronous by design — corrected. Step-file frontmatter was the authoritative state though the executing agent writes it — the executor's durable journal is authoritative and an agent-written completion is a claim. The product's `workflow run` uses the inference bridge, and stub output is labelled as such (INV-9, HO-12). Yesterday's normative sentence that `workflow run` uses the inference bridge described intent, not the shipped verb: it calls the stub `run`, reports `Partial` as `ok`, and records a `Real` manifest — now marked Partial, with the nodus limit that no entry point combines a real model with the host's policy gate. The boot-sequence list now matches the executor (no trigger matching, no advisory preference context) and points to `l2-nodus-runtime` §4.4 for what input registration does not yet check. A TBD asking to extract the reference corpus into shared fixtures is resolved — the corpus is `crates/nodus/tests/fixtures/`. |
 | 1.3.1 | 2026-06-25 | §4.9: marked the **nodus workspace** (`l1-nodus-language.md` §4.6, `l2-nodus-runtime.md` §4.7) as authoritative owner of the parity gap; this spec retains the integration/host-binding view. |
