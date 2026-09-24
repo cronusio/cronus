@@ -30,8 +30,8 @@ use crate::command::SlashCommand;
 /// own declared binders (`bind_args`) before the real, shared `Dispatcher`
 /// is ever called.
 ///
-/// A slash-shaped line naming no invocable is not an error (l2-tui's own
-/// v1.2.0 clause): resolution answers `Dispatched::Unknown` separately from
+/// A slash-shaped line naming no invocable is not an error:
+/// resolution answers `Dispatched::Unknown` separately from
 /// any outcome, and this surface's response is to treat the line as
 /// ordinary input — `None` here, rendering nothing at all — rather than
 /// fabricate a failure. Folding that answer into a rendered error would make

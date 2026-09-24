@@ -9,7 +9,7 @@ use crate::loop_runner::governor::{
 use crate::loop_runner::spec::{LedgerEntry, LoopOutcome, LoopSpec, Verdict};
 
 /// The seam the domain tier cannot perform itself: a real isolated
-/// workspace and a real turn. Tests use a scripted fake; the facade (D02)
+/// workspace and a real turn. Tests use a scripted fake; the facade
 /// wires a real execution workspace + agent session + budget engine.
 pub trait ExecutionBackend {
     /// Current wall-clock time as a unix timestamp (kept out of the pure

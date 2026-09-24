@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn exactly_f1_f2_f3_and_f7_read_as_repaid_after_the_desktop_shells_own_registration() {
-        // Repayment requires all four repayment conditions. F-3's one named site
+        // Repayment requires all four conditions. F-3's one named site
         // is the command line's own table, deleted and pinned before this
         // phase's code work began — its remaining condition
         // (`consumer_registered`) closed the moment the command line ran

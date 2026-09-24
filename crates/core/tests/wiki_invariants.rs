@@ -100,7 +100,7 @@ fn overview_body(store: &WikiStore) -> String {
 // --- Client surface is read-only by construction -----------------------
 
 #[test]
-fn pw2_the_client_surface_exposes_no_write_method() {
+fn the_client_surface_exposes_no_write_method() {
     let store = built_store(None);
     // The client holds a `&dyn WikiReadSurface` — a trait object with only
     // read methods. A write like `reader.rebuild_office(..)` is not merely
@@ -146,7 +146,7 @@ fn projection(store: &WikiStore) -> Vec<PageProjection> {
 }
 
 #[test]
-fn pw3_rebuild_reconstructs_an_equivalent_wiki_into_a_fresh_store() {
+fn rebuild_reconstructs_an_equivalent_wiki_into_a_fresh_store() {
     // A wiki built in one store and rebuilt from the same ground truth into a
     // brand-new empty store are equivalent (structure + sources + fingerprints)
     // — nothing authoritative lived only in the first store.
@@ -164,7 +164,7 @@ fn pw3_rebuild_reconstructs_an_equivalent_wiki_into_a_fresh_store() {
 // --- Grounded & attributed ---------------------------------------------
 
 #[test]
-fn pw4_an_uncited_claim_is_never_persisted() {
+fn an_uncited_claim_is_never_persisted() {
     let store = built_store(Some(&ScriptedGen as &dyn PageGenerator));
     let body = overview_body(&store);
     assert!(
@@ -188,7 +188,7 @@ fn pw4_an_uncited_claim_is_never_persisted() {
 // --- Living & freshness-honest -----------------------------------------
 
 #[test]
-fn pw5_a_source_that_moves_without_regeneration_is_marked_stale() {
+fn a_source_that_moves_without_regeneration_is_marked_stale() {
     let ground = MovingGround {
         moved: Cell::new(false),
     };
@@ -224,7 +224,7 @@ fn pw5_a_source_that_moves_without_regeneration_is_marked_stale() {
 // --- Navigable & searchable --------------------------------------------
 
 #[test]
-fn pw6_the_wiki_is_navigable_and_searchable() {
+fn the_wiki_is_navigable_and_searchable() {
     let store = built_store(Some(&ScriptedGen as &dyn PageGenerator));
     let reader: &dyn WikiReadSurface = &store;
 
@@ -263,7 +263,7 @@ fn wiki_grant(principal_type: PrincipalKind, principal_id: &str) -> AccessGrant 
 }
 
 #[test]
-fn pw7_reads_follow_the_office_sharing_posture() {
+fn reads_follow_the_office_sharing_posture() {
     let store = built_store(None);
 
     // Private (no grants): a non-owner is denied; the owner reads by ownership.
@@ -325,7 +325,7 @@ fn pw7_reads_follow_the_office_sharing_posture() {
 // --- Distinct from KB & internal artifacts -----------------------------
 
 #[test]
-fn pw8_internal_engineering_detail_never_reaches_a_row() {
+fn internal_engineering_detail_never_reaches_a_row() {
     let store = built_store(Some(&ScriptedGen as &dyn PageGenerator));
     for page in store.pages_for_office(OFFICE).unwrap() {
         assert!(

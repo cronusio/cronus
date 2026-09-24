@@ -1034,7 +1034,7 @@ mod tests {
     /// A minimal, hand-rolled HTTP/SSE mock server for hermetic streaming
     /// tests — never talks to a real network peer, no framework, just
     /// enough wire protocol to drive this crate's client logic. Shared
-    /// fixture, reused by later phase tasks (B03/T01) per the plan's note.
+    /// fixture, reused by later tests.
     struct MockSseServer {
         listener: TcpListener,
     }

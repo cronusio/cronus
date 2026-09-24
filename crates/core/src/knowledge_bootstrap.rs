@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_a_query_from_a_non_owner_with_no_grant_returns_nothing() {
+    fn a_query_from_a_non_owner_with_no_grant_returns_nothing() {
         let svc = service();
         svc.create_collection(&Collection::new("col-1", "user-1", "Docs"))
             .expect("create collection");
@@ -443,9 +443,9 @@ mod tests {
     }
 
     #[test]
-    fn kb9_ingesting_over_an_existing_human_document_without_override_still_fails_at_the_store() {
+    fn ingesting_over_an_existing_human_document_without_override_still_fails_at_the_store() {
         // The facade's ingest_record always writes with WriteOverride::None
-        // — confirms the gate from A01 is still reachable/enforced
+        // — confirms the write gate is still reachable/enforced
         // through the full facade path, not bypassed by the new wiring.
         let svc = service();
         svc.create_collection(&Collection::new("col-1", "user-1", "Docs"))
@@ -459,7 +459,7 @@ mod tests {
         // the caller explicitly constructed as human-origin.
         let ingested = svc.ingest_record(human_doc, "human authored content");
         // A brand-new human-origin document (no prior row) is NOT gated —
-        // The write gate protects rewriting, not initial ingest (matches A01's
+        // The write gate protects rewriting, not initial ingest (matches the
         // documented semantics) — so this succeeds.
         assert!(
             ingested.is_ok(),

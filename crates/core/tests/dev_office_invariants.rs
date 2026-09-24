@@ -41,7 +41,7 @@ fn temp_git_repo(tag: &str, config_body: &str) -> PathBuf {
 // ── Conditional system-workspace floor ────────────────────────────────
 
 #[test]
-fn dvo1_the_floor_is_present_only_while_elevated() {
+fn the_floor_is_present_only_while_elevated() {
     let mut module = DevOfficeModule::new();
     assert!(
         !module.is_loaded(),
@@ -56,9 +56,9 @@ fn dvo1_the_floor_is_present_only_while_elevated() {
 }
 
 #[test]
-fn dvo1_developer_kind_is_a_singleton_never_reachable_through_project_creation() {
+fn developer_kind_is_a_singleton_never_reachable_through_project_creation() {
     let mgr = WorkspaceManager::open_in_memory().unwrap();
-    let repo = temp_dir("dvo1-singleton");
+    let repo = temp_dir("singleton");
 
     register_dev_workspace(&mgr, &repo).unwrap();
     assert!(is_reserved_dev_workspace_id(DEV_OFFICE_WORKSPACE_ID));
@@ -75,9 +75,9 @@ fn dvo1_developer_kind_is_a_singleton_never_reachable_through_project_creation()
 // ── Repository-authenticity binding (network-free, fail-closed) ──────
 
 #[test]
-fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
+fn non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
     let non_canonical = temp_git_repo(
-        "dvo2-non-canonical",
+        "non-canonical",
         "[remote \"origin\"]\n\turl = https://github.com/someone-else/fork.git\n",
     );
     assert_eq!(
@@ -86,7 +86,7 @@ fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
     );
 
     let ambiguous = temp_git_repo(
-        "dvo2-ambiguous",
+        "ambiguous",
         "[remote \"a\"]\n\turl = https://github.com/cronusio/cronus.git\n[remote \"b\"]\n\turl = https://github.com/other/repo.git\n",
     );
     // Two remotes, neither named `origin`: no unambiguous bound upstream —
@@ -96,11 +96,11 @@ fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
         RepoAuthenticity::NotCanonical
     );
 
-    let not_a_repo = temp_dir("dvo2-not-a-repo");
+    let not_a_repo = temp_dir("not-a-repo");
     assert_eq!(repo_authenticity(&not_a_repo), RepoAuthenticity::NotARepo);
 
     let genuine = temp_git_repo(
-        "dvo2-genuine",
+        "genuine",
         "[remote \"origin\"]\n\turl = https://github.com/cronusio/cronus.git\n",
     );
     assert!(matches!(
@@ -121,7 +121,7 @@ impl AdmissionReader for ScriptedReader {
 }
 
 #[test]
-fn dvo3_the_domain_gate_can_only_read_never_mint_an_admission() {
+fn the_domain_gate_can_only_read_never_mint_an_admission() {
     // `AdmissionReader` exposes exactly one method (`is_admitted`) — there is
     // no mint/write method to call, so no code holding only `&dyn
     // AdmissionReader` (the only thing `GateInputs` construction needs) can
@@ -136,7 +136,7 @@ fn dvo3_the_domain_gate_can_only_read_never_mint_an_admission() {
     // `&HumanPrincipal`, constructible solely via `assert_human_operated()`
     // — exactly the call the `cronus dev admit` CLI handler makes, and
     // nowhere else in the codebase.
-    let path = temp_dir("dvo3-real-admission").join("admission.txt");
+    let path = temp_dir("real-admission").join("admission.txt");
     let store = DeveloperAdmissionStore::open(&path);
     assert!(!store.is_admitted());
     store
@@ -153,7 +153,7 @@ fn dvo3_the_domain_gate_can_only_read_never_mint_an_admission() {
 // ── Hidden-by-default trigger-loaded module (clean load/unload) ──────
 
 #[test]
-fn dvo4_unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
+fn unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
     let mut module = DevOfficeModule::new();
     let sequence = [
         AdmissionTier::Elevated,
@@ -175,7 +175,7 @@ fn dvo4_unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
 // ── Tiered admission with a default-off feedback ceiling ─────────────
 
 #[test]
-fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
+fn feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
     let genuine = RepoAuthenticity::Genuine {
         upstream: "https://github.com/cronusio/cronus".to_string(),
     };
@@ -217,10 +217,10 @@ fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
 // ── Repository-scoped workspace isolation ─────────────────────────────
 
 #[test]
-fn dvo6_the_dev_workspace_scope_never_reaches_another_workspaces_store() {
+fn the_dev_workspace_scope_never_reaches_another_workspaces_store() {
     let mgr = WorkspaceManager::open_in_memory().unwrap();
-    let dev_repo = temp_dir("dvo6-dev-scope");
-    let user_repo = temp_dir("dvo6-user-scope");
+    let dev_repo = temp_dir("dev-scope");
+    let user_repo = temp_dir("user-scope");
 
     register_dev_workspace(&mgr, &dev_repo).unwrap();
     let user_id = WorkspaceId::new("acme-project").unwrap();
@@ -247,8 +247,8 @@ fn dvo6_the_dev_workspace_scope_never_reaches_another_workspaces_store() {
 // ── Contained and audited elevated authority ──────────────────────────
 
 #[test]
-fn dvo7_elevated_actions_pass_the_authority_gate_and_are_always_audited() {
-    let audit_path = temp_dir("dvo7-audit").join("audit.jsonl");
+fn elevated_actions_pass_the_authority_gate_and_are_always_audited() {
+    let audit_path = temp_dir("audit").join("audit.jsonl");
     let mut dispatch = ReceiptedDispatch::new(audit_path.clone());
 
     let allowed = ToolPolicy::default();
@@ -278,7 +278,7 @@ fn dvo7_elevated_actions_pass_the_authority_gate_and_are_always_audited() {
 // ── Standard dev-workflow, no exception lane ──────────────────────────
 
 #[test]
-fn dvo8_the_pipeline_has_no_workspace_identity_parameter_to_special_case() {
+fn the_pipeline_has_no_workspace_identity_parameter_to_special_case() {
     // Structural proof: `Pipeline::new`/`advance` take no workspace-kind or
     // workspace-id input at all, so there is nothing to represent a "dev
     // office fast lane" with — running the same sequence against two

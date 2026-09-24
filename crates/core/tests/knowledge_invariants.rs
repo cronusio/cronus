@@ -59,7 +59,7 @@ fn seed_ready_document(
 // ── Collection isolation ───────────────────────────────────────────────
 
 #[test]
-fn kb1_a_query_never_returns_another_collections_chunk() {
+fn a_query_never_returns_another_collections_chunk() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -83,7 +83,7 @@ fn kb1_a_query_never_returns_another_collections_chunk() {
 // ── Hierarchical organisation (directory tree, retrieval-independent) ──
 
 #[test]
-fn kb2_directory_structure_never_affects_retrieval() {
+fn directory_structure_never_affects_retrieval() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -112,7 +112,7 @@ fn kb2_directory_structure_never_affects_retrieval() {
 // ── Incremental indexing ────────────────────────────────────────────────
 
 #[test]
-fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
+fn re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -159,7 +159,7 @@ fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
 // ── Access control ──────────────────────────────────────────────────────
 
 #[test]
-fn kb4_a_query_from_a_caller_with_no_grant_is_denied_before_the_store_is_searched() {
+fn a_query_from_a_caller_with_no_grant_is_denied_before_the_store_is_searched() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -191,7 +191,7 @@ fn kb4_a_query_from_a_caller_with_no_grant_is_denied_before_the_store_is_searche
 // ── Source types (file / URL / record) ─────────────────────────────────
 
 #[test]
-fn kb5_all_three_source_adapters_produce_ready_ingestible_text() {
+fn all_three_source_adapters_produce_ready_ingestible_text() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -243,7 +243,7 @@ fn kb5_all_three_source_adapters_produce_ready_ingestible_text() {
 // ── Source attribution ──────────────────────────────────────────────────
 
 #[test]
-fn kb6_every_retrieved_chunk_carries_document_and_source_ref_attribution() {
+fn every_retrieved_chunk_carries_document_and_source_ref_attribution() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -262,7 +262,7 @@ fn kb6_every_retrieved_chunk_carries_document_and_source_ref_attribution() {
 // ── Non-authoritative recall (structural) ──────────────────────────────
 
 #[test]
-fn kb7_the_retrieved_chunk_shape_asserts_no_correctness_only_text_source_score() {
+fn the_retrieved_chunk_shape_asserts_no_correctness_only_text_source_score() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -287,7 +287,7 @@ fn kb7_the_retrieved_chunk_shape_asserts_no_correctness_only_text_source_score()
 // ── Soft deletion ────────────────────────────────────────────────────────
 
 #[test]
-fn kb8_a_soft_deleted_document_is_excluded_from_retrieval_then_gc_removes_it() {
+fn a_soft_deleted_document_is_excluded_from_retrieval_then_gc_removes_it() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -311,8 +311,7 @@ fn kb8_a_soft_deleted_document_is_excluded_from_retrieval_then_gc_removes_it() {
 // ── Authorship zones ────────────────────────────────────────────────────
 
 #[test]
-fn kb9_a_human_zone_rewrite_requires_an_audited_override_but_initial_ingest_and_status_updates_dont()
- {
+fn a_human_zone_rewrite_requires_an_audited_override_but_initial_ingest_and_status_updates_dont() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -355,7 +354,7 @@ fn kb9_a_human_zone_rewrite_requires_an_audited_override_but_initial_ingest_and_
 // ── Curation lifecycle ─────────────────────────────────────────────────
 
 #[test]
-fn kb10_min_curation_excludes_draft_chunks_but_human_sources_stay_eligible() {
+fn min_curation_excludes_draft_chunks_but_human_sources_stay_eligible() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();
@@ -415,7 +414,7 @@ impl QueryPreparer for EmptyPreparer {
 }
 
 #[test]
-fn kb11_query_preparation_is_recorded_falls_back_when_empty_and_never_widens_scope() {
+fn query_preparation_is_recorded_falls_back_when_empty_and_never_widens_scope() {
     let db = KnowledgeDb::open_in_memory().expect("open");
     db.create_collection(&Collection::new("col-1", "user-1", "A"))
         .unwrap();

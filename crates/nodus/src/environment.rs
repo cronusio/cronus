@@ -184,8 +184,8 @@ pub struct EnvironmentProfile {
     /// Fixed resource ceiling, if any. `None` behaves as today.
     pub budget: Option<Budget>,
     /// Identity of the host encoder `budget.max_tokens` is denominated in.
-    /// Opaque to the crate — no tokenizer or counting rule in core
-    /// . A profile whose budget carries no `max_tokens` needs no
+    /// Opaque to the crate — no tokenizer or counting rule in core.
+    /// A profile whose budget carries no `max_tokens` needs no
     /// measure and is unaffected by leaving this `None`.
     pub token_measure: Option<String>,
 }

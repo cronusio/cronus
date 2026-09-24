@@ -216,7 +216,7 @@ fn resume_descriptor_digest_agrees_with_repro_recipe_digest() {
         None,
         DefaultDialogProvider,
         capture.clone(),
-        "run-lp22c",
+        "run-pinned-digest",
         "2026-01-01T00:00:00Z",
     )
     .expect("the run returns a result");

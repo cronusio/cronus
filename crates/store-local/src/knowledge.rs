@@ -961,7 +961,7 @@ mod schema {
     }
 
     #[test]
-    fn kb9_a_human_zone_write_without_override_is_refused() {
+    fn a_human_zone_write_without_override_is_refused() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "Docs"))
             .unwrap();
@@ -982,7 +982,7 @@ mod schema {
     }
 
     #[test]
-    fn kb9_a_human_zone_write_with_override_succeeds_and_is_attributable() {
+    fn a_human_zone_write_with_override_succeeds_and_is_attributable() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "Docs"))
             .unwrap();
@@ -1004,7 +1004,7 @@ mod schema {
     }
 
     #[test]
-    fn kb10_curation_advance_requires_human_auth_except_draft() {
+    fn curation_advance_requires_human_auth_except_draft() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "Docs"))
             .unwrap();
@@ -1038,7 +1038,7 @@ mod schema {
     }
 
     #[test]
-    fn kb3_delete_chunks_removes_chunk_fts_and_vec_rows() {
+    fn delete_chunks_removes_chunk_fts_and_vec_rows() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "Docs"))
             .unwrap();
@@ -1235,7 +1235,7 @@ mod schema {
     }
 
     #[test]
-    fn kb1_ann_search_never_returns_another_collections_chunk() {
+    fn ann_search_never_returns_another_collections_chunk() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();
@@ -1253,7 +1253,7 @@ mod schema {
     }
 
     #[test]
-    fn kb1_ann_search_finds_the_nearest_neighbour() {
+    fn ann_search_finds_the_nearest_neighbour() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();
@@ -1269,7 +1269,7 @@ mod schema {
     }
 
     #[test]
-    fn kb1_fts_search_never_returns_another_collections_chunk() {
+    fn fts_search_never_returns_another_collections_chunk() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();
@@ -1293,7 +1293,7 @@ mod schema {
     }
 
     #[test]
-    fn kb8_soft_deleted_documents_are_excluded_from_retrieval() {
+    fn soft_deleted_documents_are_excluded_from_retrieval() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();
@@ -1315,7 +1315,7 @@ mod schema {
     }
 
     #[test]
-    fn kb8_gc_removes_documents_past_the_retention_window() {
+    fn gc_removes_documents_past_the_retention_window() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();
@@ -1340,7 +1340,7 @@ mod schema {
     }
 
     #[test]
-    fn kb10_min_curation_excludes_draft_but_keeps_human_sources_eligible() {
+    fn min_curation_excludes_draft_but_keeps_human_sources_eligible() {
         let db = KnowledgeDb::open_in_memory().expect("open");
         db.create_collection(&Collection::new("col-1", "user-1", "A"))
             .unwrap();

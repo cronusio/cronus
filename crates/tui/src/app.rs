@@ -205,7 +205,7 @@ impl App {
         //     `dispatch::dispatch_command` — no raw secret value reaches the
         //     view-model or the screen buffer. `None` means the line resolved
         //     to no invocable (`Dispatched::Unknown`) — ordinary input, not a
-        //     rendered failure (l2-tui v1.2.0), so feedback is cleared exactly
+        //     rendered failure, so feedback is cleared exactly
         //     as it would be for any other line with nothing to report.
         //
         //     A line naming one of this surface's own pane actions (e.g.
@@ -1262,7 +1262,7 @@ mod tests {
     /// Both halves of the same criterion, driven end to end through the
     /// app's tick loop over one real, registered invocable: an unresolved
     /// slash line renders **no** feedback at all — ordinary input, not a
-    /// rendered failure (l2-tui v1.2.0) — and a genuinely `Rejected` outcome
+    /// rendered failure — and a genuinely `Rejected` outcome
     /// (the identity resolves; its one required binder is never supplied)
     /// still renders as a legible refusal. Proven together so the two stay
     /// distinguishable rather than both silently swallowed.

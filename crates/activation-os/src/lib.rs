@@ -8,8 +8,8 @@
 //! seam, so the adapter's LOGIC — weaker-wins `observe()` derivation, both
 //! mode's registration sequences — is unit-tested against a scriptable fake
 //! on any host, independent of which platform module backs it. Covers
-//! login-scoped registration (Track D01) and system-scoped elevation
-//! (Track D02) over the same seam.
+//! login-scoped registration and system-scoped elevation
+//! over the same seam.
 //!
 //! **Verification scope, disclosed:** the Windows implementation
 //! (`windows_calls`) is compiled and its adapter logic tested on the host

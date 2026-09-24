@@ -51,21 +51,28 @@ fn fixed_binding(action_id: u64) -> ActionBinding {
 // ── Per-action receipt, no call-site opt-out ───────────────────────────
 
 #[test]
-fn tr1_allowed_and_blocked_calls_are_both_receipted_with_no_opt_out() {
-    let mut dispatch = ReceiptedDispatch::new(audit_path("tr1"));
+fn allowed_and_blocked_calls_are_both_receipted_with_no_opt_out() {
+    let mut dispatch = ReceiptedDispatch::new(audit_path("case1"));
     let allowed = ToolPolicy::default();
     let mut blocked_policy = ToolPolicy::default();
-    blocked_policy.disabled_tools.push("tr1.action".to_string());
+    blocked_policy
+        .disabled_tools
+        .push("case1.action".to_string());
 
     // `invoke` is the only public execution path (`ReceiptedDispatch` has
     // no other way to run an action) and its return type is
     // `Receipted<Result<T, String>>` — a caller cannot get `T` without the
     // receipt travelling beside it, for either outcome.
     let (_binding_a, receipted_allowed) = dispatch
-        .invoke(&allowed, "tr1.action", b"x", || Ok::<_, String>(()))
+        .invoke(&allowed, "case1.action", b"x", || Ok::<_, String>(()))
         .unwrap();
     let (_binding_b, receipted_blocked) = dispatch
-        .invoke(&blocked_policy, "tr1.action", b"x", || Ok::<_, String>(()))
+        .invoke(
+            &blocked_policy,
+            "case1.action",
+            b"x",
+            || Ok::<_, String>(()),
+        )
         .unwrap();
 
     assert!(receipted_allowed.value().is_ok());
@@ -83,18 +90,18 @@ fn tr1_allowed_and_blocked_calls_are_both_receipted_with_no_opt_out() {
 // ── Model-unforgeable ───────────────────────────────────────────────────
 
 #[test]
-fn tr2_a_receipt_minted_under_one_session_does_not_verify_under_another() {
+fn a_receipt_minted_under_one_session_does_not_verify_under_another() {
     // Without access to the minting session's key, a second, independently
     // keyed dispatch cannot validate the first's receipts — the property
     // that stands in for "no forgery without the key" at the facade layer,
     // since neither `ReceiptedDispatch` nor `ReceiptKey` exposes the raw
     // key material to construct a matching one deliberately.
-    let mut dispatch_a = ReceiptedDispatch::new(audit_path("tr2-a"));
-    let dispatch_b = ReceiptedDispatch::new(audit_path("tr2-b"));
+    let mut dispatch_a = ReceiptedDispatch::new(audit_path("case2-a"));
+    let dispatch_b = ReceiptedDispatch::new(audit_path("case2-b"));
     let policy = ToolPolicy::default();
 
     let (binding, receipted) = dispatch_a
-        .invoke(&policy, "tr2.action", b"x", || Ok::<_, String>(()))
+        .invoke(&policy, "case2.action", b"x", || Ok::<_, String>(()))
         .unwrap();
 
     assert!(dispatch_a.verify(&binding, &receipted.receipt));
@@ -107,12 +114,12 @@ fn tr2_a_receipt_minted_under_one_session_does_not_verify_under_another() {
 // ── Result authenticity ─────────────────────────────────────────────────
 
 #[test]
-fn tr3_substituting_the_observed_result_invalidates_the_receipt() {
-    let mut dispatch = ReceiptedDispatch::new(audit_path("tr3"));
+fn substituting_the_observed_result_invalidates_the_receipt() {
+    let mut dispatch = ReceiptedDispatch::new(audit_path("case3"));
     let policy = ToolPolicy::default();
 
     let (mut binding, receipted) = dispatch
-        .invoke(&policy, "tr3.action", b"x", || {
+        .invoke(&policy, "case3.action", b"x", || {
             Ok::<_, String>("the real observed value")
         })
         .unwrap();
@@ -128,8 +135,8 @@ fn tr3_substituting_the_observed_result_invalidates_the_receipt() {
 // ── Existence authenticity (default-deny) ───────────────────────────────
 
 #[test]
-fn tr4_an_action_id_never_dispatched_reports_unreceipted_never_a_fact() {
-    let dispatch = ReceiptedDispatch::new(audit_path("tr4"));
+fn an_action_id_never_dispatched_reports_unreceipted_never_a_fact() {
+    let dispatch = ReceiptedDispatch::new(audit_path("case4"));
     // Nothing was ever dispatched under this id — `status()` must default
     // to `Unreceipted`, not an error and not an assumption of truth. There
     // is no method on `ReceiptLedger` (reachable via `dispatch.ledger()`)
@@ -143,9 +150,9 @@ fn tr4_an_action_id_never_dispatched_reports_unreceipted_never_a_fact() {
 // ── Ephemeral, isolated secret ──────────────────────────────────────────
 
 #[test]
-fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
-    let mut first = ReceiptedDispatch::new(audit_path("tr5-a"));
-    let second = ReceiptedDispatch::new(audit_path("tr5-b"));
+fn the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
+    let mut first = ReceiptedDispatch::new(audit_path("case5-a"));
+    let second = ReceiptedDispatch::new(audit_path("case5-b"));
     let policy = ToolPolicy::default();
 
     // Fresh entropy per session, not a constant compiled-in key: the same
@@ -154,7 +161,7 @@ fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
     // the unforgeability property from the ephemerality angle: rotation-on-restart
     // means an old session's receipts are unverifiable by construction).
     let (binding, receipted) = first
-        .invoke(&policy, "tr5.action", b"x", || Ok::<_, String>(()))
+        .invoke(&policy, "case5.action", b"x", || Ok::<_, String>(()))
         .unwrap();
     assert!(!second.verify(&binding, &receipted.receipt));
 }
@@ -162,7 +169,7 @@ fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
 // ── Runtime-verified, not third-party ───────────────────────────────────
 
 #[test]
-fn tr6_verification_is_reachable_only_through_a_live_in_process_session() {
+fn verification_is_reachable_only_through_a_live_in_process_session() {
     // `ReceiptedDispatch::verify` is the sole verification entry point
     // exported anywhere in `cronus_core` or `cronus_core::tool_receipts` —
     // reviewed by inspection of both modules' public surfaces: there is no
@@ -181,14 +188,14 @@ fn tr6_verification_is_reachable_only_through_a_live_in_process_session() {
 // ── Complement, never replacement ───────────────────────────────────────
 
 #[test]
-fn tr7_the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allowed() {
-    let mut dispatch = ReceiptedDispatch::new(audit_path("tr7"));
+fn the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allowed() {
+    let mut dispatch = ReceiptedDispatch::new(audit_path("case7"));
     let mut blocked = ToolPolicy::default();
-    blocked.disabled_tools.push("tr7.dangerous".to_string());
+    blocked.disabled_tools.push("case7.dangerous".to_string());
 
     let mut executed = false;
     let (binding, receipted) = dispatch
-        .invoke(&blocked, "tr7.dangerous", b"x", || {
+        .invoke(&blocked, "case7.dangerous", b"x", || {
             executed = true; // would only run if the gate were bypassed
             Ok::<_, String>(())
         })
@@ -208,7 +215,7 @@ fn tr7_the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allow
 // ── Honest coverage boundary ────────────────────────────────────────────
 
 #[test]
-fn tr8_pending_deferred_work_is_never_silently_rounded_into_full_coverage() {
+fn pending_deferred_work_is_never_silently_rounded_into_full_coverage() {
     let mut ledger = ReceiptLedger::new();
     let key = ReceiptKey::from_bytes([3u8; 32]);
 
@@ -228,13 +235,13 @@ fn tr8_pending_deferred_work_is_never_silently_rounded_into_full_coverage() {
 // ── Tamper-evident auditable record ─────────────────────────────────────
 
 #[test]
-fn tr9_every_mint_and_every_detected_mismatch_are_auditable_events() {
-    let path = audit_path("tr9");
+fn every_mint_and_every_detected_mismatch_are_auditable_events() {
+    let path = audit_path("case9");
     let mut dispatch = ReceiptedDispatch::new(path.clone());
     let policy = ToolPolicy::default();
 
     let (mut binding, receipted) = dispatch
-        .invoke(&policy, "tr9.action", b"x", || Ok::<_, String>(()))
+        .invoke(&policy, "case9.action", b"x", || Ok::<_, String>(()))
         .unwrap();
 
     let log_after_mint = std::fs::read_to_string(&path).unwrap();

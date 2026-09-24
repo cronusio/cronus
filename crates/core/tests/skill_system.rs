@@ -72,7 +72,7 @@ impl WorkflowRuntime for UntouchableRuntime {
 // ── Unified model ────────────────────────────────────────────────────
 
 #[test]
-fn ext1_skills_use_the_single_unified_extension_registry() {
+fn skills_use_the_single_unified_extension_registry() {
     // The same ExtensionRegistry that serves MCP servers and plugins also
     // serves skills — there is no parallel skill-only subsystem.
     let mut registry = ExtensionRegistry::new();
@@ -99,7 +99,7 @@ fn ext1_skills_use_the_single_unified_extension_registry() {
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 #[test]
-fn ext2_ingestion_never_activates_lands_discovered() {
+fn ingestion_never_activates_lands_discovered() {
     let outcome = convert::convert(
         WitnessStatus::Valid,
         manifest("core/imported", "imported"),
@@ -121,7 +121,7 @@ fn ext2_ingestion_never_activates_lands_discovered() {
 // ── Default-deny trust ───────────────────────────────────────────────
 
 #[test]
-fn ext3_a_skill_with_an_unconvertible_script_never_executes() {
+fn a_skill_with_an_unconvertible_script_never_executes() {
     let outcome = convert::convert(
         WitnessStatus::Valid,
         manifest("core/half-baked", "half-baked"),
@@ -148,7 +148,7 @@ fn ext3_a_skill_with_an_unconvertible_script_never_executes() {
 // ── Sandboxed execution, scoped grants ───────────────────────
 
 #[test]
-fn ext4_ext6_a_mapped_workflow_dispatches_through_per_call_grant_checks() {
+fn a_mapped_workflow_dispatches_through_per_call_grant_checks() {
     let mut map = HashMap::new();
     map.insert("fetch.sh".to_string(), "net.fetch".to_string());
 
@@ -226,7 +226,7 @@ fn ext4_ext6_a_mapped_workflow_dispatches_through_per_call_grant_checks() {
 // ── Preset + custom, two-tier separation ─────────────────────
 
 #[test]
-fn ext5_sto1_preset_ships_read_only_conversion_and_synthesis_land_in_state() {
+fn preset_ships_read_only_conversion_and_synthesis_land_in_state() {
     let preset_id = SkillId::new("core", "standup");
     let mut store =
         SkillStore::with_presets([(preset_id.clone(), SkillEntry::new("preset content"))]);
@@ -290,7 +290,7 @@ fn ext5_sto1_preset_ships_read_only_conversion_and_synthesis_land_in_state() {
 // ── Skill generation ──────────────────────────────────────────────────
 
 #[test]
-fn ext7_synthesized_skills_carry_generated_source_pending_review() {
+fn synthesized_skills_carry_generated_source_pending_review() {
     let outcome = synthesize::synthesize(AuthoredSkill {
         manifest: manifest("core/synth-brief", "synth-brief"),
         workflow_nd: false,
@@ -317,7 +317,7 @@ fn ext7_synthesized_skills_carry_generated_source_pending_review() {
 // ── Provenance & audit ────────────────────────────────────────────────
 
 #[test]
-fn ext8_source_conversion_report_and_originals_are_all_persisted_together() {
+fn source_conversion_report_and_originals_are_all_persisted_together() {
     let mut map = HashMap::new();
     map.insert("steps.yaml".to_string(), "workflow.run".to_string());
 
@@ -354,7 +354,7 @@ fn ext8_source_conversion_report_and_originals_are_all_persisted_together() {
 // ── Manifest contract ─────────────────────────────────────────────────
 
 #[test]
-fn ext9_convert_and_synthesize_share_one_validation_gate() {
+fn convert_and_synthesize_share_one_validation_gate() {
     let mut bad_convert_manifest = manifest("core/bad", "bad");
     bad_convert_manifest.name = String::new();
     let convert_err = convert::convert(
@@ -384,7 +384,7 @@ fn ext9_convert_and_synthesize_share_one_validation_gate() {
 // ── Verifiable import attestation ───────────────────────────────────
 
 #[test]
-fn ext11_missing_or_invalid_witness_denies_before_conversion_even_for_valid_content() {
+fn missing_or_invalid_witness_denies_before_conversion_even_for_valid_content() {
     for witness in [WitnessStatus::Missing, WitnessStatus::Invalid] {
         let err = convert::convert(
             witness,
@@ -400,7 +400,7 @@ fn ext11_missing_or_invalid_witness_denies_before_conversion_even_for_valid_cont
 // ── Catalog vs instance ───────────────────────────────────────────────
 
 #[test]
-fn sto3_overriding_a_preset_copies_into_state_and_never_mutates_the_preset() {
+fn overriding_a_preset_copies_into_state_and_never_mutates_the_preset() {
     let id = SkillId::new("core", "review");
     let mut store = SkillStore::with_presets([(id.clone(), SkillEntry::new("preset-v1"))]);
 

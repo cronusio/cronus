@@ -10,7 +10,7 @@ import {
   themeAttributes,
 } from "./theme";
 
-describe("mode axis (unchanged from Phase 8)", () => {
+describe("mode axis (unchanged)", () => {
   it("resolves system against the OS preference; explicit choices pass through", () => {
     expect(resolveTheme("system", true)).toBe("dark");
     expect(resolveTheme("system", false)).toBe("light");

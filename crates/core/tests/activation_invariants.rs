@@ -94,7 +94,7 @@ impl ActivationRegistry for FakeRegistry {
 // --- Manual launch is the complete default -----------------------------
 
 #[test]
-fn ba1_a_fresh_registry_reports_inactive_manual_is_the_default() {
+fn a_fresh_registry_reports_inactive_manual_is_the_default() {
     let registry = FakeRegistry::supported(ActivationState::Inactive);
     assert_eq!(registry.observe(), ActivationState::Inactive);
 }
@@ -102,7 +102,7 @@ fn ba1_a_fresh_registry_reports_inactive_manual_is_the_default() {
 // --- At most one activation registration -------------------------------
 
 #[test]
-fn ba3_enabling_a_different_mode_removes_the_prior_one_first() {
+fn enabling_a_different_mode_removes_the_prior_one_first() {
     let registry = FakeRegistry::supported(ActivationState::Active(ActivationMode::Login));
     let outcome = enable(&registry, ActivationMode::System).expect("enable succeeds");
     assert_eq!(
@@ -119,7 +119,7 @@ fn ba3_enabling_a_different_mode_removes_the_prior_one_first() {
 // --- Activation is a disclosed autonomy grant, per-mode consent -------
 
 #[test]
-fn ba5_consent_for_one_mode_never_authorizes_the_other() {
+fn consent_for_one_mode_never_authorizes_the_other() {
     let mut ledger = ConsentLedger::new();
     ledger.record(ConsentRecord {
         mode: ActivationMode::Login,
@@ -142,7 +142,7 @@ fn ba5_consent_for_one_mode_never_authorizes_the_other() {
 // --- Least privilege — a refused elevation changes nothing ------------
 
 #[test]
-fn ba6_a_refused_elevation_leaves_the_host_exactly_as_it_was() {
+fn a_refused_elevation_leaves_the_host_exactly_as_it_was() {
     let mut registry = FakeRegistry::supported(ActivationState::Inactive);
     registry.fail_transitions = true;
 
@@ -158,7 +158,7 @@ fn ba6_a_refused_elevation_leaves_the_host_exactly_as_it_was() {
 // --- Reversible and complete -------------------------------------------
 
 #[test]
-fn ba7_disable_removes_whatever_is_registered_and_verifies_absence() {
+fn disable_removes_whatever_is_registered_and_verifies_absence() {
     let registry = FakeRegistry::supported(ActivationState::Active(ActivationMode::Login));
     let outcome = disable(&registry).expect("disable succeeds");
     assert_eq!(outcome, TransitionOutcome::Deactivated);
@@ -168,7 +168,7 @@ fn ba7_disable_removes_whatever_is_registered_and_verifies_absence() {
 // --- Observed state, never remembered state ---------------------------
 
 #[test]
-fn ba8_requires_approval_is_never_folded_into_activated() {
+fn requires_approval_is_never_folded_into_activated() {
     let registry =
         FakeRegistry::supported(ActivationState::RequiresApproval(ActivationMode::System));
     let state = registry.observe();
@@ -184,7 +184,7 @@ fn ba8_requires_approval_is_never_folded_into_activated() {
 }
 
 #[test]
-fn ba8_an_unqueryable_facility_reports_unknown_never_active() {
+fn an_unqueryable_facility_reports_unknown_never_active() {
     let mut registry = FakeRegistry::supported(ActivationState::Active(ActivationMode::Login));
     registry.query_fails_with = Some("registry unreadable".to_string());
     let state = registry.observe();
@@ -195,7 +195,7 @@ fn ba8_an_unqueryable_facility_reports_unknown_never_active() {
 // --- Spoke hosts refuse activation, visibly, per-mode ----------------
 
 #[test]
-fn ba10_an_unsupported_mode_is_representable_and_distinct_from_supported() {
+fn an_unsupported_mode_is_representable_and_distinct_from_supported() {
     let registry = FakeRegistry {
         capabilities: ActivationCapabilities {
             login: ModeSupport::Supported,

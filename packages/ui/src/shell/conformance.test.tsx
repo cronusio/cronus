@@ -1,5 +1,5 @@
 /**
- * Phase 24 spec-conformance sweep — one named test per touched invariant class.
+ * Conformance sweep — one named test per touched rule class.
  * Cross-cuts the per-component suites; the detail lives there, the contract here.
  */
 
@@ -39,7 +39,7 @@ const floors: FloorTab[] = [
   },
 ];
 
-describe("Phase 24 · spec conformance", () => {
+describe("conformance", () => {
   it("the sidebar is two frozen runs in fixed canonical order", () => {
     expect(Object.isFrozen(SIDEBAR_PRIMARY)).toBe(true);
     expect(Object.isFrozen(SIDEBAR_UTILITY)).toBe(true);

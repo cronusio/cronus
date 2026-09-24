@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_a_read_without_a_grant_is_denied() {
+    fn a_read_without_a_grant_is_denied() {
         let store = NoopStore;
         let grants = GrantStore::new();
         let gate = GatedKnowledge::new(
@@ -297,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_a_direct_read_grant_opens_the_collection() {
+    fn a_direct_read_grant_opens_the_collection() {
         let store = NoopStore;
         let mut grants = GrantStore::new();
         grants.add(read_grant("alice", "col-1"));
@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_the_owner_reads_without_an_explicit_grant() {
+    fn the_owner_reads_without_an_explicit_grant() {
         let store = NoopStore;
         let grants = GrantStore::new();
         let gate = GatedKnowledge::new(&store, &grants, KnowledgePrincipal::owner("alice"));
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_a_multi_collection_request_is_scoped_to_only_the_authorized_ones() {
+    fn a_multi_collection_request_is_scoped_to_only_the_authorized_ones() {
         let store = NoopStore;
         let mut grants = GrantStore::new();
         grants.add(read_grant("alice", "col-1"));
@@ -338,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_a_cross_collection_document_id_is_reported_absent_not_leaked() {
+    fn a_cross_collection_document_id_is_reported_absent_not_leaked() {
         let store = NoopStore;
         let mut grants = GrantStore::new();
         grants.add(read_grant("alice", "col-2"));

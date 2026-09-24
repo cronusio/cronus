@@ -141,9 +141,9 @@ fn resolve_existing(
 /// **Disclosed scope note:** [`conservative_is_alive`] is the only
 /// `is_alive` implementation this module ships — it always reports "alive"
 /// (never wrongly reclaims a live engine's lock), deferring a real per-OS
-/// process check to the platform-adapter work (Track D). A real crash's
+/// process check to the platform-adapter work. A real crash's
 /// stale lock is still recoverable through the existing liveness/crash-
-/// recovery path this spec explicitly defers to — that path is
+/// recovery path the design explicitly defers to — that path is
 /// what supplies a truthful `is_alive` once it exists.
 pub fn acquire(
     state_root: &Path,

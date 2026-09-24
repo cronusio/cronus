@@ -90,7 +90,7 @@ fn exec_spec(max_iterations: u32, mutable: impl IntoIterator<Item = MutableArtif
 // --- A loop runs only under its declared class ------------------------
 
 #[test]
-fn lg1_a_loop_spec_carries_exactly_the_class_it_declared() {
+fn a_loop_spec_carries_exactly_the_class_it_declared() {
     let spec = exec_spec(1, [MutableArtifact::Plan]);
     assert_eq!(spec.class, LoopClass::Execution);
     assert_ne!(spec.class, LoopClass::Evolution);
@@ -99,7 +99,7 @@ fn lg1_a_loop_spec_carries_exactly_the_class_it_declared() {
 // --- Mutation-rights manifest — an out-of-manifest write is recorded --
 
 #[test]
-fn lg2_a_write_outside_the_manifest_is_rejected_not_silently_dropped() {
+fn a_write_outside_the_manifest_is_rejected_not_silently_dropped() {
     let manifest = MutationManifest::new(1, [MutableArtifact::Plan]);
     let illegal = [Mutation {
         artifact: MutableArtifact::Prompt,
@@ -115,7 +115,7 @@ fn lg2_a_write_outside_the_manifest_is_rejected_not_silently_dropped() {
 // --- Criteria are structurally unreachable through MutableArtifact ---
 
 #[test]
-fn lg3_the_mutable_artifact_taxonomy_has_no_criteria_variant() {
+fn the_mutable_artifact_taxonomy_has_no_criteria_variant() {
     // Exhaustive match compiles only because these six variants are the
     // whole enum — a `Criteria` arm would not compile. The guarantee holds by
     // construction through the facade's re-exported type, not by this
@@ -142,7 +142,7 @@ fn lg3_the_mutable_artifact_taxonomy_has_no_criteria_variant() {
 // --- Oracle ownership — separated vs. same-lineage reduced_confidence
 
 #[test]
-fn lg4_a_judge_sharing_the_actors_lineage_is_recorded_reduced_confidence() {
+fn a_judge_sharing_the_actors_lineage_is_recorded_reduced_confidence() {
     // `turn()` fixes the actor's lineage at "actor" — the oracle is
     // separated or not relative to that same value.
     let same_lineage = Oracle::Judge {
@@ -159,7 +159,7 @@ fn lg4_a_judge_sharing_the_actors_lineage_is_recorded_reduced_confidence() {
 // --- State reconstructs fresh each iteration, never inherits ---------
 
 #[test]
-fn lg5_the_next_iteration_reconstructs_from_the_compact_status_not_a_transcript() {
+fn the_next_iteration_reconstructs_from_the_compact_status_not_a_transcript() {
     let spec = exec_spec(5, [MutableArtifact::Plan]);
     let mut backend = FakeBackend::new(vec![
         (Vec::new(), turn(false, Some("2 of 5 checks passing"))),
@@ -174,7 +174,7 @@ fn lg5_the_next_iteration_reconstructs_from_the_compact_status_not_a_transcript(
 // --- The ceiling stops independent of actor and oracle --------------
 
 #[test]
-fn lg6_the_ceiling_stops_the_loop_regardless_of_actor_or_oracle_state() {
+fn the_ceiling_stops_the_loop_regardless_of_actor_or_oracle_state() {
     // check_ceiling's own signature excludes an actor/oracle parameter
     // entirely — independence is structural, exercised here through the
     // facade re-export.
@@ -193,7 +193,7 @@ fn lg6_the_ceiling_stops_the_loop_regardless_of_actor_or_oracle_state() {
 // --- Escalation promotes only on held-out gain with hard preconditions
 
 #[test]
-fn lg7_escalation_refuses_on_shared_lineage_even_with_a_winning_metric() {
+fn escalation_refuses_on_shared_lineage_even_with_a_winning_metric() {
     struct AlwaysNovel;
     impl NoveltySource for AlwaysNovel {
         fn has_external_input(&self) -> bool {
@@ -222,7 +222,7 @@ fn lg7_escalation_refuses_on_shared_lineage_even_with_a_winning_metric() {
 }
 
 #[test]
-fn lg7_escalation_promotes_on_a_real_held_out_gain_with_both_preconditions_met() {
+fn escalation_promotes_on_a_real_held_out_gain_with_both_preconditions_met() {
     struct AlwaysNovel;
     impl NoveltySource for AlwaysNovel {
         fn has_external_input(&self) -> bool {
@@ -250,7 +250,7 @@ fn lg7_escalation_promotes_on_a_real_held_out_gain_with_both_preconditions_met()
 // --- The mutation ledger is append-only ------------------------------
 
 #[test]
-fn lg8_every_applied_mutation_appends_to_the_ledger_across_iterations() {
+fn every_applied_mutation_appends_to_the_ledger_across_iterations() {
     let spec = exec_spec(5, [MutableArtifact::Plan]);
     let mut backend = FakeBackend::new(vec![
         (
@@ -281,7 +281,7 @@ fn lg8_every_applied_mutation_appends_to_the_ledger_across_iterations() {
 // --- The cheapest trustworthy oracle is preferred when present ------
 
 #[test]
-fn lg9_a_declared_deterministic_oracle_is_preferred_over_the_fallback() {
+fn a_declared_deterministic_oracle_is_preferred_over_the_fallback() {
     let deterministic = Oracle::Deterministic {
         validator: "tests".to_string(),
     };
@@ -292,7 +292,7 @@ fn lg9_a_declared_deterministic_oracle_is_preferred_over_the_fallback() {
 // --- The objective survives in-session reduction and resumes -------
 
 #[test]
-fn lg10_the_objective_survives_aggressive_trimming_and_resumes_with_current_progress() {
+fn the_objective_survives_aggressive_trimming_and_resumes_with_current_progress() {
     let mut slot = ObjectiveSlot {
         objective: "keep the release green".to_string(),
         progress: "2 of 5 checks passing".to_string(),
@@ -309,7 +309,7 @@ fn lg10_the_objective_survives_aggressive_trimming_and_resumes_with_current_prog
     );
     assert!(entries[0].body.contains("2 of 5 checks passing"));
 
-    // Progress advances before the next lossy reduction (CC-10 timing);
+    // Progress advances before the next lossy reduction (timing);
     // a simulated compaction event then drops the entire prior turn.
     update_progress(&mut slot, "5 of 5 checks passing — release green");
     let mut next_turn: Vec<cronus_core::context_mgmt::ContextEntry> = Vec::new();

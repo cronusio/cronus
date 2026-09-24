@@ -419,12 +419,12 @@ fn candidate_digest_agrees_with_repro_recipe_digest() {
         &"__stub__".to_string(),
         1,
         capture.clone(),
-        "run-ne12",
+        "run-candidate-digest",
         "2026-01-01T00:00:00Z",
     )
     .expect("run");
 
-    let candidate = result.candidate(ENV_WF, "run-ne12", None, None);
+    let candidate = result.candidate(ENV_WF, "run-candidate-digest", None, None);
 
     let manifests = capture.manifests.lock().unwrap();
     assert_eq!(manifests.len(), 1, "run_complete must fire exactly once");

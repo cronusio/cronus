@@ -1,4 +1,4 @@
-//! Configuration hot-reload (DOC-2/DOC-4): diff two config snapshots
+//! Configuration hot-reload: diff two config snapshots
 //! into changed key-paths, classify each path through a prefix-ordered rule
 //! table into a restart/hot/none reload plan, invalidate the skills snapshot
 //! when applicable, and recover a failing file watcher through bounded

@@ -1,5 +1,5 @@
-//! Guards the SDD reference-containment boundary (Reference Rule §6): a
-//! specification file name — the `l1-*.md` / `l2-*.md` naming convention the
+//! Guards the SDD reference-containment boundary (product source never cites
+//! the design layer): a specification file name — the `l1-*.md` / `l2-*.md` naming convention the
 //! design layer uses — must never appear in product source, comments
 //! included. A simulation-qa pass found 25 such references scattered across
 //! six crates (rationale citations that named their source file instead of
@@ -100,7 +100,7 @@ fn no_product_source_file_names_a_specification_file() {
 
     assert!(
         offenders.is_empty(),
-        "product source must never name a specification file (Reference Rule §6) — \
+        "product source must never name a specification file (reference containment) — \
          restate the rationale in plain language instead:\n{}",
         offenders.join("\n")
     );
@@ -214,7 +214,7 @@ fn no_product_source_cites_an_audit_finding_task_or_phase() {
 
     assert!(
         offenders.is_empty(),
-        "product source must not cite an audit finding, task or phase (Reference Rule §6) — \
+        "product source must not cite an audit finding, task or phase (reference containment) — \
          state the rationale in plain language instead:\n{}",
         offenders.join("\n")
     );
@@ -248,5 +248,225 @@ fn the_process_artifact_detector_recognises_each_shape_and_only_those() {
             None,
             "must not flag: {clean}"
         );
+    }
+}
+
+// ── Invariant ids and section marks ──────────────────────────────────────────
+//
+// The same boundary again, for the most common way a comment reaches back into
+// the design layer: naming the invariant it implements (a capitalised prefix,
+// a hyphen and a small number) or the section of a specification that says so
+// (a section sign and a number). Both point at records that get renumbered,
+// merged or archived, and neither means anything to a reader of the code. State
+// the rule in words instead.
+//
+// Only comment text and string literals are inspected, so ordinary code such as
+// `MAX-1` is left alone, and a short list of everyday technical names that share
+// the shape (`UTF-8`, `SHA-256`) is allowed. Numbers with a leading zero are the
+// tool-security rule ids, which are product data.
+
+/// Hyphenated technical names that look like an id but are not one.
+const ORDINARY_PREFIXES: &[&str] = &[
+    "UTF", "SHA", "AES", "FNV", "ISO", "RFC", "HTTP", "TLS", "CVE", "MD", "RSA", "GCM", "TCP",
+    "UDP",
+];
+
+/// For each byte of `line`: whether it sits inside a `//` comment or a string
+/// literal. A block-comment continuation line (`* text`) is comment throughout.
+fn text_mask(line: &str) -> Vec<bool> {
+    const BACKSLASH: u8 = 0x5c;
+    let bytes = line.as_bytes();
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("* ") || trimmed.starts_with("/*") || trimmed == "*" || trimmed == "*/" {
+        return vec![true; bytes.len()];
+    }
+    let mut mask = vec![false; bytes.len()];
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if in_string {
+            mask[i] = true;
+            if bytes[i] == BACKSLASH {
+                if i + 1 < bytes.len() {
+                    mask[i + 1] = true;
+                }
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else if bytes[i] == b'"' {
+            in_string = true;
+            mask[i] = true;
+        } else if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            for slot in mask.iter_mut().skip(i) {
+                *slot = true;
+            }
+            break;
+        }
+        i += 1;
+    }
+    mask
+}
+
+/// Finds an invariant id or a section mark in the comment text or string
+/// literals of `line`.
+fn design_layer_citation(line: &str) -> Option<&str> {
+    let bytes = line.as_bytes();
+    let mask = text_mask(line);
+    if !mask.iter().any(|&m| m) {
+        return None;
+    }
+
+    // A section sign followed by a digit.
+    if let Some(at) = line.find('\u{a7}') {
+        let after = at + '\u{a7}'.len_utf8();
+        if mask[at] && bytes.get(after).is_some_and(|b| b.is_ascii_digit()) {
+            return Some(&line[at..after + 1]);
+        }
+    }
+
+    // PREFIX-<1..3 digits, no leading zero>, where PREFIX is 2..=6 capitals.
+    let mut i = 0;
+    while i < bytes.len() {
+        let boundary = i == 0
+            || !(bytes[i - 1].is_ascii_alphanumeric()
+                || bytes[i - 1] == b'_'
+                || bytes[i - 1] == b'-');
+        if bytes[i].is_ascii_uppercase() && boundary && mask[i] {
+            let letters = bytes[i..]
+                .iter()
+                .take_while(|b| b.is_ascii_uppercase())
+                .count();
+            let dash = i + letters;
+            if (2..=6).contains(&letters) && bytes.get(dash) == Some(&b'-') {
+                let digits = digits_at(bytes, dash + 1);
+                let end = dash + 1 + digits;
+                let leading_zero = bytes.get(dash + 1) == Some(&b'0');
+                let closed = !bytes
+                    .get(end)
+                    .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_');
+                if (1..=3).contains(&digits) && !leading_zero && closed {
+                    let prefix = &line[i..dash];
+                    if !ORDINARY_PREFIXES.contains(&prefix) {
+                        return Some(&line[i..end]);
+                    }
+                }
+            }
+            i += letters;
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// Recursively collects source files (`.rs`, `.ts`, `.tsx`) under `dir`,
+/// skipping build output and dependency folders.
+fn source_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let skip = path
+                .file_name()
+                .is_some_and(|n| n == "target" || n == "node_modules" || n == "dist");
+            if !skip {
+                source_files(&path, out);
+            }
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "rs" || ext == "ts" || ext == "tsx")
+        {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn no_product_source_cites_an_invariant_id_or_a_section() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/cli sits two levels under the workspace root")
+        .to_path_buf();
+
+    let mut files = Vec::new();
+    for tree in ["crates", "packages", "apps"] {
+        source_files(&workspace_root.join(tree), &mut files);
+    }
+    assert!(
+        files.len() > 100,
+        "the workspace tree walk found suspiciously few source files ({}) — \
+         the path resolution is probably wrong rather than the tree being small",
+        files.len()
+    );
+
+    // This file feeds the detector fixtures built from parts; the simulation
+    // crate's corpus tests feed the process-artifact shapes to their own.
+    let exempt = [
+        Path::new("cli").join("tests").join("sdd_containment.rs"),
+        Path::new("simulation").join("tests").join("corpus.rs"),
+    ];
+
+    let mut offenders = Vec::new();
+    for path in &files {
+        if exempt.iter().any(|e| path.ends_with(e)) {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
+        for (line_no, line) in content.lines().enumerate() {
+            if let Some(citation) = design_layer_citation(line) {
+                offenders.push(format!(
+                    "{}:{}: cites {citation}",
+                    path.display(),
+                    line_no + 1
+                ));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "product source must not cite an invariant id or a specification section \
+         (reference containment) — state the rule in plain language instead:\n{}",
+        offenders.join("\n")
+    );
+}
+
+#[test]
+fn the_citation_detector_flags_ids_and_section_marks_only_in_text() {
+    // Built from parts so this file never contains the shapes it forbids.
+    let id = format!("{}-{}", "AB", "12");
+    let section = format!("{}{}", '\u{a7}', "4");
+    for hit in [&id, &section] {
+        let comment = format!("// implements {hit} here");
+        assert_eq!(
+            design_layer_citation(&comment),
+            Some(hit.as_str()),
+            "must flag {hit} in a comment"
+        );
+        let string = format!("assert!(ok, \"{hit}: must hold\");");
+        assert_eq!(
+            design_layer_citation(&string),
+            Some(hit.as_str()),
+            "must flag {hit} in a string"
+        );
+    }
+    for clean in [
+        "let last = MAX-1;",
+        "// the UTF-8 and SHA-256 names are ordinary",
+        "// tool rule PT-001 is product data",
+        "// RUSTSEC-2024-0429 has a long number",
+        "// a lone F-1 and an X-2 have one-letter prefixes",
+        "// LONGPREFIX-1 has too many capitals",
+        "let flag = ab-12; // lowercase in code is not an id",
+    ] {
+        assert_eq!(design_layer_citation(clean), None, "must not flag: {clean}");
     }
 }

@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn kb1_retrieve_scopes_both_searches_to_the_requested_collections() {
+    fn retrieve_scopes_both_searches_to_the_requested_collections() {
         let store = ScriptedStore::default();
         let request = RetrievalRequest::new("q", vec!["col-a".to_string(), "col-b".to_string()]);
         retrieve(&store, &FakeEmbedder, None, &request).expect("retrieve");
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn kb1_no_collection_ids_returns_empty_without_touching_the_store() {
+    fn no_collection_ids_returns_empty_without_touching_the_store() {
         let store = ScriptedStore {
             ann: vec![("leak".into(), 0.0)],
             chunks: vec![chunk("leak", "col-x")],
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn kb6_every_result_carries_source_ref_attribution() {
+    fn every_result_carries_source_ref_attribution() {
         let store = ScriptedStore {
             ann: vec![("a".into(), 0.0)],
             chunks: vec![chunk("a", "col-1")],
@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn kb11_unwired_preparer_uses_the_raw_query_unchanged() {
+    fn unwired_preparer_uses_the_raw_query_unchanged() {
         let store = ScriptedStore {
             ann: vec![("a".into(), 0.0)],
             chunks: vec![chunk("a", "col-1")],
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn kb11_a_wired_preparer_records_both_prepared_and_raw_transparently() {
+    fn a_wired_preparer_records_both_prepared_and_raw_transparently() {
         let store = ScriptedStore::default();
         let request = RetrievalRequest::new("original", vec!["col-1".to_string()]);
         let (_results, prepared) =
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn kb11_subqueries_are_searched_independently_and_rrf_merged() {
+    fn subqueries_are_searched_independently_and_rrf_merged() {
         // Each of the 3 queries (main + 2 subqueries) contributes an
         // independent ann_search call in this fake — but ScriptedStore
         // always returns the SAME configured `ann`/`fts` list regardless of
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn kb11_an_empty_preparation_falls_back_to_the_raw_query_never_an_empty_search() {
+    fn an_empty_preparation_falls_back_to_the_raw_query_never_an_empty_search() {
         let store = ScriptedStore {
             ann: vec![("a".into(), 0.0)],
             chunks: vec![chunk("a", "col-1")],
@@ -523,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn kb4_preparation_never_widens_the_collection_scope() {
+    fn preparation_never_widens_the_collection_scope() {
         struct WideningAttemptPreparer;
         impl QueryPreparer for WideningAttemptPreparer {
             fn prepare(&self, raw: &str) -> PreparedQuery {

@@ -4,7 +4,7 @@
 //! a continuous-session loop that compacts *in place* instead
 //! re-projects the standing objective + progress cursor into every turn
 //! from a durable `ObjectiveSlot`, so mid-session compaction can never drop
-//! the north-star. Composes the shipped CC-9 protected-region mechanism
+//! the north-star. Composes the shipped protected-region mechanism
 //! (`context_mgmt::trim_cascade`) rather than reinventing eviction.
 
 use cronus_contract::ContextEntry;
@@ -15,7 +15,7 @@ use crate::loop_runner::spec::ObjectiveSlot;
 /// `re_project_objective` can find it without depending on its rendered text.
 const OBJECTIVE_ROLE: &str = "objective_slot";
 
-/// Render an `ObjectiveSlot` as a protected context entry (CC-9): a turn
+/// Render an `ObjectiveSlot` as a protected context entry: a turn
 /// that carries this entry can never have it removed by `trim_cascade`,
 /// regardless of how aggressively the rest of the transcript is trimmed.
 pub fn objective_context_entry(slot: &ObjectiveSlot) -> ContextEntry {
@@ -28,7 +28,7 @@ pub fn objective_context_entry(slot: &ObjectiveSlot) -> ContextEntry {
 }
 
 /// Update the durable progress cursor. Callers MUST do this before running
-/// any lossy reduction (CC-10) — the slot, not the compacted transcript, is
+/// any lossy reduction — the slot, not the compacted transcript, is
 /// what the next turn resumes from.
 pub fn update_progress(slot: &mut ObjectiveSlot, progress: impl Into<String>) {
     slot.progress = progress.into();
@@ -65,7 +65,7 @@ mod tests {
         }
     }
 
-    // --- CC-9: the objective survives aggressive trimming -------------------
+    // --- The objective survives aggressive trimming -------------------
 
     #[test]
     fn the_objective_entry_survives_trimming_that_evicts_everything_else() {
@@ -95,7 +95,7 @@ mod tests {
                 .any(|e| e.role == "objective_slot" && e.body.contains("3 of 5"))
         );
 
-        // Progress advances before the next lossy reduction runs (CC-10 timing).
+        // Progress advances before the next lossy reduction runs (timing).
         update_progress(&mut s, "5 of 5 checks passing — release green");
 
         // Simulate a compaction event that dropped the entire prior turn.

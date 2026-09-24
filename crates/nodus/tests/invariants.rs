@@ -80,7 +80,7 @@ struct FixedOutputProvider;
 
 impl ModelProvider for FixedOutputProvider {
     fn model_id(&self) -> &str {
-        "fixed-wfl7"
+        "fixed-provider"
     }
 
     fn generate(&self, _prompt: &str, _modifiers: &[(String, String)]) -> String {
@@ -100,7 +100,7 @@ impl ModelProvider for FixedOutputProvider {
 // ── Dual representation ───────────────────────────────────────────────
 
 #[test]
-fn wfl_1_compact_round_trip_preserves_ast() {
+fn compact_round_trip_preserves_ast() {
     // to_nodus() strips comments by design (they are not logic).
     // The correct losslessness check: normalise → re-parse → normalise again;
     // both compact forms must be byte-identical.
@@ -115,7 +115,7 @@ fn wfl_1_compact_round_trip_preserves_ast() {
 }
 
 #[test]
-fn wfl_1_human_form_is_distinct_prose() {
+fn human_form_is_distinct_prose() {
     let ast = Parser::parse(SIMPLE_LOG).expect("fixture must parse");
     let human = Transpiler::to_human(&ast);
     assert!(!human.is_empty(), "human form must not be empty");
@@ -131,7 +131,7 @@ fn wfl_1_human_form_is_distinct_prose() {
 // ── Schema vocabulary contract ────────────────────────────────────────
 
 #[test]
-fn wfl_2_builtin_schema_is_loaded_and_queryable() {
+fn builtin_schema_is_loaded_and_queryable() {
     let schema = Schema::builtin();
     assert!(
         schema.is_command("GEN"),
@@ -152,7 +152,7 @@ fn wfl_2_builtin_schema_is_loaded_and_queryable() {
 }
 
 #[test]
-fn wfl_2_validator_uses_schema_to_catch_unknown_commands() {
+fn validator_uses_schema_to_catch_unknown_commands() {
     // A source with an unknown command — the validator (which uses the schema)
     // must flag it rather than silently accepting it.
     let source = r#"§wf:schema_check v1.0
@@ -176,7 +176,7 @@ fn wfl_2_validator_uses_schema_to_catch_unknown_commands() {
 // ── Hard constraints inviolable ───────────────────────────────────────
 
 #[test]
-fn wfl_3_never_rule_halts_execution_with_failed_status() {
+fn never_rule_halts_execution_with_failed_status() {
     // !!NEVER: FETCH → the executor must refuse and return Failed.
     let result = workflows::run(
         PREF_AND_NEVER,
@@ -205,7 +205,7 @@ fn wfl_3_never_rule_halts_execution_with_failed_status() {
 // ── Preferences are soft ──────────────────────────────────────────────
 
 #[test]
-fn wfl_4_preference_does_not_halt_execution() {
+fn preference_does_not_halt_execution() {
     // !PREF alone must not block — preferences are advisory, not enforcing.
     let result = workflows::run(
         PREF_ONLY,
@@ -221,7 +221,7 @@ fn wfl_4_preference_does_not_halt_execution() {
 }
 
 #[test]
-fn wfl_4_hard_rule_wins_over_preference() {
+fn hard_rule_wins_over_preference() {
     // When !PREF and !!NEVER coexist and the NEVER is violated, the hard rule
     // prevails — preference softness does not weaken hard-constraint enforcement.
     let result = workflows::run(
@@ -240,7 +240,7 @@ fn wfl_4_hard_rule_wins_over_preference() {
 // ── Validate before run ────────────────────────────────────────────────
 
 #[test]
-fn wfl_5_block_class_error_prevents_execution() {
+fn block_class_error_prevents_execution() {
     // Missing §runtime (E001) is a block-class error — run() must reject before dispatch.
     let err = workflows::run(
         LINT_MISSING_RUNTIME,
@@ -255,7 +255,7 @@ fn wfl_5_block_class_error_prevents_execution() {
 }
 
 #[test]
-fn wfl_5_valid_workflow_passes_gate_and_executes() {
+fn valid_workflow_passes_gate_and_executes() {
     // A valid workflow must clear the validate gate and reach the executor.
     let result = workflows::run(
         SIMPLE_LOG,
@@ -273,7 +273,7 @@ fn wfl_5_valid_workflow_passes_gate_and_executes() {
 // ── Bounded execution ─────────────────────────────────────────────────
 
 #[test]
-fn wfl_6_until_loop_sets_max_reached_flag() {
+fn until_loop_sets_max_reached_flag() {
     // The stub never produces "magic_stop_signal", so MAX:2 is always exhausted.
     let result = workflows::run(
         ALWAYS_LOOPS,
@@ -293,7 +293,7 @@ fn wfl_6_until_loop_sets_max_reached_flag() {
 }
 
 #[test]
-fn wfl_6_until_without_max_is_lint_error() {
+fn until_without_max_is_lint_error() {
     // The validator must reject ~UNTIL without an explicit MAX guard (E010).
     let ast = Parser::parse(UNBOUNDED_LOOP).expect("must parse");
     let diags = Validator::validate(&ast, "unbounded_loop.nodus");
@@ -304,7 +304,7 @@ fn wfl_6_until_without_max_is_lint_error() {
 }
 
 #[test]
-fn wfl_6_bounded_loop_executes_within_limit() {
+fn bounded_loop_executes_within_limit() {
     // The UNTIL_QUALITY_LOOP fixture uses MAX:3 — execution must complete (not hang).
     let result = workflows::run(
         UNTIL_QUALITY_LOOP,
@@ -321,7 +321,7 @@ fn wfl_6_bounded_loop_executes_within_limit() {
 // ── Subsystem-dispatch seam ──────────────────────────────────────────
 
 #[test]
-fn wfl_7_executor_dispatches_through_provider_seam() {
+fn executor_dispatches_through_provider_seam() {
     // A custom ModelProvider replaces the default stub — the executor must route
     // GEN through it, proving the subsystem-dispatch seam is real and pluggable.
     let result = workflows::run_with_provider(
@@ -350,7 +350,7 @@ fn wfl_7_executor_dispatches_through_provider_seam() {
 // ── Result contract ────────────────────────────────────────────────────
 
 #[test]
-fn wfl_8_success_result_has_required_fields() {
+fn success_result_has_required_fields() {
     let result = workflows::run(
         SIMPLE_LOG,
         "simple_log.nodus",
@@ -373,7 +373,7 @@ fn wfl_8_success_result_has_required_fields() {
 }
 
 #[test]
-fn wfl_8_failure_result_has_required_fields() {
+fn failure_result_has_required_fields() {
     // NEVER-rule violation → Status::Failed; the result contract must still be complete.
     let result = workflows::run(
         PREF_AND_NEVER,
@@ -395,7 +395,7 @@ fn wfl_8_failure_result_has_required_fields() {
 // ── Human view ────────────────────────────────────────────────────────
 
 #[test]
-fn wfl_9_human_view_contains_required_sections() {
+fn human_view_contains_required_sections() {
     let out = workflows::transpile(SIMPLE_LOG, TranspileMode::Human)
         .expect("human transpile must succeed");
     assert!(!out.is_empty(), "human view must not be empty");
@@ -410,7 +410,7 @@ fn wfl_9_human_view_contains_required_sections() {
 }
 
 #[test]
-fn wfl_9_human_view_is_not_compact_syntax() {
+fn human_view_is_not_compact_syntax() {
     // The human form is prose for the client — it must not look like the machine form.
     let human = workflows::transpile(SIMPLE_LOG, TranspileMode::Human)
         .expect("human transpile must succeed");

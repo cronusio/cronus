@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn kb3_a_second_ingest_replaces_the_first_set_with_no_duplication() {
+    fn a_second_ingest_replaces_the_first_set_with_no_duplication() {
         let store = FakeStore::default();
         ingest_document(
             &store,
