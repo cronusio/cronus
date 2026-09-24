@@ -1,6 +1,6 @@
 # Self-Improvement
 
-**Version:** 1.0.8
+**Version:** 1.0.9
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -16,6 +16,8 @@ The self-improvement subsystem tracks what the agent gets wrong and distills wha
 - [l2-learning-loop.md](l2-learning-loop.md) - Dream cycle that runs the `templates` extraction phase.
 - [l2-agent-session.md](l2-agent-session.md) - Session outcomes trigger ask-back generation and calibration updates.
 - [l2-github-issue.md](l2-github-issue.md) - Error fingerprinting that feeds the mistake log.
+- [l2-execution-workspace.md](l2-execution-workspace.md) - The worktree workspace an executor is dispatched into (§4.7).
+- [l2-security.md](l2-security.md) - §4.11: a secret is never reproduced in any form, partial included (§4.15 redaction).
 
 ## 1. Motivation
 
@@ -24,7 +26,7 @@ A system that only remembers facts gets smarter about the world; a system that a
 ## 2. Constraints & Assumptions
 
 - All five signal tables share the same SQLite database as the background job queue (`<state>/jobs.sqlite`), avoiding an extra database file.
-- Store-open failures for any section produce empty signals, not errors. A partial brief is better than no brief.
+- Store-open failures for any section never fail the brief — a partial brief is better than no brief — but they are not reported as emptiness either: the section is marked *unavailable* with its reason, so "no calibration warning" never stands in for "the calibration store could not be read".
 - The brief surface joins all five signals at task start; sections are omitted entirely when empty.
 - Ask-backs are system-generated (drafted by the session pipeline, not the human); they surface as the highest-priority item in the brief.
 - Calibration operates at `(task_type, project)` granularity — broad enough to have signal, narrow enough to be actionable.
@@ -154,7 +156,7 @@ The trigger string normalisation allows path-based pattern matching without brit
 
 System-generated clarifying questions. When a session ends in failure or partial outcome with vague user intent, the session pipeline drafts one question and queues it as a pending ask-back for the next interaction.
 
-**Key invariant**: at most one pending ask-back per project at any time. This prevents question flooding — only the single most-relevant open question is surfaced in the brief.
+**Key invariant**: at most one pending ask-back per project at any time. This prevents question flooding — only one open question is surfaced in the brief: the oldest pending one, which holds the slot until it is served or dismissed (a later question is not stored meanwhile, §5).
 
 #### Schema
 
@@ -188,7 +190,7 @@ dismissed → (terminal)
 
 #### Brief integration
 
-The pending ask-back is always the **first** signal in the brief and is rendered with a high-priority marker. The user must answer it before the next task starts; the answer feeds back into `should_have_asked` once resolved.
+The pending ask-back is always the **first** signal in the brief and is rendered with a high-priority marker. It never blocks the next task: the user may answer it, dismiss it, or leave it — the client is not required to take part in execution and is asked only to resolve genuine ambiguity (`l1-office-model` OFF-5/OFF-6), and a system-drafted question is not that. An unanswered question stays pending; the answer, when given, feeds back into `should_have_asked`.
 
 ### 4.5 Reasoning templates
 
@@ -232,7 +234,7 @@ The template is only surfaced when both `task_type` and `domain` are provided to
 
 ### 4.6 Brief surface
 
-A single call that joins all five signals against the current working context. Called once at task start when the file set is known. Each signal source opens its own store connection independently; any failure yields an empty/`None` for that section without failing the brief.
+A single call that joins all five signals against the current working context. Called once at task start when the file set is known. Each signal source opens its own store connection independently; a failure never fails the brief, and the affected section is marked unavailable with its reason rather than returned as empty (§2).
 
 #### API
 
@@ -302,7 +304,7 @@ Advisor invariants:
   - Reads evidence before writing plan excerpts — never relays subagent line numbers as facts.
 
 Executor invariants:
-  - Dispatched with isolation: "worktree" — operates in a disposable git worktree.
+  - Dispatched into a disposable worktree execution workspace (l2-execution-workspace).
   - Touches ONLY files listed as in-scope in the plan.
   - Commits work inside the worktree; does NOT push or merge to any branch.
   - Runs every verification gate before moving to the next step.
@@ -311,7 +313,7 @@ Executor invariants:
 
 #### Dispatch contract
 
-The advisor spawns one executor subagent with `isolation: "worktree"`. The subagent prompt must inline the full plan text (the worktree contains only committed files — `plans/` may be uncommitted and unreachable). The executor preamble must also be inlined verbatim so the executor knows to skip updating the plan index.
+The advisor spawns one executor subagent in its own worktree execution workspace. The subagent prompt must inline the full plan text (the worktree contains only committed files — `plans/` may be uncommitted and unreachable). The executor preamble must also be inlined verbatim so the executor knows to skip updating the plan index.
 
 #### Verdict taxonomy
 
@@ -330,7 +332,7 @@ Verdict:
              Action: update index status to DONE; present diff summary + worktree path to user.
              Merging is ALWAYS the user's decision — advisor never merges, pushes, or commits to user's branch.
   REVISE   — fixable gaps present.
-             Action: SendMessage to the SAME executor (not a new one) with specific feedback per gap.
+             Action: send the feedback to the SAME executor session (not a new one), one item per gap.
              Maximum 2 revision rounds; if gaps persist after 2 rounds → BLOCK.
   BLOCK    — STOP condition hit, unrecoverable scope violation, or revision rounds exhausted.
              Action: mark BLOCKED in index with the reason; refine or rewrite the plan with lessons learned.
@@ -536,7 +538,8 @@ probe: error-handling-no-unwrap
 description: Production-path Rust code must not use unwrap() or panic!() on Result/Option
 pass_condition: grep finds 0 matches for .unwrap() in crates/ excluding #[cfg(test)]
 fail_indicator: .unwrap() found in non-test production code
-grader: grep -rn '\.unwrap()' crates/ --include='*.rs' | grep -v '#\[cfg(test)\]'
+grader: a syntax-aware lint over production code (e.g. the compiler linter's unwrap/panic lints with
+        test code allowed) — a line filter cannot tell a test module body from production code
 
 probe: discuss-phase-scope
 description: Discuss-phase must capture out-of-scope ideas in Deferred section, not implement them
@@ -752,7 +755,7 @@ Timeline data feeds the flow score computation (§4.12): inter-skill gaps become
 
 ### 4.14 Skill activity tracking
 
-Skills and extensions accumulate over time. Without lifecycle management, dormant skills remain in the active pool, dilute discovery, slow loading, and create maintenance debt. Usage-based activity tracking automatically transitions each skill through active → stale → archived states.
+Skills and extensions accumulate over time. Without lifecycle management, dormant skills remain in the active pool, dilute discovery, slow loading, and create maintenance debt. This section defines the **activity record** the lifecycle reads; the transitions themselves belong to the one curator of `l2-learning-loop` §4.3, whose thresholds and scope govern — there is not a second curator here.
 
 **Activity record:** One `.usage.json` file per skill, stored alongside `SKILL.md`.
 
@@ -775,23 +778,19 @@ Skills and extensions accumulate over time. Without lifecycle management, dorman
 - `patch_count`: incremented each time any file in the skill's directory is modified.
 - `last_activity_at`: updated on any of the above events.
 
-**State machine:**
+**State machine** (thresholds are `l2-learning-loop` §4.3's `stale_after_days` / `archive_after_days`, both measured from `last_activity_at`):
 
 | From | To | Trigger |
 | --- | --- | --- |
-| `active` | `stale` | No activity for 30 consecutive days |
-| `stale` | `archived` | No activity for 90 days since becoming stale |
+| `active` | `stale` | No activity for `stale_after_days` (default 30) |
+| `stale` | `archived` | No activity for `archive_after_days` (default 90) since `last_activity_at` |
 | `archived` | `active` | Any activity event (automatic reversal) |
 | `active` or `stale` | — | Never deleted (only archived) |
 | `pinned: true` | — | Pin prevents any state transition |
 
-**Curator sweep schedule:**
+**Sweep schedule:** the learning-loop curator runs these transitions on its idle trigger; `cronus workspace curator` forces an immediate sweep.
 
-- Hourly: detect newly idle skills; transition `active → stale` when `last_activity_at` > 30 days.
-- Daily: transition `stale → archived` when stale for more than 90 days with no activity since transition.
-- On demand: `cronus workspace curator` forces an immediate sweep.
-
-**Curator scope:** Only skills created or patched by agents in the current workspace. Bundled skills (shipped with Cronus) and hub-installed skills are excluded from curator management.
+**Curator scope:** only agent-generated skills (`source: generated`). Preset (bundled) skills, catalog-installed skills and user-added or imported (`custom`) skills are never auto-transitioned — including when an agent later patched one; a patch does not transfer ownership of a skill to the curator.
 
 **Discovery impact:**
 
@@ -845,7 +844,9 @@ The self-improvement cycle treats a skill document (SKILL.md) as learnable "prom
 └── steps/step_{N}/        — Per-step artifacts: patches, merged patch, eval
 ```
 
-**Secret redaction:** Before writing `config.json`, any config key whose name contains `api_key` is redacted to `{first4}...{last4}`. Config files are never stored without redaction.
+**Secret redaction:** Before writing `config.json`, every secret-shaped value — a key named like a token, key, secret, password or credential, or a value shaped like one (`l2-execution-sandbox` §4.4) — is replaced by `[REDACTED]`. No part of a secret is kept, not even a prefix and suffix: a partial value is still a disclosure (`l2-security` §4.11). Config files are never stored without redaction.
+
+**Installing the result:** a training run edits its own copies under `.planning/skill-training/`; the in-run gates (§4.15 step 6, §4.18) select among candidates and never touch an installed skill. Putting `best_skill.md` in place of an active skill is a pending revision reviewed like any other change to a skill in use (`l2-learning-loop` §4.1) — which is also why §4.16's force-injection is safe: it writes only into the run's copies.
 
 ### 4.16 Longitudinal momentum update
 
@@ -949,3 +950,10 @@ Before committing an evolved skill document to the training pipeline, a static s
 | `[LEARNING]` | `.design/main/specifications/l2-learning-loop.md` | Dream cycle that extracts templates |
 | `[SESSION]` | `.design/main/specifications/l2-agent-session.md` | Session outcomes that write ask-backs |
 | `[ERRORS]` | `.design/main/specifications/l2-github-issue.md` | Error fingerprinting feeding mistake log |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.9 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Config redaction kept a secret's first and last four characters and matched only `api_key` — full redaction of every secret-shaped value (`l2-security` §4.11 forbids partial values). §4.14 re-implemented the learning-loop curator with different timings (archive 120 days vs 90) and scope (skills "patched by agents") — it now defines only the activity record, the one curator governs. Ask-backs no longer block the next task (OFF-5/OFF-6), and the slot is described as first-come rather than "most relevant". Store failures mark a brief section unavailable instead of empty. Host-harness tool names in §4.7 replaced by the execution-workspace model. Installing a trained skill over an active one is a reviewed pending revision. The no-unwrap probe's line-filter grader could not exclude test modules — replaced by a syntax-aware lint. |
+| 1.0.8 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

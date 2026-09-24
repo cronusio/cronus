@@ -1,6 +1,6 @@
 # Memory Intelligence (Local Realization)
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-intelligence.md
@@ -54,6 +54,7 @@ This spec also **fixes the two parameters `l1-memory-intelligence` deferred to L
 | **MI-10** Capture-time temporal normalization | At capture, relative expressions in the content ("last week") are rewritten to absolute dates against the **observation instant** (defaulting to write time), normalizing the MEM-4 source text; distinct from and complementary to the §4.14 bi-temporal metadata. No generator → store verbatim (never fabricate a date). | **net-new** capture step |
 | **MI-11** Caller capture directives | Optional caller-scoped `include`/`exclude`/`custom-instruction` inputs steering extraction emphasis, recorded as capture provenance; they never lower the MI-6 honesty floor nor suppress a safety-relevant fact. Absent directives → baseline MI-6. | **net-new** directive inputs on the capture path |
 | **MI-12** Raw vs inferred capture | A per-write mode flag: `inferred` (model extracts salient facts; default) or `raw` (verbatim, no model). Raw is the local-first / audit-exact / no-generator escape hatch and MUST function with no model bound. Both produce ordinary items — uniform recall/lifecycle/trust/decay. Complements MI-3: MI-3 makes enrichment async, MI-12 makes it optional. | **net-new** write-mode flag; raw path reuses §4.3 minus the embed/extract step |
+| **MI-14** Anchored neighbourhood recall | A `neighbourhood(anchor, depth)` mode beside similarity (MI-1) and temporal-window (MI-2) recall: resolve the anchor (a record id, or the top hit of a query), then return the records immediately before and after it by transaction time up to the declared `depth` (bounded by a configured maximum), interleaving every record kind in one chronological sequence; each item carries its kind and its offset from the anchor, and the anchor is present and marked. Served by an index scan on `created_at` around the anchor — never by re-ranking a similarity result. Pending realization. | §4.14 transaction-time record owned; **net-new**: the anchored window mode |
 | **MI-13** Experience reuse | A recall-before-acting projection: query typed (`success`/`failure`/`insight`), quality-scored prior experiences (MI-2/MI-8 filters over procedure-kind items from MI-7); a sufficiently-similar high-quality **prior success** is reused directly **only** when a reuse gate (similarity ≥ σ **and** score ≥ τ **and** freshness **and** not safety-sensitive) passes; a **failure** injects as an avoid-signal (never reused); an **insight** injects as guidance. Every outcome is captured back typed+scored (MI-6/MI-7). Four guards: gated reuse, independent read/write, reused-not-re-derived attribution (MI-1 honesty), retained authority gate (a reused plan still passes SEC-9/SEC-10). | **net-new** projection composing MI-1/MI-2/MI-6/MI-7/MI-8 + the security gate |
 
 ## 4. Detailed Design
@@ -90,17 +91,18 @@ A checkpoint `C` is an opaque caller-held instant; `changed-since(last_session_s
 `l1-memory-intelligence` §4.3 left the ambiguous/unambiguous cutoff to L2. Fixed here, using the store's existing `confidence` (§4.15) and `trust_score` (§4.6):
 
 ```text
-[REFERENCE] classify(old, new):   // both concern the same subject/entity
+[REFERENCE] classify(old, new):   // both concern the same subject/entity; first matching rule wins
   duplicate  : semantic_sim(old,new) >= DEDUP_SIM         (§4.3 dedup threshold)   -> auto
   update     : new.valid_at strictly after old.valid_at
-               AND new.confidence >= old.confidence        -> auto-supersede (recency-dominant)
-  contradiction/conflict (AMBIGUOUS -> surface) when NEITHER dominates:
-               |new.confidence - old.confidence| < CONF_GAP_MIN   (default 0.15)
-               AND |new.trust_score - old.trust_score| < TRUST_GAP_MIN (default 0.15)
-               AND no strict valid-time recency ordering
+               AND new.confidence >= old.confidence        -> auto-supersede old (recency-dominant)
+  otherwise  : AMBIGUOUS -> surface, status = awaiting-adjudication
+               recommendation = merge     when |Δconfidence| < CONF_GAP_MIN (default 0.15)
+                                          AND |Δtrust_score| < TRUST_GAP_MIN (default 0.15)
+                              = keep-new  otherwise (a lead exists, e.g. newer but less confident)
+               // the gaps choose the recommendation shown to the adjudicator; they never auto-apply it
 ```
 
-So the split is **objective and local**: a clear duplicate or a strictly-newer higher-or-equal-confidence statement auto-supersedes (recorded via §4.14 `superseded_at`); everything genuinely balanced — comparable confidence *and* comparable trust *and* no recency winner — surfaces to the report. `CONF_GAP_MIN`/`TRUST_GAP_MIN` are config-tunable; the defaults bias toward auto-supersede so only real disagreement surfaces (drawback: surfacing fatigue, §6).
+So the split is **objective, local and total**: every pair lands in exactly one branch, and a contradiction is never left standing unrecorded (MEM-6). A clear duplicate or a strictly-newer higher-or-equal-confidence statement auto-supersedes (recorded via §4.14 `superseded_at`); everything else — including a newer statement with lower confidence, where recency and confidence point in opposite directions — surfaces to the report with a recommendation, and a person or the adjudicating agent decides. `CONF_GAP_MIN`/`TRUST_GAP_MIN` are config-tunable; the defaults bias toward auto-supersede so only real disagreement surfaces (drawback: surfacing fatigue, §6).
 
 ### 4.4 Digest cadence (MI-5) — discharging the L1 deferral
 
@@ -117,7 +119,7 @@ The closed vocabulary compiles to a parameterized SQL `WHERE` fragment over inde
   active   -> in default recall              (write default)
   paused   -> excluded, reversible           (user mute)
   archived -> excluded, opt-in include        (MC-6 sets; auto-thaw on touch)
-  deleted  -> targeted forget (existing §4.13)
+  deleted  -> user-initiated targeted forget of the item (audited; the only state that removes content)
 PRUNE GUARD: MEM-5 decay may lower ranking in any state,
              but MUST NOT delete an item whose state is paused|archived.
 ```
@@ -155,7 +157,7 @@ The reuse projection wraps a costly action in a recall-before-acting gate; the g
 ## 6. Drawbacks & Alternatives
 
 - **`answer` latency.** Grounded synthesis + verification costs more than raw recall. Mitigated by keeping `answer` a distinct sibling (callers needing hits call `recall`) and by the extractive-degrade path.
-- **Surfacing fatigue (MI-4).** Too low a `CONF_GAP_MIN` turns every minor update into an adjudication prompt. Mitigated by the recency-dominant auto-supersede branch and defaults biased toward auto-resolution (§4.3).
+- **Surfacing fatigue (MI-4).** Every contradiction that is neither a duplicate nor a recency-dominant update surfaces for adjudication. Mitigated by the recency-dominant auto-supersede branch, which absorbs the common case — a newer statement at least as confident as the old one — and by the recommendation the gaps attach, which makes each surfaced report a one-step decision (§4.3).
 - **Alternative — fold into `l2-memory-store`.** Rejected for the same flexibility/scalability reason as the consolidation layer: the caller-facing surface must be realizable over an alternative `UserDataStore` backend, which welding it into the SQLite store forecloses. A separate L2 behind the seam keeps it backend-swappable and keeps the substrate spec Stable and small.
 - **Alternative — a separate memory-intelligence engine.** Rejected: every operation composes an existing engine (knowledge-base, claim-verification, scheduler, dashboard); a parallel engine would fork that logic.
 
@@ -174,5 +176,6 @@ The reuse projection wraps a costly action in a recall-before-acting gate; the g
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): MI-14 (anchored neighbourhood recall) compliance row added, pending realization. The §4.3 MI-4 classifier was not total — a newer-but-less-confident statement, or a lead on one signal without a recency order, matched no branch and a contradiction could stand unrecorded; it now surfaces every non-duplicate, non-update pair with a recommendation chosen by the gap thresholds, exactly as the shipped classifier does (the thresholds never auto-apply). `deleted` no longer points at the quick-memory file forget. §6 surfacing-fatigue note corrected. |
 | 1.0.0 (Stable) | 2026-07-11 | Promoted RFC→Stable via Post-Update Review (spec-critic + prompt-engineer PASS), same session as authoring — the review found no blocker: it composes Stable specs (`l2-memory-store` §4.2/4.3/4.4/4.14/4.15, KB-6, CV-3/CV-4) without contradicting any, and discharges its two L1-deferred parameters concretely. Content unchanged from the initial cut (status-only promotion). Stable = design agreed; concrete SQL/algorithm choices validated during implementation. Depends on `l2-memory-consolidation` (Stable) for MC-8 signals. |
 | 1.0.0 | 2026-07-11 | Initial RFC — local realization of MI-1…MI-13 as the caller-facing query surface behind the `UserDataStore` seam, composing `l2-memory-store` (§4.2/4.3/4.4/4.6/4.14/4.15) and `l2-memory-consolidation` (MC-8 signals) with no new engine. Realizes the `answer` grounded projection (KB-6 + CV-3/CV-4, extractive degrade), the three temporal modes over §4.14, immediate recall-visibility, conflict routing, the intelligence digest, the capture policy, procedural distillation, the closed structured predicate compiled to SQL, reversible lifecycle states with the prune guard, capture-time normalization, capture directives, raw/inferred modes, and gated experience reuse. **Discharges the two L1-deferred parameters**: the MI-4 ambiguity threshold (objective confidence/trust-gap + recency-dominance rule, §4.3) and the MI-5 digest cadence (per-session-close + daily floor, opt-in per office, §4.4). Kept a separate L2 for backend-swappability and small blast radius (parallels l2-memory-consolidation). |

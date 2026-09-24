@@ -1,6 +1,6 @@
 # Workflow Runtime
 
-**Version:** 1.3.1
+**Version:** 1.3.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-workflow-language.md
@@ -111,7 +111,7 @@ Schema and grammar are **data, not code**: the vocabulary schema and the formal 
 4. `validator` + full lint rules (proves WFL-5).
 5. full command set + control flow (`?if`/`?switch`/`~retry`/`~map`/`!halt`/`!pause`).
 
-**Parity testing:** the reference implementation's sample workflows + lint cases form a golden corpus; the Rust crate must produce equivalent validation verdicts, execution results, and transpilation output. <!-- TBD: extract the reference test corpus into shared fixtures -->
+**Parity testing:** the reference implementation's sample workflows + lint cases form a golden corpus; the Rust crate must produce equivalent validation verdicts, execution results, and transpilation output. The corpus lives in `crates/nodus/tests/fixtures/` as the normative fixture set every parity and round-trip test reads.
 
 ### 4.6 Step-file architecture for disciplined workflow execution
 
@@ -164,7 +164,7 @@ status: in-progress   # draft | in-progress | complete
 ---
 ```
 
-The frontmatter is the authoritative state source. On resume (session restart, context compaction), the agent reads the frontmatter to determine where to continue — conversation history is not reliable for this purpose.
+The authoritative state is the executor's own durable step journal: a step is recorded complete when its result is accepted, and the frontmatter mirrors that journal so a reader — or an agent resuming after compaction — can see where the run stands without the conversation history, which is not reliable for this purpose. A `stepsCompleted` entry the executing agent writes itself is a claim, not a completion; on resume the executor trusts its journal.
 
 #### Append-only document building
 
@@ -264,14 +264,16 @@ Python stdlib:
   Platform ships: pathlib.Path
 
 Rust stdlib / ecosystem:
-  You think you need: custom error type boilerplate
-  Platform ships: thiserror (already in Cronus dependencies)
+  You think you need: an error-derive crate for error type boilerplate
+  Platform ships: std::error::Error + Display impls (Cronus is std-first; no error-derive
+                  crate is a dependency)
 
   You think you need: custom serialization
-  Platform ships: serde (already in Cronus dependencies)
+  Platform ships: serde (already a workspace dependency)
 
-  You think you need: custom async runtime
-  Platform ships: tokio (already in Cronus dependencies)
+  You think you need: an async runtime
+  Platform ships: std::thread with bounded worker threads — the core is synchronous by
+                  design and carries no async runtime (l2-core-library §2)
 
 SQL / Database:
   You think you need: manual pagination loop
@@ -417,12 +419,12 @@ These 11 codes are the current crate surface. The upstream **v0.7** registry def
 | --- | --- | --- |
 | `scaffold` | `(name: &str) -> WorkflowFile` | Return a minimal valid AST with one `GEN` step |
 | `validate` | `(source, filename) -> Result<ValidationReport>` | Parse + lint; all diagnostics regardless of severity |
-| `run` | `(source, filename, input?) -> Result<RunResult, Diagnostics>` | Validate then execute with stub provider; fast-fail on block errors (WFL-5) |
+| `run` | `(source, filename, input?) -> Result<RunResult, Diagnostics>` | Validate then execute with the stub provider — a test and development entry point; fast-fail on block errors (WFL-5) |
 | `transpile` | `(source, mode: TranspileMode) -> Result<String>` | `Compact` = lossless round-trip · `Human` = one-way prose |
 | `test` | `(source, filename) -> Result<TestReport>` | Execute all `@test:` blocks and aggregate pass/fail |
 | `run_with_provider` | `(source, filename, input?, provider) -> Result<RunResult, …>` | Like `run` but with a custom `ModelProvider` |
 
-The `ModelProvider` trait is the extension point for real model integration; the built-in `StubProvider` is used for tests and early development.
+The `ModelProvider` trait is the extension point for real model integration; the built-in `StubProvider` is used for tests and early development. The product's `workflow run` is to go through `run_with_provider` with the host's inference bridge (`l2-model-runtime` §4.1–§4.2), and stub output is to be labelled as stub output in the run's result and in its manifest's execution mode (`l1-nodus-observability` HO-12) — never presented as a model's answer (INV-9). **Partial:** as shipped, `workflow run` calls `run`, so every model step returns stub text, the verb reports the run as `ok` (a `Partial` run included), and the manifest records the default `Real` mode — only the text's own `[STUB …]` prefix tells a reader the answer is not a model's. Wiring the bridge also meets a nodus limit: `run_with_provider` fixes a permit-everything policy, so no current entry point combines a real model with the host's policy gate (`l2-nodus-runtime` §4.5).
 
 #### Executor boot sequence
 
@@ -430,10 +432,12 @@ When `run` or `run_with_provider` fires, the executor performs these steps in or
 
 1. Load schema (from `§runtime.core`).
 2. Internalize `!!` absolute rules (violations halt immediately).
-3. Internalize `!PREF` soft preferences (advisory; yielded to `!!` rules).
-4. Register `@in` / `@ctx` inputs into the value environment.
-5. Match `@ON` triggers against the current input.
+3. Note `!PREF` soft preferences (advisory; yielded to `!!` rules — nothing consumes them yet).
+4. Register `@in` defaults and overlay the caller's input.
+5. `@ON` trigger matching belongs to the host; the executor performs none.
 6. Execute `@steps` sequentially; thread `→` pipeline targets between steps.
+
+The authoritative sequence is `l2-nodus-runtime.md` §4.4, which also records what step 4 does not yet do: it neither checks that a required input was supplied nor reads a field's declared type, and it copies every input key — runtime-owned names included — into the environment. A host that feeds trigger payloads or channel messages into `input` therefore filters them to the declared `@in` fields itself until the runtime does (`l2-nodus-runtime.md` §3, NL-8/NL-9).
 
 ### 4.9 Upstream parity gaps (schema v0.4.6 → v0.7)
 
@@ -513,6 +517,7 @@ Single-character `;` inline comments (the crate recognizes only `;;`) and the `\
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.3.2 | 2026-09-24 | Consistency pass (2026-09-24): The platform-capability table told generated code that `tokio` and `thiserror` were already Cronus dependencies; neither is, and the core is synchronous by design — corrected. Step-file frontmatter was the authoritative state though the executing agent writes it — the executor's durable journal is authoritative and an agent-written completion is a claim. The product's `workflow run` uses the inference bridge, and stub output is labelled as such (INV-9, HO-12). Yesterday's normative sentence that `workflow run` uses the inference bridge described intent, not the shipped verb: it calls the stub `run`, reports `Partial` as `ok`, and records a `Real` manifest — now marked Partial, with the nodus limit that no entry point combines a real model with the host's policy gate. The boot-sequence list now matches the executor (no trigger matching, no advisory preference context) and points to `l2-nodus-runtime` §4.4 for what input registration does not yet check. A TBD asking to extract the reference corpus into shared fixtures is resolved — the corpus is `crates/nodus/tests/fixtures/`. |
 | 1.3.1 | 2026-06-25 | §4.9: marked the **nodus workspace** (`l1-nodus-language.md` §4.6, `l2-nodus-runtime.md` §4.7) as authoritative owner of the parity gap; this spec retains the integration/host-binding view. |
 | 1.3.0 | 2026-06-25 | Recorded the upstream schema **v0.4.6 → v0.7** parity gap as the implementation target — new §4.9 enumerating control constructs (`?SWITCH`/`~MAP`/`~RETRY`/`!HALT`/`!PAUSE`), operators/expressions (`MATCHES`, `?.`, `??`, `WHERE`/`FIRST`/`LAST`, string interpolation), HITL dialog commands (`ASK`/`CONFIRM`), `@needs:` selective schema loading, the 24-code error registry, closed flag/validator/type registries, macro execution, `Status::Paused`, and `@ON` priority. Corrected the embedded schema version (v0.4.5 → v0.4.6). |
 

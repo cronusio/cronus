@@ -1,6 +1,6 @@
 # Navigation
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-navigation-model.md
@@ -29,7 +29,7 @@ The model guarantees a consistent, memorable structure across platforms. Realizi
 - The sidebar catalog and its order are a frontend constant; users may pin shortcuts above it but cannot reorder/hide the canonical set (NV-1).
 - Floor lazy loading calls the core `office.is_loaded` / `office.load` / `office.unload` capability; the home floor is never unloaded.
 - Status icons subscribe to the OfficeState event stream — no polling (NV-3).
-- Local settings files are `.gitignore`d by default (machine-specific paths/keys).
+- Local settings live with the office's configuration in its state root (`<ws>/config.json`, `l2-filesystem-layout` §4.3), never among the project's tracked files. They hold machine-specific paths and preferences — never secrets, which live only in the state tier's secret store (SEC-1).
 
 ## 3. Invariant Compliance (Layer 2)
 
@@ -39,7 +39,7 @@ The model guarantees a consistent, memorable structure across platforms. Realizi
 | NV-2 Office tab lazy loading | On start the shell loads the home floor + most-recently-active project floor via `office.load`; other tabs render a placeholder until activated. A closed tab with no running tasks calls `office.unload`. |
 | NV-3 Live status indicator | Each floor tab subscribes to `OfficeStateChanged` (office-control §4.1); the icon re-renders on each event, never from a snapshot older than one cycle. |
 | NV-4 Two-tier settings | The Settings tab renders the **Local** tier in-place (active office config) and opens the **Global** tier as a full-screen overlay (§4.8), reached also from L0 File▸Settings; each writes through `config.set(scope, …)` and reloads via config-hotreload. A tier label separates them. |
-| NV-5 IDE integration | The floor settings dropdown's "Open in IDE" reads `workspace_root` (local) + `configured_ide` (global) and calls the Tauri `shell_spawn` command `{ide} {root}`. |
+| NV-5 IDE integration | The floor settings dropdown's "Open in IDE" reads `workspace_root` (local) + `configured_ide` (global) and spawns the IDE executable with the root as an argument vector entry — never through a shell (§4.5). |
 | NV-6 Strict layer nesting | The React tree mirrors Building ⊃ Floor ⊃ Subsystem ⊃ Mechanism; each level's router is scoped to one parent instance and cannot address a sibling's subtree. |
 | NV-7 Building frame & app menu | The L0 frame hosts File/Edit/View/Help (leaf lists per l1-navigation-model §4.6; rendered as an in-window burger menu, or a platform-native menu bar where available) plus Providers/ACP, Process Monitor, a toggleable right-edge project **file-tree dock** (§4.7), and a **command palette** (§4.6); these act across all floors. |
 | NV-8 Floor = disk-bound tab | Floor creation resolves through three affordances (File menu, "+" control, folder drag-drop) all calling `workspace.create`; a project floor binds `workspace_root` at creation, stable for its life. |
@@ -83,11 +83,11 @@ Both arrays are frozen order (NV-1); badge counts come from per-subsystem live s
 
 ### 4.4 Two-tier settings
 
-Local settings render in-place under the Settings tab (active office config); the Global tier opens as a full-screen overlay (§4.8). Global settings persist to the app global config file; local settings travel with the office workspace config. Writes go through the config service so config-hotreload applies them live. Local files carry machine-specific paths/keys and are excluded from the office git repo.
+Local settings render in-place under the Settings tab (active office config); the Global tier opens as a full-screen overlay (§4.8). Global settings persist to the app global config file; local settings persist with the office's config in its state root. Writes go through the config service so config-hotreload applies them live. Neither tier holds a secret (SEC-1), and neither is written among the project's tracked files.
 
 ### 4.5 IDE launch
 
-`open_in_ide(office)` → read `workspace_root` (local) + `configured_ide` (global, default `$EDITOR` → platform default VS Code) → Tauri `shell_spawn`. The editor is external; the app is launcher-only.
+`open_in_ide(office)` → read `workspace_root` (local) + `configured_ide` (global, default `$EDITOR` → platform default VS Code) → resolve the IDE to an executable and spawn it with `workspace_root` as a separate argument. No shell is involved: a path containing spaces, quotes, or shell metacharacters stays one argument and is never interpreted. `configured_ide` decides what the app will run, so it is changed only through Settings by the user. The editor is external; the app is launcher-only.
 
 ### 4.6 Command palette (L0)
 
@@ -131,3 +131,4 @@ A toggleable edge dock (l1-application-shell AS-9) on the trailing side, scoped 
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — four-layer component tree, floor tab bar with lazy load + live OfficeState icons, frozen sidebar catalog, recursive mechanism sub-nav, two-tier settings, IDE launcher; maps NV-1…NV-10. |
 | 1.1.0 | 2026-09-02 | Core Team | Tracks l1-navigation-model v1.3.0. §4.3 splits the catalog into `SIDEBAR_PRIMARY` + a foot `SIDEBAR_UTILITY` run (Pulse removed — now a Schedule L3 facet). §4.1 component tree adds the right-edge file-tree dock, the command-palette overlay (AS-10), and the full-screen global-settings overlay. New §4.6 command palette, §4.7 file-tree dock, §4.8 global-settings overlay. NV-1/4/7/10 compliance rows updated. Palette/dock/overlay are thin-runtime view state — no core layout persistence in this slice. Added `l2-design-system` as the token-contract source every surface renders from. |
+| 1.1.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): "Open in IDE" built `{ide} {root}` for a shell spawn, so a workspace path or configured command could be interpreted as shell syntax — the IDE is spawned with an argument vector and no shell, and `configured_ide` is changed only through Settings. Local settings were described as git-ignored files carrying "keys" in the project repository — they live in the office's state root and never hold secrets (SEC-1). |

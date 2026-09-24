@@ -1,6 +1,6 @@
 # Configuration Hot-Reload
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-doctor.md, l1-architecture.md
@@ -16,7 +16,8 @@ Watches the workspace configuration file for changes and applies them without re
 - [l2-extension-registry.md](l2-extension-registry.md) - Plugin registry reloaded on config change.
 - [l2-scheduler.md](l2-scheduler.md) - Cron service restarted when scheduler config paths change.
 - [l2-plugin-hooks.md](l2-plugin-hooks.md) - File hooks reloaded when hook config paths change.
-- [l2-security.md](l2-security.md) - Secrets fields in config are never logged; redaction applies to reload diagnostics.
+- [l2-security.md](l2-security.md) - Secrets fields in config are never logged; redaction applies to reload diagnostics; config integrity shields catch authority-plane drift (§4.6).
+- [l2-office-control.md](l2-office-control.md) - The drain-and-checkpoint a safe restart performs before respawning.
 
 ## 1. Motivation
 
@@ -34,9 +35,11 @@ A long-running agent daemon accumulates state across sessions. Restarting it eve
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| DOC-2 Auto-repair | Hot-reload is the low-blast-radius repair path for config drift; full restart is the escalation. |
-| DOC-4 Logged | Every reload plan (hot or restart) is logged with changed paths and chosen actions. |
-| SEC-5 No secret egress | Changed config paths are never logged in full; only the key-path suffix is emitted, never the value. |
+| HEAL-2 Safe self-repair | Applying a user's config edit in place is the low-blast-radius path; a full restart is the escalation. A change that fails to parse or validate is never applied — the running config stays in force and the error is reported (§4.7). |
+| HEAL-5 Traceable | Every reload plan (hot or restart) is logged with changed paths and chosen actions. |
+| HEAL-8 Build-parity skew | A hot action that loads code (`reload-plugins`, `reload-hooks`) records the content identity it loaded, so the doctor's build-parity probe can report a process still holding an older build than the one on disk, instead of leaving it to surface as a mystery error. |
+| SEC-5 No secret leakage in output | Changed config paths are never logged in full; only the key-path suffix is emitted, never the value. |
+| SEC-10 Authority self-containment | Keys and files on the authority plane — sandbox policy, permission rules, autonomy level, egress and routing authorization, credential grants — are not applied from a watched file change. They take effect through the human-principal path that writes them; a watched change to them that the host did not author is drift, reported by the config integrity shields (`l2-security` §4.6) and never applied (§4.2). |
 | INV-1 Embeddable core | Inherited, not realized here: this is a module inside the embeddable core, not the library boundary itself; it adds no frontend or platform dependency that would compromise embeddability. |
 | INV-2 Logic in core only | This subsystem IS core logic and lives in the core; reconfiguration behavior is exposed only through the core, never pushed into a frontend. |
 | INV-3 Frontend interchangeability / command parity | N/A: reload is an internal doctor operation, not a user-facing capability with a per-frontend surface. Were it ever surfaced manually, parity would be the frontend's concern, not this module's. |
@@ -99,7 +102,6 @@ Built-in rules (evaluated in order):
 | `diagnostics.stuckSessionWarnMs` | none | — |
 | `diagnostics.stuckSessionAbortMs` | none | — |
 | `diagnostics.memoryPressureSnapshot` | hot | — |
-| `hooks.gmail` | hot | `restart-heartbeat` |
 | `hooks` | hot | `reload-hooks` |
 | `agents.defaults.heartbeat` | hot | `restart-heartbeat` |
 | `agents.defaults.models` | hot | `restart-heartbeat` |
@@ -115,6 +117,8 @@ Built-in rules (evaluated in order):
 | *(no match)* | restart | — |
 
 Paths not matched by any prefix default to `restart`. This is the safe fallback: unknown config changes trigger a full restart rather than silent misapplication.
+
+Authority-plane paths sit outside this table altogether. Whatever their prefix, a watched change to one is compared with what the host last wrote; if it differs, the plan carries it as `drift`, the integrity shields report it, and nothing is applied — hot or by restart. A restart must not be a way to load an authority change the agent could have written to disk.
 
 ### 4.3 Skills snapshot invalidation
 
@@ -193,11 +197,11 @@ HotReloadStatus {
 
 When the watcher detects a file change:
 
-1. Read new config from disk; deserialize.
+1. Read new config from disk; deserialize and validate. If either fails, keep the running config, record the error (surfaced by the doctor's `[config]` probe), and stop — a half-read file is never applied.
 2. Diff against the in-memory current config snapshot → `changed_paths`.
-3. Match each path against the rule table → build `ConfigReloadPlan`.
+3. Set aside authority-plane paths as drift (§4.2); match each remaining path against the rule table → build `ConfigReloadPlan`.
 4. If `isNoopPlan(plan)` → log DEBUG and return.
-5. If `restart_daemon` → initiate safe restart sequence (see `l2-doctor.md §4.3`).
+5. If `restart_daemon` → initiate the safe restart: drain and checkpoint as `l2-office-control` describes for a pause (OC-1), then respawn.
 6. Otherwise:
    a. Emit `skills snapshot invalidation` if applicable (§4.3).
    b. Dispatch hot actions to subsystem service bus in order.
@@ -219,3 +223,10 @@ When the watcher detects a file change:
 | `[ARCH]` | `.design/main/specifications/l1-architecture.md` | Daemon architecture |
 | `[HOOKS]` | `.design/main/specifications/l2-plugin-hooks.md` | File hook reload trigger |
 | `[SCHED]` | `.design/main/specifications/l2-scheduler.md` | Cron service restart trigger |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.3 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited DOC-2/DOC-4 (the doctor prefix is HEAL) — now HEAL-2/HEAL-5, plus HEAL-8 for code-loading hot actions. Security: a watched change to any config path was applied, including authority-plane keys an agent able to write the file could change (SEC-10) — those are held back as drift for the integrity shields, never applied hot or by restart. An unparseable or invalid file is never applied. The safe-restart reference pointed at the doctor's runbook — it is the office-control drain and checkpoint. A foreign `hooks.gmail` rule removed. |
+| 1.0.2 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

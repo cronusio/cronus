@@ -1,6 +1,6 @@
 # Multi-User Authentication
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md
@@ -16,6 +16,7 @@ Concrete multi-user authentication: bcrypt password storage, 7-day session token
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `<state>/auth.json` and `<state>/sessions.json` locations.
 - [l2-role-catalog.md](l2-role-catalog.md) - Agents have roles; users have privileges — these are separate concepts.
 - [l2-budget-engine.md](l2-budget-engine.md) - `max_messages_per_day` in privilege map is enforced by the budget engine.
+- [l1-capability-reachability.md](l1-capability-reachability.md) - REA-1: user administration is a human-only surface the agent cannot reach.
 
 ## 1. Motivation
 
@@ -26,7 +27,7 @@ A desktop and mobile application serving multiple household members or team coll
 - Passwords stored as bcrypt hashes; never logged or included in exports.
 - Session tokens are random 32-byte hex strings with a 7-day TTL, persisted atomically to `sessions.json`.
 - TOTP uses RFC 6238; 8 single-use backup codes are generated at enrollment.
-- The sentinel username `internal-tool` is the most dangerous reserved name: the middleware grants admin unconditionally to any request whose `current_user == "internal-tool"`.
+- The sentinel username `internal-tool` is the most dangerous reserved name: it is the identity of the internal loopback channel (`l2-security` §4.5), and a human account carrying it could pass as that channel.
 - All mutations to `auth.json` and `sessions.json` use the atomic-write protocol (see §4.7).
 - A deleted user's sessions are revoked immediately (not at cookie expiry).
 
@@ -37,6 +38,7 @@ A desktop and mobile application serving multiple household members or team coll
 | SEC-1 Secret isolation | Password hashes and TOTP secrets in `auth.json` (mode 0600); never logged. |
 | SEC-2 Safe defaults | `DEFAULT_PRIVILEGES` disables shell, file access, MCP, email, calendar for new users. |
 | SEC-7 Auditable | Every user create/delete/rename/promote/demote action is logged with requester. |
+| SEC-10 Authority self-containment | User administration — create, delete, set-priv, set-admin, revoke-sessions — writes the authority plane and is a human-only surface (`l1-capability-reachability` REA-1): no model-produced call reaches these verbs, and the `internal-tool` channel never acts above the session that issued its call (§4.3). |
 
 ## 4. Detailed Design
 
@@ -85,9 +87,9 @@ The following usernames may never be created or renamed into:
 RESERVED_USERNAMES = { "internal-tool", "api", "demo", "system" }
 ```
 
-`internal-tool` is the most critical: the middleware grants admin unconditionally for `current_user == "internal-tool"`. Creating a real account with this name would silently bypass every `require_admin` gate. The other three names collide with synthetic owner sentinels used in task scheduling, research routing, and bearer-token attribution.
+`internal-tool` is the most critical: it names the internal loopback channel, and a real account with this name could present itself as that channel. The channel authenticates *where a call came from*, not *who may do what*: a call arriving through it carries the privileges of the session that issued it and never more — it never satisfies `require_admin` on its own, and it can never write the authority plane (`l1-security` SEC-10; `l2-security` §4.5). A design that granted admin to the channel name would hand every model-issued internal call administrator rights. The other three names collide with synthetic owner sentinels used in task scheduling, research routing, and bearer-token attribution.
 
-Any `auth.json` rows with reserved names are silently dropped at startup (fail-closed).
+Any `auth.json` rows with reserved names are dropped at startup (fail-closed); each drop is logged with the row's name.
 
 ### 4.4 Session lifecycle
 
@@ -99,8 +101,8 @@ SessionToken {
 }
 ```
 
-- **Issue:** password verified → TOTP verified (if enabled) → `secrets.token_hex(32)` stored in `sessions.json`.
-- **Validate:** check expiry; re-check that `username` still exists in `auth.json` (orphan guard — deleted users are kicked immediately).
+- **Issue:** password verified → TOTP verified (if enabled) → `secrets.token_hex(32)` returned to the client; `sessions.json` stores only `SHA-256(token)` with the record, never the token itself, so a copy of the file yields no usable session.
+- **Validate:** hash the presented token and look it up; check expiry; re-check that `username` still exists in `auth.json` (orphan guard — deleted users are kicked immediately).
 - **Revoke on delete:** when a user is deleted, all their session tokens are purged before the auth row is removed.
 - **Revoke on scope:** `revoke_user_sessions(username, except_token?)` allows a "sign out all other devices" flow.
 
@@ -175,3 +177,10 @@ The PID suffix prevents two concurrent processes from colliding on the rename ta
 | `[SECURITY]` | `.design/main/specifications/l1-security.md` | SEC-1/SEC-2 invariants |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | auth.json / sessions.json location |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The `internal-tool` channel no longer "grants admin unconditionally": that made every model-issued internal call pass `require_admin` (SEC-10 hole, cf. `l2-security` §4.5); the channel carries the issuing session's privileges. SEC-10 compliance row: user administration is a human-only surface (REA-1). `sessions.json` stores token hashes, never tokens (the persisted store is not yet built, so no drift). Dropped reserved-name rows are logged. |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

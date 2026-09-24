@@ -1,6 +1,6 @@
 # File Store (Implementation)
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-file-management.md
@@ -12,7 +12,7 @@ domain-tier reference algebra (`crates/domain/src/file_store.rs`) proving conten
 deduplication, decoupled metadata, and reference-tracked garbage collection over an in-memory
 store — pure, I/O-free, and directly tested against those properties. **Not yet built**: the
 production mechanism — a SQLite schema for file metadata, SHA-256 content addressing (the
-algebra uses a deterministic std hash as its seam-free stand-in), an async upload pipeline, a
+algebra uses a deterministic std hash as its seam-free stand-in), a streaming upload pipeline, a
 configurable storage backend trait, access-control integration, MIME detection, and a GC
 scheduler. §4.1 marks exactly which parts of the design below are live and which are the
 target this module's own doc comments name as unbuilt seams.
@@ -20,7 +20,7 @@ target this module's own doc comments name as unbuilt seams.
 ## Related Specifications
 
 - [l1-file-management.md](l1-file-management.md) - The concept this spec implements.
-- [l2-resource-sharing.md](l2-resource-sharing.md) - `access-grants`; FM-4 is unbuilt at this layer (§4.1) and would compose with this the way `knowledge_access.rs`'s `GatedKnowledge` already composes with the knowledge store.
+- [l2-resource-sharing.md](l2-resource-sharing.md) - The grant functions (§4.3 there); FM-4 is unbuilt at this layer (§4.1) and would compose with this the way `knowledge_access.rs`'s `GatedKnowledge` already composes with the knowledge store.
 - [l2-knowledge-store.md](l2-knowledge-store.md) - `crates/domain/src/knowledge_ingest.rs` is the one real caller of `FileStore` today, storing ingested blobs through it.
 - [l2-notes.md](l2-notes.md) - Note content is designed to embed `FileId` for inline images once both the rich-content-tree and the storage-backend seams are built (§4.1); not wired yet.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Blob storage path under the mutable state tier — the target for the unbuilt storage backend.
@@ -31,8 +31,8 @@ Multiple subsystems (knowledge base, notes, chat attachments) need to store and 
 
 ## 2. Constraints & Assumptions
 
-- Default storage backend is the local filesystem (under the state tier's `files/` directory). Object stores (S3-compatible) are a pluggable backend via a trait.
-- Blob paths are derived from the content hash (`<sha256[0:2]>/<sha256[2:4]>/<sha256>`) — identical to the Git object store layout — enabling directory-level sharding.
+- Default storage backend is the local filesystem (under the state tier's `files/` directory). Object stores (S3-compatible) are a pluggable backend via a trait — an opt-in remote destination for user data, so it is egress-gated and needs the user's explicit grant (SEC-3); nothing leaves the device by default.
+- Blob paths are derived from the content hash (`<sha256[0:2]>/<sha256[2:4]>/<sha256>`) — a two-level variant of the Git object store layout — enabling directory-level sharding.
 - MIME type is determined server-side using magic bytes (first 4 KiB of content); the client-supplied MIME hint is advisory and may be overridden.
 - The reference count for deduplication is maintained by counting `file` rows sharing the same `hash` and `storage_path`; no separate refcount column.
 
@@ -68,7 +68,7 @@ realizing the storage-backend/schema seam should build against it rather than st
 ```sql
 [REFERENCE]
 CREATE TABLE file (
-    id           TEXT PRIMARY KEY,       -- fil/ prefix
+    id           TEXT PRIMARY KEY,       -- fil-prefixed typed ID
     owner_id     TEXT NOT NULL,
     name         TEXT NOT NULL,          -- original filename
     mime_type    TEXT NOT NULL,
@@ -78,7 +78,8 @@ CREATE TABLE file (
     meta         TEXT,                   -- JSON
     status       TEXT NOT NULL DEFAULT 'ready',  -- uploading|ready|deleted
     created_at   INTEGER NOT NULL,
-    updated_at   INTEGER NOT NULL
+    updated_at   INTEGER NOT NULL,
+    deleted_at   INTEGER                 -- set with status = 'deleted'; GC's retention clock (§4.6)
 );
 CREATE INDEX ix_file_owner  ON file(owner_id);
 CREATE INDEX ix_file_hash   ON file(hash);
@@ -101,20 +102,20 @@ CREATE INDEX ix_fileref_resource ON file_reference(resource_type, resource_id);
 
 ```rust
 [REFERENCE]
-/// Pluggable backend for blob storage.
-#[async_trait]
+/// Pluggable backend for blob storage. Synchronous like every engine seam
+/// (`l2-core-library` §2); streaming is a pull-based reader.
 pub trait StorageBackend: Send + Sync {
-    /// Write a blob; returns the backend-relative storage_path.
-    async fn write(&self, hash: &str, data: &[u8]) -> Result<String>;
+    /// Write a blob from a reader; returns the backend-relative storage_path.
+    fn write(&self, hash: &str, data: &mut dyn Read) -> Result<String>;
 
     /// Check if a blob already exists (for deduplication).
-    async fn exists(&self, storage_path: &str) -> Result<bool>;
+    fn exists(&self, storage_path: &str) -> Result<bool>;
 
     /// Read a blob as a byte stream.
-    async fn read(&self, storage_path: &str) -> Result<BoxStream<'static, Result<Bytes>>>;
+    fn read(&self, storage_path: &str) -> Result<Box<dyn Read + Send>>;
 
     /// Delete a blob.
-    async fn delete(&self, storage_path: &str) -> Result<()>;
+    fn delete(&self, storage_path: &str) -> Result<()>;
 }
 
 /// Default local filesystem backend.
@@ -154,23 +155,25 @@ graph TD
     RECORD --> OK[Return FileId]
 ```
 
+The dedup check, the blob write, and the record insert run on the store's single writer (`l2-technology-stack` §4.7), and GC deletes blobs on that same writer — so a blob can never be collected between being found to exist and being referenced by the new record.
+
 ### 4.4 Download — Access-Controlled (target design, unbuilt)
 
 ```rust
 [REFERENCE]
-pub async fn download_file(
+pub fn download_file(
     store       : &FileStore,
-    grants      : &AccessGrantService,
+    grants      : &dyn GrantStore,
     file_id     : &FileId,
     requesting_user: &UserId,
     user_groups : &[GroupId],
-) -> Result<(FileMetadata, BoxStream<Bytes>)> {
-    let file = store.get_metadata(file_id).await?;
+) -> Result<(FileMetadata, Box<dyn Read + Send>)> {
+    let file = store.get_metadata(file_id)?;
     let is_owner = file.owner_id == *requesting_user;
-    if !grants.has_access(File, file_id, Permission::Read, requesting_user, is_owner, user_groups).await? {
+    if !has_access(grants, requesting_user, is_owner, File, file_id, Permission::Read, user_groups)? {
         return Err(Error::Forbidden);
     }
-    let stream = store.backend.read(&file.storage_path).await?;
+    let stream = store.backend.read(&file.storage_path)?;
     Ok((file.into(), stream))
 }
 ```
@@ -188,10 +191,10 @@ Consumers register references when they link to a file:
 ```rust
 [REFERENCE]
 // When a knowledge document is created referencing a file:
-file_store.add_reference(file_id, "knowledge_document", doc_id).await?;
+file_store.add_reference(file_id, "knowledge_document", doc_id)?;
 
 // When a knowledge document is deleted:
-file_store.remove_reference(file_id, "knowledge_document", doc_id).await?;
+file_store.remove_reference(file_id, "knowledge_document", doc_id)?;
 ```
 
 ### 4.6 Garbage Collection (target design — a simpler, real GC exists today: `FileStore::gc()`, ref-count-triggered)
@@ -207,7 +210,7 @@ GC runs at startup and on a configurable periodic schedule:
 
 Default allowed categories: `text/*`, `application/pdf`, `application/json`, `image/*`, `audio/*`.
 
-Blocked regardless of config: `application/x-executable`, `application/x-msdos-program`, and any magic byte that indicates a script or executable.
+Blocked regardless of config: `application/x-executable`, `application/x-msdos-program`, and any magic byte that indicates a script or executable. The allowlist is the control; the blocklist is a heuristic second layer (SEC-12) — a type absent from the allowlist is refused whether or not the blocklist recognizes it.
 
 ### 4.8 Module Layout
 
@@ -245,7 +248,7 @@ crates/
 3. Temp file during upload: write to a `.tmp` path in the same directory, then rename to the final hash-derived path (atomic on most filesystems).
 4. Magic-byte MIME detection: inspect only the first 4 KiB; use `infer` crate or equivalent.
 
-## 7. Drawbacks & Alternatives
+## 6. Drawbacks & Alternatives
 
 - **Per-file encryption:** encrypting blobs at rest adds security but requires key management per file or per user. Out of scope for the base implementation; `l2-memory-encryption.md` shows the pattern for key management if needed.
 - **Storing blobs in SQLite:** avoids separate backend but SQLite is not optimised for large binary blobs. External file system remains the default.
@@ -263,5 +266,6 @@ crates/
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): The target backend and download API were async, contradicting the synchronous core — restated with pull-based readers. The upload's exists-then-write dedup could race GC and leave a record pointing at a collected blob — both run on the store's single writer. GC used a `deleted_at` column the schema lacked — added. An S3-compatible backend is an opt-in, egress-gated destination (SEC-3); the MIME blocklist is labeled a heuristic behind the allowlist; ID prefix notation and section numbering corrected. |
 | 1.1.0 | 2026-09-12 | **Realization Status correction** (Retro L2 finding, `/magic.spec main`): this spec described a production mechanism (SQLite schema, async pipeline, storage-backend trait, access-control wiring, MIME allowlist, size guard) that was never built, as though it were current — `crates/file-store/` was never minted as a crate. What actually exists is a domain-tier reference algebra at `crates/domain/src/file_store.rs`, proving FM-1/2/3/7 and a narrower ref-counting realization of FM-5; FM-4 and FM-6 are unbuilt. Every §4 subsection describing the unbuilt mechanism is now explicitly labelled target design rather than presented as built; §4.1 added as the disclosure table; Invariant Compliance (§3) rewritten against the real module; Related Specifications corrected — the dead `l2-source-layout.md` citation (that spec never covered this placement) dropped, `l2-knowledge-store.md`'s real dependency on `FileStore` named. No L1 invariant added, removed, or reworded — `l1-file-management.md` is unchanged. |
 | 1.0.0 | 2026-06-24 | Initial spec. |

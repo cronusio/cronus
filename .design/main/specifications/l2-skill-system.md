@@ -1,6 +1,6 @@
 # Skill System (Two-Tier Stores & Canonical Stack)
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-extensions.md, l1-storage-model.md
@@ -45,6 +45,7 @@ Preset skills are part of the product: they must survive upgrades byte-identical
 | EXT-7 Skill generation | Prompt-synthesized and curator-distilled skills are written to `<state>/skills/` with `source: generated`, pending review. |
 | EXT-8 Provenance & audit | `source: preset \| custom \| generated` plus a persisted conversion report; originals of imported material are preserved verbatim for audit. |
 | EXT-9 Manifest contract | Every canonical package carries the registry manifest; validated against schema before activation. |
+| EXT-10 Service connector kind | Not applicable to skills: a connector is its own extension kind in the registry (`l2-extension-registry` EXT-10 row); a skill that needs an external service reaches it through a built-in command or a connector's operations, never by embedding an HTTP client of its own. |
 | EXT-11 Verifiable import attestation | An imported package's signed witness is verified **before** conversion begins; missing/failed witness → default-denied, never converted. |
 | STO-1 Two-tier separation | Preset store ships inside the program tier and is replaced wholesale on upgrade; conversion, synthesis, and overrides write only to the state tier. |
 | STO-3 Catalog vs instance | A preset skill is a blueprint: overriding it copies into `<state>/skills/`; the preset is never mutated in place. |
@@ -140,7 +141,7 @@ graph TD
 
 The pipeline is atomic: a package that fails classification, transpilation validation, or manifest validation lands **nothing** in the store — no partial canonical packages exist.
 
-**Prompt synthesis** (prompt → canonical package): the office authors `SKILL.md` and, when the skill is procedural, a `workflow.nd` directly against the loaded nodus schema; the result is validated (WFL-5) and linted before landing. Synthesized skills enter as `source: generated`, `status: discovered`, and pass the same review gate as distilled skills (EXT-7). <!-- TBD: whether prompt-synthesized skills may auto-activate for the requesting user after validation, or always require the explicit review step -->
+**Prompt synthesis** (prompt → canonical package): the office authors `SKILL.md` and, when the skill is procedural, a `workflow.nd` directly against the loaded nodus schema; the result is validated (WFL-5) and linted before landing. Synthesized skills enter as `source: generated`, `status: discovered`, and pass the same review gate as distilled skills (EXT-7). They do not auto-activate after validation, even for the person who asked for them: validation proves the package is well-formed, not that it does what was meant, and activation is the explicit grant of EXT-3 — the request that started synthesis is not that grant (`l2-extension-registry` §4.4).
 
 ### 4.5 Execution model
 
@@ -179,4 +180,5 @@ Extends the registry's `cronus skill` group; the library method is the source of
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): §4.4 TBD resolved: prompt-synthesized skills never auto-activate — validation proves form, not intent, and the synthesis request is not the EXT-3 grant. EXT-10 row added (not applicable to skills; connectors are their own kind). |
 | 1.0.0 | 2026-07-08 | Initial spec — two-tier skill stores (`<program>/skills/` preset read-only, `<state>/skills/` mutable), canonical execution stack (nodus workflows + built-in Rust command surface, no interpreted scripts), conversion pipeline for imported packages (verify → classify → retain → transpile → degrade → report), prompt synthesis path, precedence/override semantics, CLI/TUI/library command surface. |

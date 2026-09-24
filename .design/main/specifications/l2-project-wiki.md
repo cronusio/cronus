@@ -1,6 +1,6 @@
 # Project Wiki Store (Implementation)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-project-wiki.md
@@ -30,7 +30,7 @@ The concept requires a client-facing surface that maintains itself, stays ground
 - Ground truth lives elsewhere — the board, the graph (`decisions`/`artifacts`), the operational ledger, the file store. The wiki never holds the only copy of anything.
 - Regeneration is **event-driven and incremental** (only affected pages), never per-turn (matches the concept's cost mitigation).
 - Every stored section must carry ≥1 citation; an uncited claim is rejected at generation time, never persisted (PW-4).
-- Internal engineering / SDD detail is filtered out at generation; it must never reach a `wiki_page` row (PW-8).
+- Internal engineering and specification-process detail is filtered out at generation; it must never reach a `wiki_page` row (PW-8).
 
 ## 3. Invariant Compliance (Layer 2)
 
@@ -43,7 +43,7 @@ The concept requires a client-facing surface that maintains itself, stays ground
 | PW-5 Living & freshness-honest | Each row stores a `source_fingerprint` (hash of the inputs it was generated from) + `generated_at`. A background check recomputes the current fingerprint of a page's sources; drift with no regeneration sets `stale=1`, surfaced in the UI as a stale marker (never shown silently as current). `wiki_changelog` appends entries newest-first. |
 | PW-6 Navigable & searchable | `wiki_page.parent_id` + `ord` form the overview → area → detail tree; `wiki_page_fts` (FTS5 over `title`,`body`) backs client search. No page sits more than a few links from the overview (enforced by the fixed page-kind hierarchy). |
 | PW-7 Scoped & access-controlled | Exactly one `wiki.db` per office directory. When the office is shared, read access passes the `access-grants` gate (`has_access(Wiki, office_id, Read)`); when private, the on-device no-egress posture applies — the file never leaves the device. |
-| PW-8 Distinct from KB & internal artifacts | `wiki.db` is a separate store from `knowledge_*` (agent-facing input) and from `.design/` (developer-facing). A generation-time content filter strips internal engineering / SDD detail so it never lands in a row; the wiki is never queried as an agent retrieval source. |
+| PW-8 Distinct from KB & internal artifacts | `wiki.db` is a separate store from `knowledge_*` (agent-facing input) and from the office's internal engineering and specification artifacts (developer-facing). A generation-time content filter strips that internal detail so it never lands in a row; the wiki is never queried as an agent retrieval source. |
 
 ## 4. Detailed Design
 
@@ -106,6 +106,9 @@ Regeneration is incremental (only affected pages) and transactional per page set
 rebuild(office):
     drop all wiki_page / wiki_changelog rows for office
     re-derive every page from current ground truth (the §4.2 loop over all page kinds)
+    re-derive wiki_changelog from the operational ledger's append-only history — current
+      state alone cannot say what changed when; a period the ledger does not cover starts
+      the rebuilt changelog at the rebuild, and the first entry says so
 ```
 
 `rebuild` is the operational proof that the store is a cache: a full rebuild reconstructs an **equivalent** wiki — the same page structure, grounded in the same sources, asserting the same attributed facts — because nothing authoritative ever lived only in `wiki.db`. The regenerated prose need **not** be byte-identical (generation is model-based and not deterministic); what is guaranteed is that no *authoritative* content is lost, since every page is derived from ground truth that still exists. It is also the recovery path — a corrupted or deleted `wiki.db` is regenerated, never restored-as-truth.
@@ -147,5 +150,6 @@ Largely a main-workspace product surface; the portable runtime contributes as a 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): PW-8 named the development scaffolding's directory and process — restated as the office's internal engineering and specification artifacts (a product spec does not reference build scaffolding). `rebuild` dropped `wiki_changelog`, which current state cannot reconstruct — it is re-derived from the operational ledger's history, and an uncovered period is stated. |
 | 1.0.1 | 2026-07-15 | Promoted RFC→Stable via Post-Update Review (`@role:spec-critic` + `@role:prompt-engineer` PASS). One review finding fixed: §4.3 overclaimed that `rebuild` yields a **byte-equivalent** wiki — corrected to *informational* equivalence (same structure/sources/attributed facts), since generation is model-based and non-deterministic; the PW-3 guarantee is no-loss-of-authoritative-content, not byte-identical prose. No other change. Stable = design agreed; concrete schema/DDL validated during implementation. |
 | 1.0.0 | 2026-07-15 | Initial RFC — realizes l1-project-wiki as a per-office SQLite projection **cache** (`<ws>/wiki/wiki.db`), not loose Markdown files: `wiki_page` (parent/ord tree, citations, source_fingerprint, stale) + `wiki_changelog` + `wiki_page_fts`; event-driven incremental transactional regeneration (PW-3/4/5); `rebuild` as the operational proof the store is a rebuildable cache; read-only client access with the write path structurally absent (PW-2); per-office scoping + access-grants gate (PW-7); distinct from knowledge-base/SDD with a content filter (PW-8). Contrast recorded: wiki store = cache of upstream truth, unlike the memory learned-tier where the store IS the truth (MEM-4). |

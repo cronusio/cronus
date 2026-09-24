@@ -1,6 +1,6 @@
 # Core Library (Foundation)
 
-**Version:** 1.2.1
+**Version:** 1.2.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -25,7 +25,7 @@ A reusable foundation lets every surface share one behavior and lets the engine 
 
 - Written in **Rust** as a library crate; exposes a **C-ABI/FFI** surface for embedding (Tauri backend, mobile static lib, external hosts).
 - No UI, terminal, or windowing dependencies (INV-1).
-- Async via Tokio; long-running work never blocks a host's UI thread.
+- Synchronous by design, with no async runtime in the core: concurrency is bounded worker threads owned by the component that needs them, and streaming is delivered through pull or callback surfaces (`l2-model-runtime` §2). Long-running work never blocks a host's UI thread — it runs on those threads.
 - Local-first: the default datastore is an embedded file (SQLite + sqlite-vec); remote/sync is optional.
 
 ## 3. Invariant Compliance (Layer 2 only)
@@ -53,9 +53,9 @@ A reusable foundation lets every surface share one behavior and lets the engine 
 | Memory | Tiered memory (working / recall / archival), scope-aware decay + prune, knowledge graph of entities/relations, hybrid retrieval. |
 | Model router | Selects local vs cloud models by cost/tokens/capability; fallback cascade; semantic cache. |
 | Scheduler | Cron + heartbeat wake queue (coalesced) driving autonomous work without spamming the board. |
-| Board | Kanban state machine: `triage → todo → ready → running → blocked → done → archive` (+ custom). |
+| Board | Kanban state machine: `triage → todo → ready → running → blocked → done`, then automatic archival to the archive store (+ custom columns anchored to these states). |
 | Persistence | Durable local state (SQLite + sqlite-vec); optional remote sync (libSQL/PostgreSQL). |
-| AI gateway | Local inference (llama.cpp via FFI) and cloud API clients behind one interface. |
+| Model runtime | Inference behind the contract's inference trait (`l2-model-runtime`): loopback REST providers on a desktop or server host, llama.cpp through FFI on mobile, and egress-gated cloud clients. |
 
 ### 4.2 Contract surface (illustrative)
 
@@ -82,7 +82,7 @@ graph TD
     HOST[Host program: Tauri / CLI / TUI / 3rd-party] --> FFI[C-ABI boundary]
     FFI --> CORE[Rust core engine]
     CORE --> DB[(SQLite + sqlite-vec)]
-    CORE --> AI[AI gateway: local FFI + cloud]
+    CORE --> AI[Model runtime: loopback REST, mobile FFI, cloud]
 ```
 
 ### 4.4 Autonomy safety rails
@@ -105,7 +105,7 @@ app.manage(model_manager);
 
 // In any handler:
 let mm = app.state::<Arc<ModelManager>>();
-mm.load_model(model_id).await?;
+mm.load_model(model_id)?;       // synchronous; the manager owns any worker threads
 ```
 
 Managers are initialized once in a defined order. Later managers may hold `Arc` references to earlier ones. All domain logic lives inside a manager; no domain logic lives in handler glue code.
@@ -198,6 +198,7 @@ makes IDs usable as monotonic cursors.
 | Worktree | `wrk` | `wrk0r7k3mQp9…` |
 | Tool call | `tool` | `tool0r7k3m…` |
 | PTY | `pty` | `pty0r7k3mQpA…` |
+| Access grant | `grn` | `grn0r7k3mQpB…` |
 
 #### ID structure and generation
 
@@ -218,7 +219,15 @@ Descending (reverse-order) ID:
 
 Monotonic guarantee:
   lastTimestamp + counter pair ensures no two IDs are identical even within the same
-  millisecond (counter resets each time the millisecond advances).
+  millisecond (counter resets each time the millisecond advances). The timestamp used is
+  max(now, lastTimestamp), so a clock stepped backwards never produces an earlier or a
+  repeated ID; when the counter would pass 0xFFF within one millisecond, generation
+  continues in the next millisecond rather than letting the counter spill into the
+  timestamp bits.
+
+Prefix rule:
+  no prefix may be a prefix of another (the body follows with no separator), so a
+  prefix always parses unambiguously.
 
 Factory functions:
   ascending(entity_type, given?)  -> ID   // validate prefix if given; else generate new
@@ -273,33 +282,32 @@ extension changes the level mid-session.
 
 The thinking level is also a `prepareNextTurn` output (see `l2-agent-session.md §4.14`):
 a hook may raise or lower the level for a specific turn based on the complexity of the
-task at hand without permanently changing the session-level default.
+task at hand without permanently changing the session-level default. Any level set by an
+extension or hook stays inside the effort envelope the user set (`l1-routing` RTG-11) —
+reasoning is billed spend, and only the user widens how much of it a session may buy.
 
 #### CustomAgentMessages extensibility
 
-The message taxonomy accepted by the agent loop is extensible at the type level via
-declaration merging. Extension authors augment the `CustomAgentMessages` interface to
-declare their custom message variants without modifying the core type:
+The message taxonomy accepted by the agent loop is extensible without modifying the core
+type. An extension declares its custom message variants when it registers — a namespaced
+`customType` plus a schema for its payload — and the core validates each custom message
+against the declared schema before accepting it:
 
 ```text
 [REFERENCE]
-// Core declaration (in agent-core types.ts):
-interface CustomAgentMessages {}   // empty by default; augmented by extensions
-
-// Extension augmentation:
-declare module "@cronus/agent-core" {
-  interface CustomAgentMessages {
-    "my_extension/status_update": { level: string; text: string }
-  }
-}
-// Now "my_extension/status_update" is a valid custom message customType.
-// The agent loop passes it through convertToLlm() for provider formatting.
+// Extension registration (declared in its manifest, validated by the core):
+custom_messages:
+  - customType: "my_extension/status_update"
+    schema: { level: string, text: string }
+// "my_extension/status_update" is now a valid custom message customType.
+// The agent loop passes it through convertToLlm() for provider formatting,
+// labeled with the extension that emitted it.
 ```
 
-This allows the TypeScript compiler (and Rust trait implementations) to enforce that
-handlers for `"custom"` messages handle all declared subtypes exhaustively. Unknown
-`customType` values are treated as opaque blobs by the core and forwarded without
-transformation.
+The taxonomy lives in the core (INV-2): a frontend package may mirror the declared types
+for its own type checking, but it defines none. A payload that fails its declared schema
+is rejected with a typed error rather than forwarded; `customType` values the core does
+not own are treated as opaque values and forwarded without transformation.
 
 ## 5. Drawbacks & Alternatives
 
@@ -319,3 +327,4 @@ transformation.
 | --- | --- | --- |
 | 1.2.0 | 2026-07-04 | Manager initialization as dependency waves (§4.5): independent managers initialize concurrently, cold start bounded by the longest dependency path; idle watchers consolidated into one multiplexed timer task. History table added with this entry. |
 | 1.2.1 | 2026-07-29 | Completeness fix: extended the §3 Invariant-Compliance table to INV-8/INV-9/INV-10, which entered `l1-architecture` after this table (INV-1…INV-7) was written, restoring the L1 "all invariants addressed" gate. INV-8 — the core library IS the modular monolith (in-process modules, one deployable), partitioned by `l2-crate-topology` without a process boundary. INV-9 — the core is the honest referent frontends bind to (no half-capabilities). INV-10 — the core owns the inward domain↔adapter seam (domain depends on contract types; adapter representations mapped at the seam). No new design or requirement; stays Stable. |
+| 1.2.2 | 2026-09-23 | Consistency pass (2026-09-23): §2 specified "Async via Tokio" while the tree has no async runtime and `l2-model-runtime` builds its transport synchronous by design — the core is now specified synchronous with bounded worker threads (the manager example drops `.await`). The "AI gateway: llama.cpp via FFI" row contradicted the model runtime (loopback REST providers on desktop/server, FFI only on mobile) — replaced by the model-runtime row; the board row no longer lists archive as a state (KAN-1). Typed IDs: a clock stepped backwards or more than 4 096 IDs in a millisecond could repeat or reorder IDs — the timestamp is monotonic and the counter never spills; no prefix may prefix another; `grn` added. Thinking-level changes by hooks stay inside the user's effort envelope (RTG-11). The TypeScript declaration-merging taxonomy put the agent loop's message types in a TS package (INV-2) — custom message types are declared in the extension manifest and schema-validated by the core. |

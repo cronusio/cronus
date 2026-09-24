@@ -1,6 +1,6 @@
 # Automation Canvas
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** concept
 
@@ -113,7 +113,7 @@ When editing an explicit pipeline, the canvas provides:
 3. **Configuration panel** — each selected node exposes its configuration fields (trigger type, condition expression, action target role, delay duration, etc.) in the right-side inspector.
 4. **Validation feedback** — the canvas reports AP-2, AP-3, AP-7 invariant violations inline before the pipeline is saved.
 
-Editing is non-destructive: each save creates a new version of the pipeline definition (per LP-6 in `l1-automation-pipeline.md` §4.6). Prior versions are accessible from the pipeline selector.
+Editing is non-destructive: each save creates a new version of the pipeline definition (the versioning rule `l1-automation-pipeline.md` §4.6 adopts from nodus LP-6). Prior versions are accessible from the pipeline selector.
 
 ### 4.4 Inspection and Debugging
 
@@ -167,3 +167,4 @@ This conversion does not change execution behavior — it only moves ownership f
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — AC-1…AC-6, three-panel layout, node rendering, explicit editing, implicit surfaces, inspection and debugging |
 | 1.1.0 | 2026-06-25 | Core Team | AC-7 added — pin a node's output and request an engine-side partial re-run from a chosen node (AP-13); engine executes, canvas only requests + renders (AC-3 preserved); `subpipeline` node rendering (drill-in) + pin badge added to §4.2; "Pin and partial re-run" added to §4.4 inspection/debugging, distinct from Replay. |
 | 1.2.0 | 2026-06-25 | Core Team | AC-8 added — `observer` node (AP-15) rendering with a kind badge (error/status/completion) and dashed scope overlay; observer scope must be visually explicit, scoped vs catch-all (*unhandled*) distinguished, canvas renders the relationship + trace only (AC-3 preserved); `observer` row added to §4.2; "Observer scope view" added to §4.4 inspection/debugging. |
+| 1.2.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |

@@ -1,6 +1,6 @@
 # Extensions
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** concept
 
@@ -125,7 +125,7 @@ A connector's triggers surface to the automation pipeline as `external_event` (p
 ## 5. Drawbacks & Alternatives
 
 - **Permission friction:** default-deny means more grant prompts; mitigated by the office remembering grants and asking once per scope.
-- **Generated-skill quality:** distilled skills can be wrong; mitigated by the review gate before activation. <!-- TBD: auto-activate threshold for generated skills vs always-review -->
+- **Generated-skill quality:** distilled skills can be wrong; mitigated by the review gate before activation. The gate is not optional: an automatic activation threshold (N successful reuses) would have the office grant capability to its own output, which EXT-3 (nothing is usable until explicitly permitted) and `l1-security` SEC-10 rule out. Relief from per-skill review, if ever wanted, is a standing rule the human authors — never a count the system applies to itself.
 - **Alternative — trust-all extensions:** rejected outright; extensions run untrusted code/tools.
 - **Alternative — four separate subsystems:** rejected; duplicates lifecycle and trust logic across skills/MCP/plugins/connectors.
 - **Connector vs MCP overlap:** a connector and an MCP server can both wrap the same service. The office prefers MCP when one exists (richer, protocol-native) and falls back to a declarative connector for the long tail of services that expose only HTTP. The two are the same extension kind family, not competing subsystems — a connector can later be superseded by an MCP server for the same service without changing how automations consume it.
@@ -146,3 +146,4 @@ A connector's triggers surface to the automation pipeline as `external_event` (p
 | 1.0.0 | 2026-06-24 | Initial stable spec — three extension kinds (skill / mcp-server / plugin) sharing one registry, lifecycle, and trust model; EXT-1…EXT-9; default-deny + sandboxed; skill generation. |
 | 1.1.0 | 2026-06-25 | EXT-10 added — *service connector* as a fourth extension kind for external HTTP/REST services with no MCP server: closed authentication-scheme taxonomy (none/basic/api-key/digest/oauth1/oauth2/session) with a uniform test/label/refresh/deauth contract; trigger/create/search operations with an optional resource shortcut; trigger delivery duality (polling deduped by stable identity vs subscription REST hooks with mandatory polling fallback); hydration for deferred large-payload dereferencing; idempotent search-or-create; dynamic/dependent input fields. `connector` kind added to §4.1; §4.4 added; Overview now "four kinds"; Document History introduced per RULES §5. Additive invariant — the four L2 implementers (l2-extension-registry, l2-agent-migration, l2-plugin-hooks, l2-learning-loop) carry EXT-10 as unaddressed pending a `magic.task` reconciliation; L1 remains Stable (no destabilization cascade). |
 | 1.2.0 | 2026-07-02 | EXT-11 added — verifiable import attestation: a third-party/imported extension (skill/plugin/connector/bundle) presents an independently-verifiable signed witness (per new l1-attestation) verified before activation; missing/failed witness is default-denied (composes EXT-3), sharpening EXT-8 from declared to proven provenance; preset/generated extensions are office-attested, the burden falls on trust-boundary-crossing artifacts. Related Specification link to l1-attestation added. Additive — L1 stays Stable; L2 implementers (l2-extension-registry et al.) carry EXT-11 pending a magic.task reconciliation. |
+| 1.2.1 | 2026-09-23 | Consistency pass (2026-09-23): §5 TBD (auto-activate threshold for generated skills vs always-review) resolved by EXT-3 and SEC-10: the review gate is not optional; any relief is a human-authored standing rule, never a count the system applies to itself. |

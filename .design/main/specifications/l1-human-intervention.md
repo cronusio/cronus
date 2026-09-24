@@ -1,6 +1,6 @@
 # Human Intervention & Reconciliation
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -155,7 +155,7 @@ absorbed, not treated as a reason to tear down the board.
 
 A workflow, plan, or macro authored in the workflow DSL is a structured artifact a human
 may hand-edit out-of-band, so the same hazard applies at the DSL grain — but it needs
-**no new language invariant** (LP-1/LP-2):
+**no new language invariant** (nodus LP-1/LP-2):
 
 | Element | nodus seam | Note |
 | --- | --- | --- |
@@ -191,5 +191,6 @@ behaves exactly as today — so the mapping is additive and warrants no new NL i
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.1.0 | 2026-08-06 | Core Team | HI-7 added — **declared ownership regions**, a structural partition for genuinely co-owned artifacts (shared documents, issue bodies, plan files a human keeps prose in). The artifact declares delimited regions with an explicit owner via durable **human-visible** markers, so a machine-owned region can be rewritten wholesale without touching the human's surrounding text, and an edit confined to one owner's region is not a collision at all. Three safety rules keep it from becoming a licence to overwrite: **partition first, reconcile second** (HI-4 is unweakened and still handles everything the partition does not resolve); the machine-owned region is **regenerable and holds nothing else** (DAH-1), and a human edit *inside* it is still a detected intervention treated as authoritative intent (HI-2/HI-3) rather than overwritten on ownership grounds; and **missing or damaged delimiters fail safe** — absent, malformed, nested, or unterminated markers forbid any rewrite and fall back to full reconciliation, since a boundary inferred from a damaged marker is exactly how a whole-file clobber happens under the banner of an ownership rule. Motivation: without it every routine machine update of a co-owned document is a whole-artifact three-way merge against prose that never needed merging. Additive; HI-1…HI-6 unchanged. |
 | 1.0.0 | 2026-07-15 | Core Team | Initial spec — human out-of-band intervention & reconciliation: direct hand-edit of a work artifact (task/card/plan/spec/document) as a first-class always-available action bypassing the agent delta pipeline (HI-1); baseline-comparison drift detection by version/timestamp/content-fingerprint, detected before the agent acts on a stale belief, never assumed away (HI-2); human authorship attributed + the human edit treated as authoritative intent, never silently reverted/clobbered by stale agent work — SEC-10 authority applied to the work itself (HI-3); reconcile-never-clobber with three-way merge for disjoint edits and surfaced conflicts (human side preserved) for overlaps, composing change-merge CM-4/CM-5 (HI-4); dependents re-validated via the task-graph re-plan and invalidated in-flight work paused/re-based via work-liveness rather than run to a wrong result, incrementally not by restart (HI-5); intervention observable/attributed/auditable, human-authored vs agent-authored state distinguishable (HI-6); §4.1 intervention lifecycle, §4.2 baseline-drift pseudocode, §4.3 authority asymmetry, §4.4 least-disruption re-validation; nodus-relevance mapping needing no new NL invariant (host-recorded baseline + change-merge nodus tooling candidate + re-run-invalidated-subgraph + AuditProvider). Complements ORC-12/ACP-10 (steer the live turn) with the edit-the-artifact channel, and drives l1-change-merge for the merge step while owning the human-intervention lifecycle change-merge does not model (no-delta hand-edit, authority asymmetry, re-plan/pause obligation). |

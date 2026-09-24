@@ -1,6 +1,6 @@
 # Lookahead Planning
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-lookahead-planning.md
@@ -27,6 +27,8 @@ The model requires a cheap simulation pass before expensive/irreversible actions
 - It runs in the orchestrator context and issues no real tool calls, writes, spawns, or network requests (LP-2).
 - Depth N and token budget are per-trigger-category defaults, overridable in Local Settings → Office.
 - Budget exhaustion falls back to the ORC-9 approval gate, never silent proceed (LP-5).
+- Lookahead is a check in front of the existing gates, never a substitute for one: an automated reviewer can add friction, never grant (AG-11). A `CONFIRM` means the simulation found no reason to stop; the action still passes every approval gate, sandbox rule, and consent check that applies to it.
+- The trigger detector is a heuristic (SEC-12). An action it fails to recognize skips only the lookahead — never the gates and confinement that apply to the action regardless.
 
 ## 3. Invariant Compliance (Layer 2)
 
@@ -75,7 +77,9 @@ Per-category depth/budget overridable in Local Settings → Office.
 
 ### 4.3 Conclusions
 
-`CONFIRM(A)` → execute A. `MODIFY(A→A')` → execute A', log original. `ESCALATE` → ORC-9 gate, no execution. `BUDGET_EXHAUSTED` → ORC-9 gate (LP-5). Early termination fires ESCALATE the moment a step yields an unambiguously blocking consequence.
+`CONFIRM(A)` → A proceeds to the gates that apply to it. `MODIFY(A→A')` → A' proceeds in place of A, with the original logged; A' re-enters the trigger detector like any proposed action — a modification never exempts itself from lookahead — and if its own lookahead proposes a further modification, the action goes to the ORC-9 gate instead of looping. `ESCALATE` → ORC-9 gate, no execution. `BUDGET_EXHAUSTED` → ORC-9 gate (LP-5). Early termination fires ESCALATE the moment a step yields an unambiguously blocking consequence.
+
+A category in the authority plane — a security policy change — is never executed on a lookahead conclusion at all: only the human principal authors it (SEC-10), so its lookahead informs the human's decision and always ends at the human gate.
 
 ### 4.4 Cost control
 
@@ -91,7 +95,7 @@ Trigger scoping (LP-1) + small depth (2–5) + early termination bound the token
 
 **Alternative — lookahead on every action**: prohibitive cost. Rejected; LP-1 scopes to high-impact only.
 
-**Alternative — always escalate high-impact to humans**: breaks the autonomous model. Lookahead self-resolves many cases; escalation is the fallback, not the default.
+**Alternative — always escalate high-impact to humans**: breaks the autonomous model. Lookahead resolves many cases before a human is needed — a `MODIFY` can turn an action that would require approval into one that does not — and escalation is the fallback, not the default. It never waives a gate the action itself still requires.
 
 ## Canonical References
 
@@ -105,4 +109,5 @@ Trigger scoping (LP-1) + small depth (2–5) + early termination bound the token
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): A `CONFIRM` conclusion executed high-impact actions (including a security policy change) with no further gate, making an automated reviewer a grantor — lookahead now only adds friction (AG-11), every applicable gate still applies, and an authority-plane change always ends at the human (SEC-10). A `MODIFY` executed the modified action without it ever being checked — it re-enters the detector, and a second modification escalates. The trigger detector is labeled a heuristic whose miss skips only the lookahead (SEC-12). |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — trigger detector, budget-bounded no-real-exec simulator, conclusion dispatcher, append-only decision log; maps LP-1…LP-6. |

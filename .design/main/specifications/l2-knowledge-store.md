@@ -1,6 +1,6 @@
 # Knowledge Store (Implementation)
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-knowledge-base.md
@@ -44,6 +44,12 @@ The memory store is per-user, conversational, and ephemeral by design. A separat
 | KB-9 Authorship zones | `knowledge_document.origin` (`human`/`agent`, NOT NULL). The `KnowledgeStore` write path refuses any update/replace of an `origin = 'human'` row unless an explicit `WriteOverride::HumanDirected` token (carrying an audit reference) is supplied — enforced at the single `db.rs` write seam, not by caller convention (§4.4). Orthogonal to KB-4: access-grants gate which workers reach the collection; the origin zone gates whether the agent may rewrite human material inside it. |
 | KB-10 Curation lifecycle | `knowledge_document.curation` (`draft`/`reviewed`/`stable`; NULL for `origin='human'` rows; agent docs default `draft`). The store lets the agent create/revise `draft` rows freely; a transition to `reviewed`/`stable` is refused unless the caller presents human authorization (§4.4). `RetrievalRequest.min_curation` applies a trust floor at retrieval. Editorial-trust `curation` is distinct from the indexing `status` column. |
 | KB-11 Query preparation | Optional `QueryPreparer` seam runs before embedding (§4.5): keyword extraction/expansion + compound-query decomposition. The prepared and raw queries are both recorded in the retrieval trace; an empty preparation falls back to the raw query (never an empty search). Sub-queries are retrieved independently and RRF-merged (§4.3). Preparation never alters `source_ref` attribution (KB-6) nor widens the access-bounded `collection_ids` set (KB-4). |
+| KB-12 Deep document understanding | **Pending.** Ingestion's "extract plain text" step (§4.2) is the degraded fallback KB-12 names; the deep-understanding stage (`l1-document-understanding`) is not wired yet, and recording the reduced fidelity per document (in `meta`) is part of the same pending work — until then every document is plain-extracted. |
+| KB-13 Structure-aware segmentation | **Pending.** Chunking splits on sentence boundaries with a fixed overlap (§4.2), which is KB-13's fallback; heading breadcrumbs and atomic tables/figures arrive with KB-12. Attribution (KB-6) is already preserved per chunk. |
+| KB-14 Multi-representation index | The mandatory flat chunk/vector (+FTS5) index is realized; the optional knowledge-graph and summary-tree representations are not provided, which KB-14 permits. |
+| KB-15 Multi-channel fused retrieval + rerank | Vector + lexical (+ per-sub-query) channels fused by RRF (§4.3); the optional reranker is not provided. Fusion never widens `collection_ids` (KB-4) and every chunk keeps its `source_ref` (KB-6). |
+| KB-16 Structured-constraint separation | Not provided (a MAY): no metadata-filter predicate is extracted from the query yet; the `meta` column exists for it. |
+| KB-17 Index-side query-bridging representations | Not provided (a MAY): each chunk is indexed under its own text only. |
 
 ## 4. Detailed Design
 
@@ -205,7 +211,7 @@ fn write_document(doc: &Document, ov: WriteOverride) -> Result<(), StoreError> {
 }
 ```
 
-`origin` is assigned from the ingestion source at document creation — an uploaded file or human-owned record is `human`, an agent-synthesized document is `agent` — not chosen by a later agent write, so the agent cannot mint a `human` row to smuggle authority. The `HumanDirected` override carries an `audit_ref` so every write into a human zone is attributable on the durable audit path — the override is audited, never a silent default.
+`origin` is assigned from the ingestion source at document creation — an uploaded file or human-owned record is `human`, an agent-synthesized document is `agent` — not chosen by a later agent write, so the agent cannot mint a `human` row to smuggle authority. A **URL** source takes the origin of whoever added it: a page a person added to the collection is `human`; a page the agent fetched and ingested on its own initiative is `agent` with `curation = 'draft'`. Otherwise external content the agent chose would join the always-eligible authoritative set of §4.3 step 6 and pass every `min_curation` floor. The `HumanDirected` override carries an `audit_ref` so every write into a human zone is attributable on the durable audit path — the override is audited, never a silent default.
 
 **Curation lifecycle (KB-10).** Agent-synthesized rows carry `curation` advancing `draft → reviewed → stable`. The agent owns `draft`; advancing requires human authorization presented to the store:
 
@@ -316,7 +322,7 @@ crates/
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[L1]` | `.design/main/specifications/l1-knowledge-base.md` | Invariants KB-1…KB-8. |
+| `[L1]` | `.design/main/specifications/l1-knowledge-base.md` | Invariants KB-1…KB-17. |
 | `[MEMORY]` | `.design/main/specifications/l2-memory-store.md` | Shared EmbeddingEngine pattern and sqlite-vec usage. |
 | `[FILES]` | `.design/main/specifications/l2-file-store.md` | FileId referenced in knowledge_document. |
 | `[SHARING]` | `.design/main/specifications/l2-resource-sharing.md` | Access grant enforcement for collections. |
@@ -326,6 +332,7 @@ crates/
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): KB-12…KB-17 compliance rows added (KB-12/13 pending — plain extraction and sentence-window chunking are the named fallbacks; KB-14…17 optional parts not provided). URL-ingested pages had no defined origin: a page a person added is `human`, one the agent fetched on its own is `agent`/`draft` — otherwise agent-chosen web content joined the always-eligible set and bypassed every `min_curation` floor. Canonical reference range corrected. |
 | 1.1.1 | 2026-09-12 | Core Team | **Module-placement correction** (Retro L2 finding, `/magic.spec main`): this spec's §4.7 assumed a single dedicated `crates/knowledge-store/` crate, minted before `l2-crate-topology.md` (2026-07-10) later decomposed the whole workspace on the dependency/seam axis instead. The subsystem was built correctly against that later decision — split across `crates/store-local/src/knowledge.rs`, `crates/domain/src/knowledge_{access,ingest,retrieval}.rs`, and `crates/core/src/knowledge_bootstrap.rs` — but §4.7 and the dead `l2-source-layout.md` citation (a spec that never covered this placement) were never updated to say so. Verified by direct inspection that the schema, table names, authorship-zone/curation guards, and retrieval flow all match §4.1–§4.6 exactly — this correction touches only the module-layout claim; no invariant, schema, or behavior description changes. |
 | 1.1.0 | 2026-07-18 | Core Team | Completed Invariant Compliance to the full KB-1…KB-11 parent (`l1-knowledge-base` v1.2.0). KB-9 authorship zones (`knowledge_document.origin` + store-enforced read-only human zone with an audited `WriteOverride::HumanDirected` token, §4.4). KB-10 curation lifecycle (`knowledge_document.curation` draft→reviewed→stable, human-gated transitions, `RetrievalRequest.min_curation` trust floor, §4.4). KB-11 query preparation (`QueryPreparer` seam with fallback-to-raw floor, transparent prepared+raw recording, sub-query RRF merge, §4.5). Schema gains `origin`/`curation` columns + `ix_kdoc_curation`; retrieval flow gains the prep step + curation filter. Reconciled the stale "Pending (v1.1.0 parent)" rows — the parent has defined KB-9/KB-10 since v1.1.0 and KB-11 since v1.2.0. Promoted RFC→Stable. |
 | 1.0.0 | 2026-06-25 | Core Team | Initial RFC — SQLite schema (collection/directory/document/chunk), sqlite-vec ANN, FTS5 keyword, RRF hybrid fusion, async ingestion (file/URL/record adapters), soft-delete GC, crate layout. KB-1…KB-8 compliant; KB-9/KB-10 deferred pending the parent invariants. |

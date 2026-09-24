@@ -1,6 +1,6 @@
 # Context Management
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md
@@ -11,7 +11,8 @@ Concrete context-window management for agent sessions: adaptive input-token budg
 
 ## Related Specifications
 
-- [l1-orchestration.md](l1-orchestration.md) - ORC-3 context isolation that this spec concretizes.
+- [l1-orchestration.md](l1-orchestration.md) - ORC-5 context-isolated execution that this spec concretizes.
+- [l2-tool-security.md](l2-tool-security.md) - The untrusted-context preamble the trim cascade must never drop, and the provenance rule a compaction summary carries forward (§4.6 there).
 - [l2-agent-session.md](l2-agent-session.md) - TurnContext and IterationBudget; context management runs as a prologue step.
 - [l2-model-router.md](l2-model-router.md) - Context window size is a routing signal; this spec reads the discovered window.
 - [l2-context-router.md](l2-context-router.md) - Memory and rules injection; these system messages are subject to trim cascade.
@@ -33,8 +34,7 @@ A production agent system must run profitably on any model — a 4k local model 
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ORC-3 Context isolation | Trim and compact are session-scoped; no cross-session context leaks. |
-| ORC-5 Tool sandbox | Sanitize orphaned `tool` messages before trimming to avoid provider API errors. |
+| ORC-5 Context-isolated execution | Trim and compact are session-scoped; no cross-session context leaks, and a delegated unit's context is reduced inside its own session, never merged into the orchestrator's. |
 | EA-1 Archive-before-reduce | [ADDED v1.1.0] Every reduction path — trim cascade (§4.2), tool-output truncation (§4.7/§4.9), compaction (§4.3) — archives the affected range before removing it. An archive-write failure aborts that reduction and leaves the content raw; it never fails the turn (EA-12). |
 | EA-2 Artifacts are addresses | [ADDED v1.1.0] The summary message metadata carries the archived-range handle alongside `{compacted: true, summarized_count: n}`; the truncation annotation carries the handle for the omitted remainder. A reduction artifact without a resolvable handle is malformed. |
 | EA-3 Expansion on demand | [ADDED v1.1.0] A handle in context resolves to the original range through an ordinary expansion call, so re-reading a truncated tool output no longer requires re-running the tool — and a range whose producing command is non-deterministic or no longer reproducible stays recoverable at all. |
@@ -66,12 +66,13 @@ The "materialized default" problem: the settings-save path writes the default in
 
 ### 4.2 Trim cascade
 
-When estimated token count exceeds `context_length - reserve_tokens` (reserve: 512), apply in order — stop when under budget:
+When estimated token count exceeds `context_length - reserve_tokens`, apply in order — stop when under budget. The reserve is the response headroom of §4.8 (`reserveTokens`, default 16 384): the same boundary compaction guards, so trimming applies when compaction is skipped, fails, or leaves the list still over it — and the input never crowds out the response:
 
 ```text
 Priority (highest = drop LAST):
   0. _protected messages — never dropped
-  1. First system message (preset prompt) — never dropped
+  1. First system message (preset prompt) and the untrusted-context preamble
+     (l2-tool-security §4.6) — never dropped; the preamble is never truncated either
   2. Research-primer system messages — never dropped
   3. Recent 10 conversation turns — dropped last
   4. Extra system messages (memory, RAG injections) — dropped first
@@ -101,10 +102,10 @@ Algorithm:
 
 1. Estimate token usage. If `usage / context_length < 0.85`, skip.
 2. If fewer than 4 conversation turns, skip (not worth compacting).
-3. Split conversation at midpoint: `older = convo[:n//2]`, `recent = convo[n//2:]`.
+3. Split at the turn boundary where the preserved recent tail begins (the effective tail of §4.7): `recent` = that tail, `older` = everything before it.
 4. Build compaction text from `older` (truncate each message to 2000 chars).
 5. Call the utility model (or the session model if no utility model is configured) with the self-summary prompt.
-6. On success: replace `older` with a `role: "system"` summary message; keep `recent` intact.
+6. On success: replace `older` with a labeled summary message; keep `recent` intact. The summary is context, not instruction: it is **not** placed in the system role, and a passage it condensed from untrusted content keeps that content's provenance (wrapped, `l2-tool-security` §4.6, CP-4) — summarizing a fetched page must not promote the page into the operator's voice.
 7. On failure: return original messages unchanged (`was_compacted = false`).
 
 Self-summary format (structured, dense, ≤1000 tokens):
@@ -269,22 +270,23 @@ compaction and the size of the preserved recent-message tail.
 
 ```text
 [REFERENCE]
-PRUNE_MINIMUM         = 20_000   // minimum token count before compaction is considered
-PRUNE_PROTECT         = 40_000   // tokens kept as the hard-protected recent-turn floor
-TOOL_OUTPUT_MAX_CHARS =  2_000   // max characters per tool output in the compacted list
+// Tool-output pruning (runs before the compaction LLM call, over older tool outputs only)
+PRUNE_MINIMUM         = 20_000   // a prune pass runs only when it would free at least this many tokens
+PRUNE_PROTECT         = 40_000   // the most recent 40 000 tokens of tool output are never pruned
+TOOL_OUTPUT_MAX_CHARS =  2_000   // max characters per older tool output in the compacted list
 
 PRUNE_PROTECTED_TOOLS = ["skill"]
 // Tool outputs from listed tools are NEVER truncated during compaction.
 // Skill outputs provide structural agent instructions — truncating them silently
 // breaks the agent's operating model for the remainder of the session.
 
+// The preserved recent tail — ONE definition, used by §4.3, §4.8 and the pass below
 MIN_PRESERVE_RECENT_TOKENS = 2_000
-MAX_PRESERVE_RECENT_TOKENS = 8_000
-preserveRecentBudget = min(MAX_PRESERVE_RECENT_TOKENS,
-                           max(MIN_PRESERVE_RECENT_TOKENS,
-                               floor(usable_tokens * 0.25)))
-// 25 % of the usable window, clamped to [2 000, 8 000].
-// Large-context models preserve recent turns without spending half the window on them.
+effective_tail = min(keepRecentTokens,                                  // §4.8 setting, default 20 000
+                     max(MIN_PRESERVE_RECENT_TOKENS, floor(usable_tokens * 0.25)))
+// The requested tail, capped at a quarter of the usable window and never below 2 000:
+// a 200k window keeps the full 20 000; a 16k window keeps 4 000 — a small model never
+// spends most of its window on the tail. The tail is turn-aligned (never splits a turn).
 ```
 
 #### Tool-output truncation format
@@ -318,8 +320,8 @@ Tools listed in `PRUNE_PROTECTED_TOOLS` bypass this function entirely.
 2. **Turn partitioning:** partition the remaining messages into turns at each user-message
    boundary that carries no compaction marker (`turns()`).
 3. **Recent tail selection:** binary-search the turn list from the tail inward
-   (`splitTurn()`) to find the minimum tail slice that fits within `preserveRecentBudget`.
-   Preserve that slice intact.
+   (`splitTurn()`) to find the largest turn-aligned tail slice that fits within
+   `effective_tail`. Preserve that slice intact.
 4. **Older portion compaction:** [MODIFIED v1.1.0] archive the older portion in full
    first (one write for the whole range — the same content is not archived again by each
    stage that touches it, EA-12); then, for each message in that portion, truncate tool
@@ -341,18 +343,21 @@ shouldCompact(contextTokens, contextWindow, settings):
 CompactionSettings {
   enabled:           bool,    // default: true
   reserveTokens:     u32,     // default: 16_384  — headroom for the response
-  keepRecentTokens:  u32,     // default: 20_000  — minimum tokens kept unconditionally
+  keepRecentTokens:  u32,     // default: 20_000  — the requested recent tail (capped by §4.7's effective_tail)
 }
 ```
 
 The trigger fires when the available response headroom (`reserveTokens`) would be consumed
-by the current context — earlier than the 85% threshold described in §4.3, because
-`reserveTokens` is a fixed token count, not a percentage. Both thresholds may coexist in
-different code paths; `reserveTokens` guards the hard boundary.
+by the current context. Because `reserveTokens` is a fixed token count and §4.3's threshold
+a percentage, which one fires first depends on the window: below roughly 109 000 tokens
+(where 15% of the window equals 16 384) the reserve fires first; above it the 85%
+threshold does. Compaction runs when either is reached; `reserveTokens` guards the hard
+boundary.
 
-`keepRecentTokens` (20 000) establishes a floor: even if shouldCompact fires, the most
-recent `keepRecentTokens` worth of messages are never compacted away — they become the
-preserved tail without going through the compaction LLM call.
+`keepRecentTokens` (20 000) is the requested tail: even if shouldCompact fires, the most
+recent `effective_tail` (§4.7 — `keepRecentTokens` capped at a quarter of the usable window)
+worth of messages are never compacted away — they become the preserved tail without going
+through the compaction LLM call.
 
 #### File-operation tracking across compactions
 
@@ -483,7 +488,7 @@ conversation instead of a summary.
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-3 context isolation |
+| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-5 context-isolated execution |
 | `[SESSION]` | `.design/main/specifications/l2-agent-session.md` | TurnContext + IterationBudget |
 | `[ROUTER]` | `.design/main/specifications/l2-model-router.md` | Context window discovery |
 
@@ -491,5 +496,6 @@ conversation instead of a summary.
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): The untrusted-context preamble, which `l2-tool-security` §4.6 says is never trimmed, fell under "extra system messages — dropped first" — it is now in the never-dropped tier. A compaction summary built from content that includes untrusted tool output was inserted in the system role — it is now a labeled, provenance-carrying context message. Five incompatible definitions of the preserved recent tail (10 turns, half the turns, 2k–8k tokens, 40k, 20k) reduced to one `effective_tail` (keepRecentTokens capped at a quarter of the usable window, floor 2 000; matches the shipped `keep_recent_tokens` parameter); PRUNE_MINIMUM/PRUNE_PROTECT redescribed as the tool-output pruning parameters they are. Compliance cited ORC-3 (intent→board) and a "tool sandbox" ORC-5 row — now one ORC-5 row. The trim cascade kept a 512-token reserve, leaving the response almost no room — it now uses the §4.8 response headroom (`reserveTokens`), applying when compaction is skipped, fails, or is insufficient. §4.8 claimed the reserve always fires before the 85% threshold, which holds only below about 109 000 tokens of window — restated. |
 | 1.1.0 | 2026-08-20 | Compaction is no longer destructive. Added EA-1/EA-2/EA-3/EA-10 compliance rows and reordered the reduction cascade: the affected range is archived **before** trim, tool-output truncation, or LLM compaction removes it (§4.3, §4.7), an archive-write failure aborts that reduction and leaves the content raw rather than dropping what it could not preserve, and every artifact left behind — the summary message metadata, the truncation annotation — carries the handle of the range it stands for. "Updated in-place" now describes only the live message list. Consequences: the omitted remainder of a truncated tool output is recovered by expanding the handle instead of re-running the tool (which a non-deterministic command, a one-shot fetch, or a since-changed build cannot reproduce), and the step-4 2000-char pre-summarization truncation stops being a silent one-way loss. Range archived once per reduction pass, not once per stage (EA-12). |
 | 1.0.4 | 2026-07-16 | Disclosed simplification (FR-6) recorded in §5: the shipped compactor is a no-op returning a placeholder summary — compaction inert until a summarization model is bound; upgrade trigger = configured utility-model binding. History table added with this entry. |

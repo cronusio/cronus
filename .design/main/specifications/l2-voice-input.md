@@ -1,6 +1,6 @@
 # Voice Input
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-voice-input.md
@@ -67,11 +67,11 @@ voice::pipeline (crates/core):
 
 ### 4.3 Model lifecycle (VI-8)
 
-Delegates to the model-runtime acquire/load/evict path; speech-model blobs stored content-addressed (file-management dedup). A bundled quantized default ships with the app for offline first-run; better/language-specific models are acquired on demand from an integrity-verified catalog, loaded on demand, unloaded after idle.
+Delegates to the model-runtime acquire/load/evict path; speech-model blobs stored content-addressed (file-management dedup). A bundled quantized default ships with the app for offline first-run; better/language-specific models are acquired from an integrity-verified catalog when the user asks for one — an explicit download the user starts, never a fetch triggered silently by a recording (`l1-model-runtime` MR-4) — then loaded on demand and unloaded after idle.
 
 ### 4.4 Transform & injection
 
-The transform stage is two independently-toggled kinds (deterministic shaping, LM assist); a shortcut may bind to plain vs transform-then-clean. Injection uses clipboard-safe paste by default, synthetic input where paste is unavailable; both restore prior environment state.
+The transform stage is two independently-toggled kinds (deterministic shaping, LM assist); a shortcut may bind to plain vs transform-then-clean. Injection uses clipboard-safe paste by default, synthetic input where paste is unavailable; both restore prior environment state. The paste path puts the transcript on the system clipboard for an instant, where clipboard managers and other applications can read it; where the platform offers synthetic input into the focused field, that path is preferred for a transcript the user marks sensitive, and the window is otherwise kept as short as the platform allows.
 
 ## 5. Implementation Notes
 
@@ -98,4 +98,5 @@ The transform stage is two independently-toggled kinds (deterministic shaping, L
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Better speech models were "acquired on demand" — acquisition is an explicit download the user starts (MR-4). The clipboard-paste injection exposed the transcript to clipboard readers without saying so — stated, with synthetic input preferred for a transcript marked sensitive. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — cpal/VAD/transcription pipeline, engine abstraction, model lifecycle, optional transform, review overlay, clipboard-safe injection, optional history; maps VI-1…VI-10. |

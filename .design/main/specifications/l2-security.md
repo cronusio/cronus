@@ -1,19 +1,22 @@
 # Security
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
-**Implements:** l1-security.md
+**Implements:** l1-security.md, l1-telemetry.md
 
 ## Overview
 
-The concrete security mechanisms: where secrets are stored and how they are excluded from VCS/backups/logs, the safe-default gitignore, the data-egress gate, the execution sandbox, and the audit log.
+The concrete security mechanisms: where secrets are stored and how they are excluded from VCS/backups/logs, the safe-default gitignore, the data-egress gate, the execution sandbox, the audit log, and the telemetry data contract (§4.9).
 
 ## Related Specifications
 
 - [l1-security.md](l1-security.md) - The model this implements.
+- [l1-telemetry.md](l1-telemetry.md) - The opt-in telemetry model §4.9 realizes (TEL-1…TEL-5).
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `.env` location; state-tier boundary.
-- [l2-technology-stack.md](l2-technology-stack.md) - Sandbox backends per OS.
+- [l2-technology-stack.md](l2-technology-stack.md) - Toolchain and the loopback model-runtime endpoints the SSRF guard does not own (§4.4); the sandbox backend per OS now lives in `l2-execution-sandbox`.
+- [l2-model-runtime.md](l2-model-runtime.md) - Loopback model endpoints are human-configured profiles, not agent-derived URLs (MR-1).
+- [l2-service-activation.md](l2-service-activation.md) - The engine runs as the user, never with elevated rights — what the §4.6 shields can and cannot rely on.
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the concrete confinement backend per platform, its selection and refusal rules and its enumerated coverage; replaces the open backend question §4.3 used to carry.
 - [l2-backup.md](l2-backup.md) - Backups exclude secrets.
 - [l2-tool-security.md](l2-tool-security.md) - Two-layer runtime defense (skill scanner + tool guard) that enforces SEC-3/SEC-6 at the tool-call level.
@@ -43,7 +46,12 @@ The model's guarantees need concrete enforcement points: file locations, ignore 
 | SEC-9 Learnable, scoped, revocable promotion | Realized in `l2-agent-autonomy` §4.6 (durable allow-rules); interpreters, shells, launchers and evaluators are promotable only as the exact resolved invocation (SEC-9(g)). |
 | SEC-10 Authority self-containment | The workspace trust model (§4.8) lets a project's settings load without letting them relax trust-sensitive keys; the sandbox policy file is host-written (`l2-sandbox-policy`); the autonomy level is not model-elevatable (`l2-agent-autonomy` §4.1). |
 | SEC-11 Error-disclosure boundary | **Pending.** It binds every surface that serves an external caller (the ACP relay, a hub client connection, the messaging gateway); the local CLI and TUI render to the machine's own user. Recorded so the invariant is visibly unrealized rather than silently unmapped. |
-| SEC-12 Heuristics labeled; coverage stated | The sandbox requirement (§4.3) is realized, with its enumerated coverage, in `l2-execution-sandbox` §4.9; the trust dialog reports ignored relaxations instead of presenting them as applied (§4.8); no security text in this corpus calls a heuristic containment. |
+| SEC-12 Heuristics labeled; coverage stated | The sandbox requirement (§4.3) is realized, with its enumerated coverage, in `l2-execution-sandbox` §4.9; the trust dialog reports ignored relaxations instead of presenting them as applied (§4.8); the §4.6 shields state that their boundary is confinement and that the file flags are best-effort; `File` credential mode is labeled at-rest obfuscation (§4.7). |
+| TEL-1 Opt-in | Telemetry is off by default; the installer's toggle defaults to off and a non-interactive install stays off (§4.9 Opt-out). |
+| TEL-2 Program data only | The §4.9 allowlist envelope + closed event set; unlisted fields are dropped at ingest; bucketed counts and durations. |
+| TEL-3 Transparent | The §4.9 allowlist is the complete schema of what may leave and is inspectable before opting in; once opted in, daily totals are held in `<state>/telemetry.json` before any send, readable by the user. |
+| TEL-4 Purpose-bound | The endpoint receives only the allowlisted product-improvement events; no other consumer is fed from them. |
+| TEL-5 Local-first | Events are recorded locally and aggregated into daily totals; the send is a separate step that happens only while the user's opt-in stands. |
 
 ## 4. Detailed Design
 
@@ -66,7 +74,7 @@ Agent-run commands/code execute in a sandbox with least privilege (no network un
 
 ### 4.4 SSRF protection
 
-Server-Side Request Forgery is a risk whenever the agent fetches a user-supplied or externally-sourced URL. The SSRF guard runs on every outbound HTTP request before the egress gate permits it.
+Server-Side Request Forgery is a risk whenever the agent fetches a user-supplied or externally-sourced URL. The SSRF guard runs on every outbound HTTP request whose target was derived from agent output, client input or external content (tool fetches, redirects, the sandbox egress proxy) before the egress gate permits it. Endpoints the human configured on the authority plane — a loopback model runtime (`l2-model-runtime` MR-1), a named internal service — are reached through their configured profile and the egress gate instead; a model can never reach loopback or a private address by naming it, because a URL it chose always passes this guard.
 
 #### Scheme allowlist
 
@@ -139,17 +147,17 @@ The token is **never written to disk, never logged, never included in any respon
 
 #### Binding and authentication
 
-The internal tool handler binds to `127.0.0.1:<ephemeral_port>` only — it never listens on any external interface. Every request to the internal tool endpoint must present the `X-Internal-Token` header with the startup token. Requests missing or with an incorrect token receive `403 Forbidden` with no further information.
+The internal tool handler binds to `127.0.0.1:<ephemeral_port>` only — it never listens on any external interface. Every request to the internal tool endpoint must present the `X-Internal-Token` header with the startup token, compared in constant time. Requests missing or with an incorrect token receive `403 Forbidden` with no further information.
 
 #### require_admin guard
 
-Certain internal tools (e.g. privilege escalation, config write) additionally require that the session's `current_user` satisfies `require_admin`. The check order is:
+Certain internal operations (e.g. user administration) additionally require that the session's `current_user` satisfies `require_admin`. The check order is:
 
 1. Token validation (loopback token).
-2. `require_admin` check (if the tool is admin-only).
-3. Tool execution.
+2. `require_admin` check (if the operation is admin-only).
+3. Execution.
 
-A valid token does not bypass `require_admin`; the two checks are independent.
+A valid token does not bypass `require_admin`; the two checks are independent. `require_admin` qualifies the **human** behind the session; it does not make a model's call a human act. No internal tool writes the authority plane — privilege, autonomy level, trust and permission rules, sandbox and egress policy, credential grants, ingress — on a model's call: on a single-user machine the user *is* the administrator, so an admin-gated "privilege escalation" or "config write" tool would let the agent write its own authority. Such a tool exists only as an `AuthorityChangeRequest` that the human resolves (`l1-security` SEC-10, §4.5).
 
 ### 4.6 Config integrity shields
 
@@ -197,7 +205,7 @@ Shields may be lowered temporarily to allow a trusted host-side update (e.g. con
 3. If `shields_down_timeout > 0`, start a timer; on expiry, automatically re-raise shields.
 4. Re-raising recomputes the SHA-256 seal from the updated file content.
 
-**Security invariant:** the sandboxed agent process cannot lower or raise its own shields. Shield control is exclusively a host-process operation; the agent has no elevated privilege to modify OS immutability flags. This prevents an agent from using a shield-manipulation exploit to tamper with its own policy files.
+**Security invariant:** the sandboxed agent process cannot lower or raise its own shields. Shield control is exclusively a host-process operation. What actually keeps the agent away from these files is **confinement**: they lie outside every writable scope a sandbox is given (`l2-execution-sandbox`), so a confined process has no path to them. The read-only attribute and the immutability flag are best-effort defence in depth — the engine runs as the user and never with elevated rights (`l2-service-activation`), so on Linux `chattr +i` normally cannot be applied (`chattr_applied: false`), and a read-only bit is undone by any process running as the same user. The seal detects tampering after the fact; it does not prevent it. None of these flags is described as containment (`l1-security` SEC-12). An unconfined process running as the user — a `local_fs` workspace, a hook — is held only by approvals and the seal, and is labeled so.
 
 #### Drift detection
 
@@ -245,7 +253,7 @@ AuthKeyringBackendKind {
 
 #### Security ordering
 
-`Keyring` is the most secure option (key material never touches disk in plaintext). `Secrets` is the Windows default because DPAPI's generic keyring does not offer the same cross-session durability as macOS Keychain. `Ephemeral` is the most constrained — a sandboxed agent running in this mode cannot exfiltrate credentials across session boundaries, limiting the blast radius of a credential theft attack.
+`Keyring` is the most secure option (key material never touches disk in plaintext). `Secrets` is the Windows default because DPAPI's generic keyring does not offer the same cross-session durability as macOS Keychain. `Ephemeral` is the most constrained — a sandboxed agent running in this mode cannot exfiltrate credentials across session boundaries, limiting the blast radius of a credential theft attack. `File` is **at-rest obfuscation, not a boundary**: its key sits beside the ciphertext, so it protects against casual disclosure (a copied file, a backup that ignored its exclusions) but not against any process running as the user; `Auto` falling back to it is reported to the user rather than applied silently, and the mode is never described as encryption that protects against local processes (`l1-security` SEC-12(d)).
 
 ### 4.8 Workspace trust model
 
@@ -276,7 +284,7 @@ TrustLevel: "trusted" | "trusted-parent" | "denied"
   // "denied"         — this directory is explicitly untrusted; run in safe mode.
 ```
 
-Trust decisions apply at directory granularity. A `trusted-parent` entry at `/projects/` automatically trusts `/projects/foo/`, `/projects/bar/`, etc. Lookup walks from the project root upward, first match wins. `[ADDED v1.1.0]` A `trusted-parent` grant covers project **settings** at directory granularity but **never pre-approves executable artifacts**: hooks, tool-server declarations, commands and skills found in a project beneath it each take their own fingerprint approval on first sight in that project, so cloning a repository under a trusted parent does not let its hooks fire silently.
+Trust decisions apply at directory granularity. A `trusted-parent` entry at `/projects/` automatically trusts `/projects/foo/`, `/projects/bar/`, etc. Lookup walks from the project root upward, first match wins, where a `trusted` entry matches only the exact directory it names, while `trusted-parent` and `denied` entries also match every directory beneath them — so a `trusted` grant on `/projects/foo/` never silently trusts a nested repository at `/projects/foo/vendor/x/`, and a `denied` ancestor is never overridden by walking past it. `[ADDED v1.1.0]` A `trusted-parent` grant covers project **settings** at directory granularity but **never pre-approves executable artifacts**: hooks, tool-server declarations, commands and skills found in a project beneath it each take their own fingerprint approval on first sight in that project, so cloning a repository under a trusted parent does not let its hooks fire silently.
 
 #### Discovery phase
 
@@ -315,7 +323,7 @@ Security warnings (emitted when .cronus/settings.json REQUESTS any of the follow
 
 Any security warning must be displayed prominently in the trust dialog before the user can grant trust.
 
-`[ADDED v1.1.0]` **Trusting a folder lets its settings load; it does not let them relax the safety envelope.** The keys above — and every other key that lowers enforced safety (autonomy level, execution level `off`, guardrail disables, durable allow-rules, sandbox off, a wider egress policy) — are *trust-sensitive*: they are honored only from the **user tier or the managed tier** (`l1-policy-governance` PG-1/PG-6, SEC-10). A project settings file may set them **tighter** than the user tier; a value that would loosen one is ignored, reported in the trust dialog and in the doctor report as `project_relaxation_ignored`, and never applied silently. A repository that ships a permissive settings file gains nothing by being trusted, because the authority plane is written by the human principal and not by whoever wrote the repository.
+`[ADDED v1.1.0]` **Trusting a folder lets its settings load; it does not let them relax the safety envelope.** The keys above — and every other key that lowers enforced safety (autonomy level, execution level `off`, guardrail disables, durable allow-rules, sandbox off, a wider egress policy, an opened or widened channel — its sender or group policy and admitted users, `l2-extension-registry` §4.13) — are *trust-sensitive*: they are honored only from the **user tier or the managed tier** (`l1-policy-governance` PG-1/PG-6, SEC-10). A project settings file may set them **tighter** than the user tier; a value that would loosen one is ignored, reported in the trust dialog and in the doctor report as `project_relaxation_ignored`, and never applied silently. A repository that ships a permissive settings file gains nothing by being trusted, because the authority plane is written by the human principal and not by whoever wrote the repository.
 
 #### Trust dialog (interactive)
 
@@ -467,9 +475,10 @@ Aggregation:   events are accumulated as in-memory counters during a session; th
 Buffering:     the local buffer is capped at TELEMETRY_BUFFER_MAX_BYTES.
                Writes that would exceed the cap drop the oldest entry.
 
-Sending:       fires once at session start (flush-on-open), fire-and-forget with a
-               short timeout. Failures are silently discarded — telemetry never
-               slows a session down, never logs errors, never retries in a loop.
+Sending:       only while the user's opt-in stands (TEL-1): fires once at session start
+               (flush-on-open), fire-and-forget with a short timeout. Failures are silently
+               discarded — telemetry never slows a session down, never logs errors, never
+               retries in a loop.
 
 Constants:
   TELEMETRY_BUFFER_MAX_BYTES = 262_144   // 256 KB local buffer cap
@@ -483,18 +492,21 @@ Constants:
 Priority order (highest wins):
   1. DO_NOT_TRACK=1 env var (cross-tool standard; always honored)
   2. CRONUS_TELEMETRY=0 env var (per-shell override)
-  3. telemetry.enabled: false in <state>/settings.json (persisted choice)
-  4. Default: enabled (with one-time notice on first send if the interactive
-     installer was not run)
+  3. telemetry.enabled in <state>/settings.json (the user's persisted choice; true only
+     after an explicit opt-in)
+  4. Default: disabled (TEL-1 — telemetry is opt-in; there is no send, and no
+     "first send" notice, until the user has opted in)
 
-Opt-out is stored in <state>/telemetry.json { enabled: false }.
+The choice is stored in <state>/telemetry.json { enabled: true | false }.
 Off means off: when disabled, Cronus records nothing, opens no connection,
-and sends no "opted-out" ping.
+and sends no "opted-out" ping. What *would* be sent is inspectable before opting in —
+the allowlist above is the complete schema (TEL-3) — and, once opted in, the local
+daily totals are inspectable before each send.
 ```
 
-The interactive installer (`cronus install`) presents an explicit opt-in toggle with a
-visible default and does not re-ask on subsequent runs. Silent mode (`--non-interactive`)
-inherits the stored preference or defaults to disabled.
+The interactive installer (`cronus install`) presents an explicit opt-in toggle whose
+visible default is **off**, and does not re-ask on subsequent runs. Silent mode
+(`--non-interactive`) inherits the stored preference or stays disabled.
 
 #### SEC-4 compliance
 
@@ -701,4 +713,5 @@ Rationale: calling platform APIs at startup on an incompatible OS version can em
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Telemetry default corrected from enabled to disabled: §4.9 contradicted `l1-telemetry` TEL-1, `l1-security` §4.2 (telemetry opt-in) and this spec's own egress diagram; the shipped store is already opt-in. `Implements` gains `l1-telemetry` with TEL-1…TEL-5 rows, since §4.9 is that model's only realization. §4.5: `require_admin` no longer lets a model-callable "privilege escalation / config write" internal tool write the authority plane (on a single-user machine the user is the admin — SEC-10); token compared in constant time. §4.4: the SSRF guard owns agent-, client- and content-derived targets, while human-configured loopback model endpoints (MR-1) go through their profile — the "every outbound request" wording blocked local-first models. §4.6 shields: confinement is the boundary, `chattr +i`/read-only flags are best-effort (the engine never runs elevated), the seal detects rather than prevents (SEC-12). §4.7: `File` credential mode labeled at-rest obfuscation. §4.8: trust-registry lookup — `trusted` matches only its exact directory. Stale Related row for the sandbox backend updated. §4.8 trust-sensitive keys now include opened or widened channels (sender/group policy, admitted users) — the reachability half of SEC-10, cf. `l2-extension-registry` §4.13. |
 | 1.1.0 | 2026-09-19 | §4.3 now points at `l2-execution-sandbox` and no longer carries the sandbox backend as an open question. §4.8 workspace trust: **trusting a folder no longer lets its settings relax the safety envelope** — trust-sensitive keys (approval mode, sandbox off, autonomy and execution levels, guardrail disables, durable allow-rules, a wider egress policy) are honored only from the user or managed tier, a project may only tighten, and a loosening value is reported as `project_relaxation_ignored`; the fingerprint rotation covers the **whole trust scope** (`scope_hash`) instead of hooks alone — tool-server declarations are approved per server and bound to the hash of their resolved declaration, security-relevant setting changes re-open the dialog, rejection wins on conflict, and a subprocess-launching entry never starts in an untrusted folder; `trusted-parent` covers settings but never pre-approves executable artifacts; the auto-trust variable is read only from the process environment; and the earlier advice to commit approved fingerprints into the project's own configuration is **withdrawn** — it let a repository vouch for its own hooks (SEC-10). §4.4 SSRF: unique-local, unspecified and carrier-grade-NAT ranges added, mapped-address unwrapping, one parser for guard and connector, metadata hostnames blocked by name. Distilled from a cross-check of eight external agent command-line tools against this corpus (the trust model itself was already here; these are the places it was narrower than the converged practice). (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

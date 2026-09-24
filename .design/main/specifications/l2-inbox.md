@@ -1,6 +1,6 @@
 # Inbox (Inter-Actor Messaging)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-orchestration.md
@@ -16,6 +16,7 @@ The inbox is a lightweight SQLite-backed messaging channel between actors within
 - [l2-agent-session.md](l2-agent-session.md) - Session turn loop that drains the inbox at the start of each iteration.
 - [l2-workflow-runtime.md](l2-workflow-runtime.md) - Workflow completion sends an inbox notification to the parent actor.
 - [l1-storage-model.md](l1-storage-model.md) - Inbox rows live in the workspace state-tier SQLite database.
+- [l2-tool-security.md](l2-tool-security.md) - §4.6: a delegated agent's result is untrusted data — how a drained row reaches the model.
 
 ## 1. Motivation
 
@@ -34,8 +35,9 @@ Agents run as isolated sessions; they cannot share mutable state directly. Yet b
 | L1 Invariant | Implementation |
 | --- | --- |
 | ORC-8 Synchronization | Agents receive briefings and completion notifications via inbox drain (synthetic user message). |
-| OM-3 Mailbox | The inbox table is the agent mailbox; the orchestrator is the hub for cross-role coordination. |
-| STORE-2 Mutable state | Inbox rows are in the mutable state tier; deleted after delivery. |
+| ORC-12 Transparent, intervenable coordination | The inbox table is the agent mailbox and the orchestrator is the hub for cross-role coordination; every `send` publishes `InboxArrived` on the event bus (§4.7), so no inter-agent message travels off the record. |
+| OFF-1 Office-per-project isolation | Rows are workspace-scoped and a receiver must be a registered actor of the same workspace (§4.3 step 1); no office delivers into another. |
+| STO-2 Durable, restartable state | Inbox rows persist in the workspace state-tier database and survive a receiver that is sleeping, busy or restarting; they are deleted after delivery or at the §4.6 TTL. |
 
 ## 4. Detailed Design
 
@@ -118,7 +120,7 @@ Steps:
   8. Return count.
 ```
 
-The synthetic user message is indistinguishable from a real user turn from the model's perspective. Using `role: "user"` preserves the KV-cache-stability invariant from agent-session §4.6 (dynamic context injected as user messages, not by modifying the system prompt).
+The synthetic message uses `role: "user"`, which preserves the KV-cache-stability invariant from agent-session §4.6 (dynamic context injected as user messages, not by modifying the system prompt). The role is a transport position, not an attribution: `renderInboxRow` labels every part with its sender, and a part from any sender other than the human principal — a subagent's result, a workflow's completion, a system notice carrying tool output — is wrapped as untrusted data (`agent:{actor_id}`, `l2-tool-security` §4.6). An inbox delivery must never read to the model as its principal's own words: a worker that could phrase a request in the user's voice would hold the user's authority over the receiver.
 
 ### 4.5 Crash window (known limitation)
 
@@ -168,5 +170,6 @@ The inbox is an implementation detail; it has no direct user-facing commands. Ob
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): A drained row reached the model as a synthetic user message "indistinguishable from a real user turn" — a subagent or workflow could speak with the principal's authority; parts are now labeled by sender and non-human senders are wrapped as untrusted data (`l2-tool-security` §4.6), the user role being transport only. Compliance cited nonexistent `OM-3`/`STORE-2` — now ORC-12, OFF-1, STO-2. |
 | 1.0.1 | 2026-07-10 | Core Team | Fixed broken Related Specifications link — the storage tier is an L1 concept (l1-storage-model.md); the l2- prefix pointed at a non-existent file (Canonical References already used the correct l1- path) |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — SQLite-backed inter-actor inbox, ULID ordering, drain-on-turn, synthetic user messages |

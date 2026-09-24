@@ -1,6 +1,6 @@
 # Agent Office Model
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** concept
 
@@ -96,7 +96,7 @@ Specialties an office may staff (not exhaustive; staffing is adaptive per OFF-4)
 
 - **Over-delegation overhead:** a strict delegation-only orchestrator (OFF-2) can add coordination cost on trivial tasks; mitigated by letting the orchestrator staff a minimal roster (OFF-4) rather than a full org for small work.
 - **Risk of acting on misread intent (OFF-5 vs OFF-6 tension):** acting autonomously while rarely asking risks building the wrong thing; mitigated by the OFF-6 escape hatch for genuine ambiguity and by synchronization briefings (§4.3).
-- **Alternative — fixed org chart:** assigning all roles up front was rejected; research indicates adaptive, on-demand staffing outperforms rigid hierarchies. <!-- TBD: define the orchestration scheme — single top manager vs. top manager + department sub-managers — as the default for v0.1.0 -->
+- **Alternative — fixed org chart:** assigning all roles up front was rejected; research indicates adaptive, on-demand staffing outperforms rigid hierarchies. The default scheme is settled by `l1-orchestration` ORC-2: one top manager that manages directly while the office is small and introduces sub-managers as it grows. The promotion thresholds remain open there.
 
 ## Canonical References
 
@@ -110,5 +110,6 @@ Specialties an office may staff (not exhaustive; staffing is adaptive per OFF-4)
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.2 | 2026-09-24 | Consistency pass (2026-09-24): A TBD asked which orchestration scheme is the default — one top manager, or a manager with department sub-managers. `l1-orchestration` ORC-2 already settles it (direct management while small, sub-managers as the office grows); the marker is replaced by that answer, and the promotion thresholds stay open where ORC-2 lives. |
 | 1.0.1 | 2026-07-10 | Cross-reference only: linked `l1-office-archetype.md`, which supplies domain-scoped staffing priors while preserving OFF-4 and the §5 rejection of the fixed org chart. No invariant or design change. History table added with this entry. |
 | 1.0.0 | 2026-06-24 | Initial stable spec — OFF-1…OFF-9: office-per-project isolation, single delegating orchestrator, role specialization, adaptive staffing, client-as-client, managed work lifecycle, autonomous operation, compounding capability. |

@@ -1,6 +1,6 @@
 # Agent Constitution
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-memory-model.md
@@ -18,6 +18,8 @@ The concrete mechanism for workspace-scoped agent identity and cross-session mem
 - [l2-scheduler.md](l2-scheduler.md) - Heartbeat action that reads HEARTBEAT.md periodic tasks.
 - [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.1.0] AG-10: a write into a file the agent later loads as standing instruction is a privileged sink (§4.25).
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the confinement keeps these files unwritable to any confined child even inside a writable root (§4.5 there).
+- [l2-security.md](l2-security.md) - Workspace trust (§4.8): project-tier customization layers and persistent facts load only in a trusted folder (§4.11).
+- [l1-security.md](l1-security.md) - SEC-9(a): a standing answer is an explicit human act — why approvals are excluded from question tuning (§4.21).
 
 ## 1. Motivation
 
@@ -35,7 +37,8 @@ A fresh session context has no memory of prior interactions. Structured memory (
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| MOD-1 Workspace isolation | Constitution files are per-workspace; employees of different offices carry different profiles. |
+| OFF-1 Office-per-project isolation | Constitution files are per-workspace; employees of different offices carry different profiles, and no office reads another's files. |
+| OFF-9 Persistent, compounding capability | PROFILE.md and MEMORY.md carry what the office learned across sessions; they are rebuilt into every session rather than reset (§4.7). |
 | MEM-1 Multi-scope | Constitution files are workspace-scope; global-scope preferences live in the home workspace. |
 | SEC-1 Secret isolation | Constitution files never store secrets (secrets go to `.env` / keychain). MEMORY.md may store aliases, not credentials. |
 | SEC-10 Authority self-containment | SOUL.md and HEARTBEAT.md have no agent write path; the agent may only *request* a change, and the request is data (§4.25). |
@@ -128,7 +131,7 @@ The agent appends to `### Context` as it learns; it never overwrites the identit
 ---
 summary: "Agent long-term memory — tool setup and lessons learned"
 read_when:
-  - Bootstrapping a workspace manually
+  - Session start
 ---
 ```
 
@@ -290,7 +293,7 @@ Step 4: Load persistent_facts
   All other entries are literal facts.
 
 Step 5: Load config
-  Load {project_root}/_bmad/bmm/config.yaml (or workspace equivalent). Resolve:
+  Load the workspace's agent configuration (<ws>/config.json). Resolve:
     - {user_name}              → name for greetings
     - {communication_language} → all responses in this language
     - {document_output_language} → output artifacts in this language
@@ -338,6 +341,8 @@ Merge rules:
 ```
 
 A missing file is silently skipped. The merge produces one resolved config block that the agent reads as a single object.
+
+The project-tier layers (the team override checked into the repository, and the project's `persistent_facts` files of §4.10 step 4) are repository content: they load only in a trusted workspace (`l2-security` §4.8), their text reaches the agent as project instructions under the same rule as the other operator-instruction files (`l2-tool-security` §4.8), and they can never relax a trust-sensitive setting or reach the authority plane — a repository does not configure its own reviewer.
 
 #### Four-layer system config resolver
 
@@ -395,7 +400,8 @@ Properties of the canonical source:
   - Platform-agnostic Markdown — no host-specific syntax
   - Mode-marker annotations for intensity filtering (e.g. [[lite]], [[ultra]])
   - Single source of truth for all adapter copies
-  - Human-editable; the agent may append but never silently overwrite
+  - Human-editable. SOUL.md has no agent write path at all (§4.25) — the agent may only request
+    a change; a SKILL.md source changes through a pending revision (l2-learning-loop §4.1)
 ```
 
 #### Adapter types
@@ -833,6 +839,8 @@ Repeated clarification prompts on already-decided questions add friction and ero
 }
 ```
 
+**What may be tuned:** only ordinary clarification and preference questions. A question that is an approval, a consent, or an authority decision — permit an action, relax a setting, trust a folder, accept a staged write — is **never** learned: SEC-9(a) makes a standing grant an explicit human act, never one inferred from repeated answers, so those keys are excluded from the store and always asked.
+
 **Suppression rule:** When the same `question_key` receives an identical response in three or more consecutive occurrences, the entry is marked `suppressed: true`. The preferred value is applied automatically, and a one-line notice is emitted:
 
 ```
@@ -965,5 +973,6 @@ Acceptance of a staged write is a human act on **that exact content** (CB-1): it
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Compliance cited a nonexistent `MOD-1` — now OFF-1, with OFF-9 added. §4.10 named a reference framework's own config path — replaced by the workspace configuration. §4.13 let the agent append to SOUL.md, contradicting §4.25 (human-only). §4.21 question tuning auto-applied an answer after three identical replies, which for approvals would be an inferred standing grant (SEC-9(a)) — approvals, consents and authority decisions are excluded. MEMORY.md `read_when` was "bootstrapping" only, so the cheat sheet never loaded — now session start. Project-tier customization layers and persistent facts load only in a trusted workspace (`l2-security` §4.8). |
 | 1.1.0 | 2026-09-19 | New §4.25 — standing-instruction files are a persistence sink. These files are loaded as the agent's own principles at every session start, so a sentence saved into one outlives the conversation and the source that induced it; a write to one is a privileged sink under `l1-action-gating` AG-10. SOUL.md and HEARTBEAT.md are human-written only (no agent write path, SEC-10; a wanted change is a request, which is data); an agent write to PROFILE.md or MEMORY.md derived from untrusted content is staged under `.pending/` for human acceptance of that exact content, unattended callers stage without asking (AG-9), and clean-provenance updates are unchanged. Rule distribution into other tools' files (§4.13) and managed-marker injection (§4.16) recorded as human-initiated installation actions the agent cannot call. §2 and §3 updated; SEC-10 and AG-10 rows added. Distilled from a cross-check of eight external agent command-line tools: protecting the files that carry standing instructions from agent writes, as a prompt-injection persistence vector, was found in the most security-mature of them. |
 | 1.0.10 | 2026-07-16 | Disclosed simplification (FR-6) recorded in §5: the 8-step activation sequence executes as a no-op seam pending agent-session wiring; upgrade trigger = binding activation to session start. History table added with this entry. |

@@ -1,6 +1,6 @@
 # Design Identity
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** concept
 
@@ -288,7 +288,7 @@ The disposition for the workflow library is **Reuse, no new nodus invariant**:
   *schema artifact loaded at runtime* — precisely nodus's layered schema/vocabulary model
   ([l1-nodus-portability.md](../../nodus/specifications/l1-nodus-portability.md) LP-4:
   built-in < host < workflow), not a core constant. Adding an identity vocabulary to nodus core
-  would violate LP-4's isolation; an identity is a **host-supplied asset**, loaded through the
+  would violate nodus LP-4's isolation; an identity is a **host-supplied asset**, loaded through the
   schema-provider seam.
 - **Import provenance/fidelity is already LP-13/LP-9.** The provenance-tagged, version-pinned,
   attested import of an identity (DI-4) is exactly the addressable-versioned-import (LP-13) plus
@@ -296,7 +296,7 @@ The disposition for the workflow library is **Reuse, no new nodus invariant**:
   host-side import metadata.
 - **Craft-as-data is a host rule catalog.** A workflow that *generates* a surface would declare a
   design/craft capability in its LP-8 manifest and read a host-supplied craft catalog — the
-  craft rules and their enforcement are host-supplied (LP-2), never nodus-core vocabulary.
+  craft rules and their enforcement are host-supplied (nodus LP-2), never nodus-core vocabulary.
 
 So the concept is recorded here at concept level; if a future host observation shows an identity
 or craft concern that genuinely must surface in the portable contract (the LP-7 feedback
@@ -349,6 +349,7 @@ lifecycle), it graduates via a spec amendment then — not speculatively now.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.0.3 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.2 | 2026-09-02 | Related Specifications extended with `l2-design-system` (the Layer 2 realization of DI-1/DI-3); `l2-app-ui` entry and §4.2 clarified that the host UI realizes the catalog as the **colour-scheme** axis, orthogonal to an OS-appearance **mode** axis (light/dark/system) that selects a scheme's variant. Clarification + link only; no invariant changed. |
 | 1.0.1 | 2026-08-05 | Related Specifications extended with `l1-negative-specification` (DI-6 default tells generalized as the built-in negative layer; a project avoid-list is DI-7's user layer; DI-5's auto-vs-advisory boundary generalized as NEG-9) and `l1-adjustment-vocabulary` (client steering within the acceptable region, with the craft bar as the floor). Link-only; no invariant changed. |
 | 1.0.0 | 2026-07-09 | Initial model: design identity — a named, layered, schema-validated visual-language catalog as data (DI-1) with one-active-per-scope cosmetic-only switching (DI-2), token contract as the single visual source of truth (DI-3), provenance-tagged + fidelity-declared (verbatim/normalized/hybrid) attested import (DI-4); a tiered craft-conformance bar with a named auto-vs-advisory boundary (DI-5), distinctiveness-over-default rejecting generic template output (DI-6), data-driven extensible craft rules (DI-7), uniform application across office UI and agent-generated surfaces resolving the app-UI custom-theme question (DI-8), and local-first secret-safe non-authoritative assets (DI-9); ideas-to-adopt mapping (mined from a studied open-source design-agent platform's design-system-as-data catalog + anti-default craft rubric) + nodus-relevance disposition (Reuse behind the LP-4 schema-provider / LP-13 import seams, no new nodus invariant). |

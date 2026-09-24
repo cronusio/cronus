@@ -1,6 +1,6 @@
 # Automation Pipeline
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-automation-pipeline.md
@@ -11,7 +11,7 @@ The runtime automation engine in `crates/core`: a trigger dispatcher fed by trig
 
 ## Related Specifications
 
-- [l1-automation-pipeline.md](l1-automation-pipeline.md) — the model this implements (AP-1…AP-15).
+- [l1-automation-pipeline.md](l1-automation-pipeline.md) — the model this implements (AP-1…AP-16).
 - [l2-trigger-triage.md](l2-trigger-triage.md) — event intake + dedup window feeding the trigger dispatcher.
 - [l2-scheduler.md](l2-scheduler.md) — `schedule` trigger source.
 - [l2-orchestration.md](l2-orchestration.md) — `action` nodes delegate through the orchestration bus.
@@ -38,7 +38,7 @@ The model requires one engine behind two surfaces, deterministic evaluation, and
 | AP-2 Trigger uniqueness | The dedup window (trigger-triage) keys on `(trigger_id, event_key)` within `DEDUP_WINDOW_MS`; duplicate firings suppressed, distinct triggers fire independently. |
 | AP-3 Step atomicity | Each node returns `Ok(payload)` or `Err(structured)`; no partial node state. On error the run halts at the node unless an error branch/observer handles it. |
 | AP-4 Event payload isolation | `EventPayload` is a typed struct; a schema validator rejects any `data` field carrying excluded content classes before propagation. |
-| AP-5 Security boundary | A run executes under the owning role's permission set (resolved at bind time), never the emitter's; escalation attempts fail closed. |
+| AP-5 Security boundary | A run executes under the owning role's permission set, never the emitter's, resolved when each run starts — not frozen at bind time, so a permission revoked after binding stops the next run instead of surviving in the binding; escalation attempts fail closed. |
 | AP-6 Observable execution | The executor emits AuditProvider start/end/error + elapsed at every node boundary; a run with no trace is rejected as incomplete. |
 | AP-7 Office isolation | Every payload carries `office_id`; cross-office reads/mutations require an explicit permission gate + user approval before activation. |
 | AP-8 Durable node memory | Nodes may declare a schema-bounded, office-scoped, resettable memory map; `transform` declares none and is guaranteed retryable. |
@@ -49,6 +49,7 @@ The model requires one engine behind two surfaces, deterministic evaluation, and
 | AP-13 Pinned partial re-execution | Dev run pins a node's output, re-runs only the downstream subgraph, reuses the §4.9 dry-run quarantine, marked development — never a production run. |
 | AP-14 Scoped state | node-private / pipeline-shared scopes bind to a named volatile/durable backend from a registry with a default + per-scope override; all office-scoped + content-excluded. |
 | AP-15 Lifecycle observers | `observer` node subscribes to error/status/completion of a declared scope; scoped precedes catch-all; unhandled errors propagate outward across `subpipeline` to the caller, else AP-3 stop-on-failure stands. |
+| AP-16 External-source change classification | **Pending.** A change-detector over an `external_event` source is to compare a declared canonical projection (volatile regions — reflow, rotating embeds, timestamps, nonces — removed), not raw bytes, and emit a typed status `new` / `same` / `changed` / `removed`, with `removed` distinct from a transient fetch error and comparison lineages namespaced by tag. Today a change-detector compares raw payloads. |
 
 ## 4. Detailed Design
 
@@ -71,7 +72,7 @@ PipelineEngine {
 Nodes evaluate in topological order: `filter` (short-circuit), `transform` (pure), `branch` (one path), `delay` (durable suspend), `aggregate` (window), `loop` (bounded), `action` (delegates via orchestration/kanban/inbox), `subpipeline` (AP-12), `observer` (AP-15). Each boundary emits an AuditProvider event. `action` dispatch reuses existing subsystem calls — no new dispatch logic.
 
 <!-- [ADDED] v1.1.0 -->
-Topological order constrains dependencies, not scheduling: nodes of the same topological rank have no edge between them and MAY evaluate concurrently under a bounded cap, per the superstep semantics of the shared execution-graph model. This is safe by construction — side effects occur only in `action` nodes, and an `action`'s dispatch mode (blocking or non-blocking) is per-node configuration unchanged by rank-level concurrency. Determinism holds: a node's inputs are fixed by its predecessors' staged outputs, never by sibling completion order.
+Topological order constrains dependencies, not scheduling: nodes of the same topological rank have no edge between them and MAY evaluate concurrently under a bounded cap, per the superstep semantics of the shared execution-graph model. Side effects occur only in `action` nodes, and an `action`'s dispatch mode (blocking or non-blocking) is per-node configuration unchanged by rank-level concurrency. Two `action` nodes of one rank run concurrently only when their declared targets are disjoint; actions sharing a target (the same card, the same channel, the same file) run one after another in a stable order (node id), so the combined effect does not depend on which finished first. Determinism holds: a node's inputs are fixed by its predecessors' staged outputs, never by sibling completion order, and effects on a shared target are ordered.
 
 ### 4.3 Dedup window & trigger dispatch
 
@@ -114,7 +115,7 @@ Control edges carry `enable`/`disable`/`trigger`, traversed on a separate `Contr
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[MODEL]` | `.design/main/specifications/l1-automation-pipeline.md` | Invariants AP-1…AP-15 |
+| `[MODEL]` | `.design/main/specifications/l1-automation-pipeline.md` | Invariants AP-1…AP-16 |
 | `[TRIAGE]` | `.design/main/specifications/l2-trigger-triage.md` | Trigger intake + dedup window |
 | `[ORCH]` | `.design/main/specifications/l2-orchestration.md` | Delegation used by action nodes |
 | `[CANVAS]` | `.design/main/specifications/l1-automation-canvas.md` | Explicit-mode visual surface |
@@ -123,5 +124,6 @@ Control edges carry `enable`/`disable`/`trigger`, traversed on a separate `Contr
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): AP-16 (external-source change classification, added to the L1 in 1.4.0) was unmapped — Pending row. Same-rank concurrency claimed determinism while two `action` nodes could race on one target — actions sharing a target run in a stable order. AP-5 froze the owning role's permissions at bind time, so a revoked permission survived in the binding — resolved at each run start. |
 | 1.1.0 | 2026-07-04 | Core Team | Concurrent same-rank node evaluation (§4.2): nodes of one topological rank MAY run concurrently under a bounded cap per the shared superstep semantics; effects stay confined to `action` nodes; determinism preserved by staged predecessor outputs. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — single PipelineEngine behind both modes, topological node executor, dedup window, scoped state over volatile/durable backends, control plane, lifecycle observers, composition, portable bundles, dev runs; maps AP-1…AP-15. |

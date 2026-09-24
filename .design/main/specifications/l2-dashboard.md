@@ -1,6 +1,6 @@
 # Dashboard
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-dashboard.md
@@ -15,6 +15,8 @@ The concrete dashboard: which metrics it computes, the state it reads them from,
 - [l2-kanban-board.md](l2-kanban-board.md) - Board state for work metrics.
 - [l2-app-ui.md](l2-app-ui.md) - The Dashboard surface in the app shell.
 - [l2-cli.md](l2-cli.md) - Command grammar standard.
+- [l2-navigation.md](l2-navigation.md) - The canonical navigation this surface belongs to, and its two facets (NV-10).
+- [l2-budget-engine.md](l2-budget-engine.md) - The per-call cost events usage analytics are recorded from.
 
 ## 1. Motivation
 
@@ -63,43 +65,19 @@ The model needs concrete metric definitions and sources so the dashboard is a fa
 | show office dashboard | `cronus dashboard` | `/dashboard` | `dashboard.show() -> Dashboard` |
 | building aggregate (home) | `cronus dashboard building` | `/dashboard building` | `dashboard.building() -> Dashboard` |
 
-### 4.4 Surface catalog
+### 4.4 Facets
 
-The dashboard organizes content into named surfaces. Each surface is a bounded read-only or lightly-interactive view; no surface triggers agent operations directly (DSH-4). The active surface is tracked in `layout.json` as a persisted preference.
+The dashboard is one surface of the canonical navigation, and its sub-navigation is the facet pair the navigation model fixes for it (`l1-navigation-model` §4.5, `l2-navigation` NV-10): **Agent Statistics** and **Token Usage**. It does not host a navigation of its own. The active facet persists in `layout.json` as a preference.
 
 ```text
 [REFERENCE]
-Surface catalog (all surfaces read-only toward domain state):
-
-Today        — Hero surface. Synthesized standup brief (from the agent's latest standup skill
-               run); vault/knowledge activity timeline with relative timestamps; keyboard
-               quick-launch for pinned skills (up to 4); 30-day write-sparkline showing
-               output volume trend; agent runtime status panel (next scheduled run countdown).
-
-Skills       — Skill pack browser. Pack cards grouped by function (e.g. ceo / engineering /
-               finance). Click into a pack → skill cards. Click skill → input form → run.
-               Output streams back; artifact reveals in an accent-bordered panel with
-               "Open in Knowledge Base" action. Source indicator: shipped vs. user-override.
-
-Knowledge    — Tree view of the workspace knowledge base on the left, recently-updated list
-               on the right with status-tinted pills (draft / reviewed / stable). Markdown
-               render with [[wikilink]] resolution, code highlighting, frontmatter inspector.
-
-Journal      — Chronological personal entries. User-owned zone — agent reads but does not
-               write here (except via explicit journal-scaffold skill invocations).
-
-Sources      — Ingest surface. Drag-drop PDFs, URLs, or transcripts → land as "unread" in
-               the sources zone. The agent picks them up via a skill and synthesizes wiki
-               pages; ingest status updates here.
-
-Automations  — Live view of every scheduled job registered with the workspace cron system.
-               Shows: job name, last-run status, next-run timestamp, enabled/paused state.
-               Surface-level pause/resume actions (write-path via the bridge pattern — see
-               §4.6 below).
-
-Settings     — Runtime config, theme toggle, update-check status, search-tool detection
-               report, token status, vault path.
+Agent Statistics — cards by state, throughput, cycle time, blocked work; active agents,
+                   running tasks, recent sessions; the per-agent health score (§4.5) and
+                   alerts (§4.6); next scheduled run; message / session / call trends.
+Token Usage      — model spend by model and by date, and usage trends (§4.8).
 ```
+
+Every panel is read-only (DSH-4). Where a panel concerns something the user can act on — a skill, a knowledge page, a scheduled job, a setting — it links to the surface that owns that action (Wiki, Memory, Schedule, Automation, Settings); the dashboard itself runs, ingests, pauses, and edits nothing.
 
 ### 4.5 Session health score
 
@@ -140,7 +118,7 @@ Color coding:
 
 ### 4.6 Alert thresholds
 
-Alerts are surfaced in the Today surface and in the Automations surface. Each alert has a severity, a human-readable title/detail pair, the metric value, and the threshold that triggered it.
+Alerts are surfaced in the Agent Statistics facet. Each alert has a severity, a human-readable title/detail pair, the metric value, and the threshold that triggered it.
 
 ```text
 [REFERENCE]
@@ -150,80 +128,65 @@ Threshold table:
   memory_mb > 300      → critical  "Memory Pressure"      detail: risk of OOM
   memory_mb > 200      → warning   "High Memory Usage"    detail: monitor closely
   error_lines > 100    → warning   "Elevated Errors"      detail: review for patterns
-  session_count == 0   → info      "Inactive Profile"     detail: gateway up but unused
+  session_count == 0   → info      "Idle Agent"           detail: hired but given no work
   activity_drop > 50%  → warning   "Activity Drop"        detail: session avg dropped N%
 
 Sorting: critical first, then warning, then info; same-severity sorted by recency.
 Display cap: show up to 10 alerts in the UI; the full list is available via dashboard.alerts().
 ```
 
-### 4.7 Graceful degradation (runtime offline)
+### 4.7 Graceful degradation (engine not running)
 
-When the agent runtime's HTTP API is offline, the dashboard degrades gracefully to disk-based reads rather than showing an error state.
+When the engine is not running, the dashboard still asks the **core** — never the files. The core library opens the office's stores read-only through its own adapters (the read pool of `l2-technology-stack` §4.7) and returns the same projections; the frontend never parses a database or state file itself (INV-2, INV-10).
 
 ```text
 [REFERENCE]
-Degradation map (HTTP endpoint → disk fallback):
-
-  GET /api/jobs               → read <state>/cron/jobs.json directly
-  GET /health/detailed        → read <state>/gateway_state.json directly
-  Session listing             → read <state>/state.db via SQLite (WAL mode, readonly)
-
-  Fallback contract:
-    - Disk reads are attempted silently; a banner ("Runtime offline — showing cached state")
-      is shown once in the Settings surface; all other surfaces render normally from disk data.
-    - Disk fallback is read-only: pause/resume/run actions in the Automations surface are
-      disabled while offline (not hidden — shown as disabled with a tooltip).
-    - The Today surface shows the most recent standup from the knowledge base rather than
-      triggering a new run.
-    - Health score and alerts are suppressed (data not current) and replaced with an
-      "Offline — connect runtime for live health data" notice.
+Degradation contract:
+  - A banner states the engine is not running and the time of the data shown.
+  - Every panel renders from the read-only projection; nothing is fabricated.
+  - Links to action surfaces stay, and those surfaces show their actions as unavailable
+    (disabled, with the reason) until the engine runs.
+  - Health score and alerts are suppressed (their inputs are live signals) and replaced
+    with "Engine not running — start it for live health data".
 ```
 
-### 4.8 Runtime Analytics
+### 4.8 Usage analytics
 
-The dashboard collects operational telemetry during office execution to feed the self-improvement cycle and the doctor subsystem. Analytics are per-session and per-model; no user content is recorded — only aggregate usage numbers.
+Usage analytics are recorded by the **core's usage recorder**, not by the dashboard — the dashboard is a projection and stores nothing but layout (DSH-1). The recorder takes its numbers from the same per-call cost events the budget engine receives (`l2-budget-engine` §4.2), so the dashboard's spend and the budget engine's spend cannot disagree. No user content is recorded — only usage numbers.
 
 ```text
 [REFERENCE]
-Collected during every active office session:
+Recorded per office, per session, per model:
 
-  Token counters (per session, per model):
-    - input_tokens_used       : cumulative input tokens consumed this session
-    - output_tokens_used      : cumulative output tokens generated this session
-    - cache_read_tokens       : tokens served from prompt cache (cost ≈ 0.1× full)
-    - tool_call_count         : number of tool invocations issued by agents
+  Token counters:
+    - input_tokens_used, output_tokens_used
+    - cache_read_tokens       : tokens served from the provider's prompt cache
+    - tool_call_count         : tool invocations issued by agents
 
-  Model distribution (per session):
+  Model distribution:
     - model_id → {input, output, tool_call_count}
-    - Reveals which roles / task types are dominated by expensive models
+    - reveals which roles / task types are dominated by expensive models
 
-  Cost estimate (per session):
-    - Derived field: (input × rate_in + output × rate_out) per model,
-      summed to a session_cost_usd estimate
-    - Rate table is configurable (Local Settings → Office → Budget); used for
-      display only, not for billing
+  Cost estimate:
+    - derived from the cost events; the rate table is configurable
+      (Local Settings → Office → Budget); display only, never billing
 
-  Time series (ring buffer, last 100 sessions):
-    - session_id, started_at, ended_at, total_tokens, total_cost_usd
-    - Feeds the "Usage trends" panel in the Settings surface
+  Time series (last 100 sessions per office):
+    - session_id, started_at, ended_at, total_tokens, total_cost
 
-  Aggregation schedule:
-    - In-memory counters updated after each LLM API response (hot path)
-    - Flushed to <state>/analytics.db (SQLite) at session close and on a
-      30-second heartbeat while active
-    - Doctor reads from analytics.db; inner monologue reads a recent-sessions
-      summary exported to <state>/analytics_summary.json on flush
+  Storage:
+    - in the office's state (per-office rows; the building aggregate reads across
+      offices read-only, DSH-6); flushed at session close and every 30 s while active
+    - the doctor and the inner monologue read the recorder, not the dashboard
 ```
 
-Presented in the Settings surface as "Usage" panel; accessible via `dashboard analytics [--session <id>]`.
-Feeds: self-improvement calibration data, model-router cost scoring, doctor anomaly detection.
+Shown in the Token Usage facet; accessible via `dashboard analytics [--session <id>]`. Feeds: self-improvement calibration data, model-router cost scoring, doctor anomaly detection. Nothing here leaves the device unless the user has opted into telemetry (DSH-5).
 
 ## 5. Drawbacks & Alternatives
 
 - **Recompute cost on busy offices:** mitigated by event-driven incremental metric updates.
 - **Alternative — persist computed metrics:** rejected; storing derived numbers risks drift (DSH-1). Only layout persists.
-- **Analytics storage growth:** mitigated by capping the in-DB ring buffer at 100 sessions; older entries are pruned on flush.
+- **Analytics storage growth:** mitigated by keeping the last 100 sessions per office; older entries are pruned on flush, and the Token Usage facet states that horizon.
 
 ## Canonical References
 
@@ -232,3 +195,10 @@ Feeds: self-improvement calibration data, model-router cost scoring, doctor anom
 | `[DASHBOARD]` | `.design/main/specifications/l1-dashboard.md` | Invariants this implements |
 | `[BOARD]` | `.design/main/specifications/l2-kanban-board.md` | Work-metric source |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.3 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): §4.4 defined a private navigation (Today, Skills, Knowledge, Journal, Sources, Automations, Settings) that ran skills, ingested files and paused jobs — contradicting DSH-4 (read-only) and the canonical navigation, whose Dashboard facets are Agent Statistics and Token Usage (NV-10); it also carried another product's vault and bridge concepts. Replaced by the two read-only facets, linking to the surfaces that own actions. The offline mode read the core's files directly from the frontend (INV-2, INV-10) — it now asks the core library for read-only projections. Usage analytics were collected and stored by the dashboard (DSH-1) — they are recorded by the core's usage recorder from the budget engine's cost events, per office. |
+| 1.0.2 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

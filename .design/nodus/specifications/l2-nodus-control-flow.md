@@ -1,6 +1,6 @@
 # Nodus Control-Flow Constructs Implementation (Rust)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -45,7 +45,7 @@ executor.
 
 | L1 Invariant | Rust Enforcement |
 | --- | --- |
-| NL-5 Bounded loops | `~RETRY:n` requires a declared `n` ≤ 10; the validator rejects a missing/over-cap bound, mirroring the `~UNTIL MAX:n` rule (E010-style). |
+| NL-5 Bounded loops | `~RETRY:n` requires a declared `n` ≤ 10; the validator rejects a missing/over-cap bound with `E017`, mirroring the `~UNTIL MAX:n` rule (`E010`). |
 | NL-6 Dual representation | The transpiler round-trips each new construct (compact ⇄ human) so `compact → human → compact` stays AST-equal. |
 | NL-7 Closed value system | `~MAP` produces a `Value::List`; `?SWITCH` compares scalars within the closed value set; no new value kinds. |
 | NL-10 Sequential pipeline | `~MAP`'s `→ $out` target follows the existing pipeline rule; `?SWITCH` arm actions bind their targets in declaration order. |
@@ -119,6 +119,23 @@ Stmt::Map    → for each element of the Value::List collection, bind $it, run t
 `!HALT` status precedence sits with the existing rule-violation/abort logic
 (fatal); `!PAUSE` reuses the paused branch added for dialog.
 
+**Retry re-runs the whole step (hazard, recorded).** A retry re-executes the step's action
+and every sub-step, including commands that completed in the failed attempt. An
+effect-class command — a model call, `SETTLE`, a host effect — that succeeded before a later
+command in the same step failed therefore runs again: a double commit, the step-grain twin
+of the restart hazard `l2-nodus-restart.md` §2 documents for NL-23(e). The failed attempt's
+completed effects also never enter the compensation ledger, which records only a step that
+completes cleanly (`l2-nodus-compensation.md`), so a later unwind cannot undo them. Until a
+retry is scoped to the failing command, a retried step holds only idempotent effects. The
+`+backoff` and `+retry_on` modifiers L1 §4.6 lists are not realized: every runtime error
+retries, immediately.
+
+**`~MAP` over a non-list swallows a type error (recorded).** §2 makes a non-list collection
+yield an empty list without error, so the result is indistinguishable from mapping an empty
+list, and a check built over it — every element validated, every item delivered — passes
+vacuously. The run stays non-halting by design, but the substitution is to be surfaced as a
+flag on the run, never absorbed silently.
+
 ### 4.5 Validator
 
 - `~RETRY` without `:n`, or `n > 10`, → error (NL-5 bounded-loop extension).
@@ -168,3 +185,4 @@ already exist; this cluster wires them to syntax.
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-06-27 | Core Team | Initial spec — Rust realization of the v0.7 control constructs (`?SWITCH`/`~MAP`/`~RETRY`/`!HALT`/`!PAUSE`): lexer tokens, `SwitchBlock`/`MapBlock` AST + action flags + retry, parser/executor/validator/transpiler wiring; reuses `Status::Paused`/`Signal::Pause` and `SWITCH_NO_MATCH`/`PAUSED`. Phased implementation recommended. |
 | 1.0.1 | 2026-07-25 | Core Team | §4.5 patch: records that `~MAP`'s implicit `$it` binding (§4.3) must count as declared for the pre-existing variable-declaration check, on the same file-wide-set terms as `~FOR`'s explicit loop variable — closes a conformance gap where the realized check omitted this and rejected every `~MAP` workflow. No design change; status stays `Stable`. |
+| 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): §4.4 records two hazards: a retry re-runs the whole step, re-committing effects that succeeded in the failed attempt and leaving them outside the compensation ledger (`+backoff`/`+retry_on` are unrealized); and `~MAP` over a non-list silently yields an empty list, so a check over the result passes vacuously. The NL-5 row names `E017`. |

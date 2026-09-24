@@ -1,6 +1,6 @@
 # Tool Receipts (Implementation)
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-receipts.md
@@ -32,6 +32,8 @@ guarantee is held by the type system, not by discipline.
 
 - [l1-tool-receipts.md](l1-tool-receipts.md) — the parent contract (TR-1…TR-9).
 - [l2-tool-security.md](l2-tool-security.md) — the `ToolPolicy::is_permitted` gate this subsystem attaches to, and the SEC-7 `AuditEntry` / `append_audit_entry` log TR-9 strengthens from *logged* to *provable*.
+- [l2-agent-autonomy.md](l2-agent-autonomy.md) — the approval stage of the decision path whose refusals bind as `blocked` (§4.4).
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) — PI-1/PI-2 self-hardening that closes the crash-dump and tracer surfaces the §4.3 residual would otherwise expose.
 - [l2-crate-topology.md](l2-crate-topology.md) — the tier model this spec's placement obeys: pure-`std`-plus-allowlist logic in `cronus-domain`, entropy and I/O in the facade.
 - [l2-security.md](l2-security.md) — SEC-1 secret isolation (the receipt key is a secret by the same rules) and the SEC-7 audit trail.
 - [l2-dev-office.md](l2-dev-office.md) — DVO-7 composed the SEC-7 audit baseline *because* this subsystem did not exist; it is the first caller that upgrades once this ships.
@@ -210,9 +212,18 @@ graph TD
     LEDGER --> RET[return Receipted&lt;T&gt; to the caller]
 ```
 
+`GATE` stands for the whole decision path in front of execution, not one function:
+`ToolPolicy::is_permitted`, the tool guard's hard blocks and escalations
+(`l2-tool-security` §4.2) and the autonomy gate with its approval outcome
+(`l2-agent-autonomy` §4.3, §4.6). A refusal at any stage — a policy denial, a hard
+block, a denied or unanswerable approval — takes the `blocked` branch with the refusing
+stage named in the reason, so a call that never ran can never be bound as `ok`. Today
+`is_permitted` is the only stage wired into dispatch; the guard and the autonomy gate
+join the same branch when they are realized over real tool execution.
+
 Two properties are load-bearing:
 
-**The gate's verdict is an input.** `is_permitted` runs first and unchanged; its result
+**The gate's verdict is an input.** The gate runs first and unchanged; its result
 is bound into the receipt. Receipts therefore witness the authorization decision without
 participating in it — TR-7's "complement, never replacement" expressed as data flow, and
 the reason a receipt can never be mistaken for a grant of authority (SEC-10).
@@ -349,9 +360,11 @@ nodus stays ignorant of its meaning.
   in-session fabrication.
 - **The volatile-write drop is a partial guarantee.** §4.3 states the residual honestly
   rather than implying full scrubbing; closing it fully requires a dependency this
-  threat model does not justify.
-  <!-- TBD: whether a future in-process debugging or crash-dump surface changes this
-       calculus enough to reconsider a scrubbing crate. -->
+  threat model does not justify. The two surfaces that would expose the residual to
+  someone other than the model are already closed by the engine's self-hardening: crash
+  dumps are disabled at startup (PI-1) and tracer attach is refused (PI-2) —
+  `l2-execution-sandbox` §4.11. Reconsidering a scrubbing crate is warranted only if one
+  of those is ever relaxed.
 
 ## Canonical References
 
@@ -369,4 +382,5 @@ nodus stays ignorant of its meaning.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): §4.4 gate is the whole decision path (policy, guard, autonomy approval): a call refused at any stage binds `blocked`, never `ok` — previously only `ToolPolicy` refusals did, so a guard- or approval-refused call would have followed the execute branch (TR-1/TR-3); today only `is_permitted` is wired. §6 TBD resolved by PI-1/PI-2 (crash dumps disabled, tracer attach refused). |
 | 1.0.0 | 2026-08-12 | Core Team | **Post-Update Review finding, fixed before promotion:** the first draft's binding omitted any per-invocation identity, so two identical calls landing in the same millisecond produced byte-identical tokens and a model could echo one valid receipt to assert a second invocation — a replay that needs no key and therefore defeats TR-2 by going around it. A per-session monotonic `action_id` (the same identity the ledger already keyed on) now leads the binding, with a paired clock-pinned replay test in §5 so the property cannot silently regress. Initial spec, authored directly at Stable — the realization of `l1-tool-receipts`, whose absence was found and disclosed during the developer-office build rather than hidden, and deferred to a dedicated spec-driven pass. Keyed-BLAKE3 MAC using the already-allowlisted `blake3` domain dependency, so the subsystem lands with **zero new crates** (§4.1). Domain/facade tier split on the established `*_bootstrap.rs` precedent: deterministic sign/verify logic in `crates/domain/src/tool_receipts.rs`, OS entropy and dispatch wiring in `crates/core/src/receipts_bootstrap.rs`. **Corrects a genuine hazard in the parent's §4.1 reference sketch**: literal `‖` concatenation is forgeable by field-boundary shifting (`kind="ab",inputs="c"` and `kind="a",inputs="bc"` produce identical bytes), so the binding is length-prefixed and injective, with a domain-separation tag and a constant-time tag comparison (§4.2). TR-1 held structurally by `Receipted<T>`, which has no public constructor, over a single `ReceiptedDispatch::invoke` entry point — the BA-4/OA-4/DVO-3 structural-enforcement lineage applied to execution authenticity, and the property an append-to-a-log baseline can never provide. TR-4 realized as a **default-deny on the fact-recording path** via `ReceiptLedger::status`, explicitly *not* prose parsing: no API exists that upgrades an unreceipted claim to fact (§4.5). TR-8's `Pending` is a distinct state rather than a receipt over a placeholder result, since a tag computed over a fabricated result would be a valid receipt for a false claim (§4.6). TR-5's key is ephemeral, non-`Debug`-printable, non-`Serialize`, zeroed on drop, with the volatile-write residual stated honestly rather than overclaimed (§4.3). nodus disposition: no new primitive — HO-9 already stores and echoes an opaque host-supplied token, and minting inside the portable core would require host key material the portability contract forbids (§4.8). |

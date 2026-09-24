@@ -1,6 +1,6 @@
 # Session Checkpoint
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-memory-model.md
@@ -17,6 +17,8 @@ The session checkpoint system persists enough task context across LLM context-wi
 - [l2-agent-registry.md](l2-agent-registry.md) - `checkpoint-writer` fork-agent definition and fork contract.
 - [l2-memory-store.md](l2-memory-store.md) - Session memory entries that memory.md consolidates.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Path layout for session-scoped files.
+- [l2-security.md](l2-security.md) - Secrets-tier patterns the snapshot store never captures (SNAP-5).
+- [l2-execution-workspace.md](l2-execution-workspace.md) - Where shell mutations are recovered, since snapshots cannot precede them (§4.10).
 
 ## 1. Motivation
 
@@ -35,8 +37,8 @@ When a model's context window fills during a multi-step autonomous task, naive t
 | L1 Invariant | Implementation |
 | --- | --- |
 | ORC-10 Resumable | checkpoint.md captures the current task state; resumed turns load it before the first model call. |
-| MEM-2 Session scope | memory.md entries are scoped to the current session and wiped when the session ends. |
-| ORC-6 Context isolation | The checkpoint-writer is an isolated fork; it writes state files without contaminating the parent session's message history. |
+| MEM-5 Scope-aware decay & prune | memory.md entries are session-scoped and ephemeral: they are wiped when the session ends. |
+| ORC-5 Context-isolated execution | The checkpoint-writer is an isolated fork; it writes state files without contaminating the parent session's message history. |
 
 ## 4. Detailed Design
 
@@ -233,11 +235,12 @@ A snapshot is created immediately before a tool's `PreToolUse` hook chain comple
 ```text
 [REFERENCE]
 tools with mutates_filesystem = true (initial set):
-  write_file, replace, edit, delete_file, move_file, rename_file,
-  run_shell (when shell output includes file mutations, best-effort)
+  write_file, replace, edit, delete_file, move_file, rename_file
 ```
 
-Third-party tools may opt in by setting `mutates_filesystem: true` in their tool definition.
+Third-party tools may opt in by setting `mutates_filesystem: true` in their tool definition, which requires them to declare the paths they will touch before they run.
+
+`run_shell` is **not** covered: the files a command will touch are known only after it has run, and a snapshot must precede the mutation it protects. Shell mutations are recovered through the execution workspace instead — they happen in an isolated workspace and reach the project only at its finalize write-back (`l2-execution-workspace` §4.5). `snapshot list` states this gap rather than implying shell changes are snapshotted.
 
 #### Snapshot commit
 
@@ -271,7 +274,7 @@ RestoreResult { restored_files: Vec<String>, skipped_files: Vec<String>, errors:
 SnapshotMeta { name: String, timestamp: String, tool: String, files: Vec<String> }
 ```
 
-Restore rewrites the project files to the snapshot state. It does NOT restore conversation history (that is `cronus session checkpoint`'s domain). After restore, the session emits a `SessionStart` hook event with `source: "restore"` so hooks can re-initialize environment.
+Restore rewrites the project files to the snapshot state. A file that changed after the snapshot was taken is listed first, and it is overwritten only on confirmation — a restore must not silently discard later edits, including the person's own. It does NOT restore conversation history (that is `cronus session checkpoint`'s domain). After restore, the session emits a `SessionStart` hook event with `source: "restore"` so hooks can re-initialize environment.
 
 #### Non-interference invariants
 
@@ -279,10 +282,14 @@ Restore rewrites the project files to the snapshot state. It does NOT restore co
 [REFERENCE]
 Invariants:
   SNAP-1 The shadow repo never modifies <project_root>/.git in any way.
-  SNAP-2 Snapshot names are monotonically increasing (timestamp-prefixed); no name is ever reused.
+  SNAP-2 Snapshot names are monotonically increasing (timestamp-prefixed); no name is ever reused — a name
+         that already exists (two snapshots in the same second) takes a "-<n>" counter suffix.
   SNAP-3 Snapshots are retention-limited: keep the 50 most recent snapshots per project; older ones are pruned on each new snapshot creation.
   SNAP-4 Binary files (non-UTF-8) are excluded from content capture; a manifest entry records their path and size for reference.
-  SNAP-5 Secrets (matched by field name in tool_input JSON) are redacted in commit messages; file content is captured verbatim (secrets in files are the user's responsibility).
+  SNAP-5 Secrets (matched by field name in tool_input JSON) are redacted in commit messages. Files matching the
+         secrets-tier patterns (`.env` and its variants, key and credential files — `l2-security` §4.1) are never
+         captured, only recorded by path, like binaries: the shadow store is a copy of project files, and SEC-1/STO-6
+         keep secrets out of every copy. Other file content is captured verbatim.
 ```
 
 ## 5. Drawbacks & Alternatives
@@ -301,3 +308,10 @@ Invariants:
 | `[MEM]` | `.design/main/specifications/l1-memory-model.md` | Memory tier model |
 | `[SESSION]` | `.design/main/specifications/l2-agent-session.md` | Turn lifecycle |
 | `[REGISTRY]` | `.design/main/specifications/l2-agent-registry.md` | checkpoint-writer fork-agent contract |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited MEM-2 (most-specific-first recall) for session scope and ORC-6 (judged termination) for isolation — now MEM-5 and ORC-5. SNAP-5 captured secret files verbatim into the shadow store ("the user's responsibility"), contradicting SEC-1/STO-6 — secrets-tier files are recorded by path only. `run_shell` was snapshotted "when its output shows file mutations", which cannot precede the mutation — removed from the covered set, with shell changes recovered through the execution workspace and the gap stated. SNAP-2 names could collide within one second — counter suffix. Restore confirms before overwriting files changed after the snapshot. |
+| 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

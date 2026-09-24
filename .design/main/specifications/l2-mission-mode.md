@@ -1,6 +1,6 @@
 # Mission Mode
 
-**Version:** 1.0.5
+**Version:** 1.0.6
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md
@@ -20,13 +20,13 @@ Mission Mode is a focused, two-phase autonomous execution unit: the agent first 
 
 ## 1. Motivation
 
-Long-running autonomous tasks need a checkpoint: the agent should not blindly execute an unreviewed plan. Mission Mode inserts exactly one human-controlled checkpoint — after planning and before execution — without requiring continuous supervision. The two-phase design also makes the acceptance criteria explicit (prd.json) so termination is deterministic rather than LLM-decided.
+Long-running autonomous tasks need a checkpoint: the agent should not blindly execute an unreviewed plan. Mission Mode inserts exactly one human-controlled checkpoint — after planning and before execution — without requiring continuous supervision. The two-phase design also makes the acceptance criteria explicit (prd.json) so termination is decided by declared checks and an independent judge, never by the executor's own assessment.
 
 ## 2. Constraints & Assumptions
 
 - A mission runs within a single workspace; it operates on the workspace's filesystem context.
-- Phase 1 (planning) has full tool access; Phase 2 (execution) has scaffolding tools deactivated so the agent codes and reasons but does not directly invoke build/package-manager commands.
-- The acceptance criteria (user stories with `passes` flags) are the sole termination signal; the agent does not self-terminate based on its own judgment.
+- Phase 1 (planning) has full read and exploration access, and writes only inside the mission's own directory — a plan the user has not confirmed must not already be executing; Phase 2 (execution) has scaffolding tools deactivated so the agent codes and reasons but does not directly invoke build/package-manager commands.
+- The acceptance criteria (user stories with `passes` flags) are the sole termination signal; the agent does not self-terminate based on its own judgment. The executing agent therefore never writes `passes`: it records a claim, and the flag is set by verification it does not control (§4.3).
 - A `max_iterations` guard prevents runaway loops when stories never pass.
 - Mission state files are written atomically; a crash during a mission leaves the state readable for resume.
 
@@ -34,10 +34,10 @@ Long-running autonomous tasks need a checkpoint: the agent should not blindly ex
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ORC-6 Judged termination | Termination is determined by `prd.json.userStories[*].passes` — all true → done. No LLM self-assessment in the loop. |
-| ORC-7 Budget circuit-breaker | `max_iterations` is the mission-level circuit-breaker; it stops the loop with a partial-completion report. |
-| ORC-9 Approval gate | User must confirm PRD before Phase 2 starts — this is the mission's mandatory approval checkpoint. |
-| ORC-10 Resumable | `prd.json` and `loop_config.json` persist state; a restart re-enters Phase 2 from the last known story states. |
+| ORC-6 Judged autonomous termination | Termination is determined by `prd.json.userStories[*].passes` — all true → done. `passes` is set only by verification the executor does not control: the story's declared host-run check, or the independent judge of `l2-orchestration` §4.3 for a judged story (§4.3). The executor's own assessment is recorded as a claim and never terminates the loop. |
+| ORC-7 Budget circuit-breaker | `max_iterations` is the mission-level circuit-breaker; it stops the loop with a partial-completion report. Each iteration also runs under the per-turn budget (`l2-agent-session` §4.2) and the budget engine's hard stop. |
+| ORC-9 Approval gate for high-impact work | User must confirm PRD before Phase 2 starts — this is the mission's mandatory approval checkpoint. The confirmation binds the confirmed story set: a later change to it needs a new confirmation (§4.4). |
+| ORC-10 Resumable | `prd.json` and `loop_config.json` persist state; `mission resume` re-enters Phase 2 from the last verified story states (resumption is explicit, never automatic — §4.6). |
 
 ## 4. Detailed Design
 
@@ -61,7 +61,7 @@ graph TD
 
 The agent receives the task description and explores the workspace context (codebase, existing board cards, memory). It then writes `prd.json` with the structured plan.
 
-Full tool access is available in Phase 1 — the agent may read files, query memory, run searches, and write artifacts.
+Full read and exploration access is available in Phase 1 — the agent may read files, query memory, and run searches — and it writes only the mission's own artifacts in `<ws>/missions/<mission-id>/`. Changes to the workspace itself wait for the confirmation that ends Phase 1 (ORC-9).
 
 Phase 1 ends when the agent finishes its exploration turn and a valid `prd.json` exists. The agent presents the PRD to the user and pauses. Control returns to the user for review, optional edits to `prd.json`, and explicit confirmation before Phase 2 starts.
 
@@ -77,13 +77,18 @@ prd.json {
       id: String,           // e.g. "US-001"
       title: String,        // one-line story title
       story: String,        // "As a … I want … so that …" or acceptance text
-      passes: bool          // false initially; agent sets true when story is satisfied
+      check: {              // how the story is verified — declared, never silently either
+        kind: "runnable" | "judged",
+        run?: String,       // runnable: the host-run command or observable condition
+      },
+      claimed: bool,        // executor: "I believe this is satisfied" — never terminates
+      passes: bool          // false initially; set only by the verifier
     }
   ]
 }
 ```
 
-User stories are the unit of work and the unit of verification. The agent sets `passes: true` on a story when it has satisfied the acceptance criteria and verified the outcome. A story with `passes: false` triggers another iteration.
+User stories are the unit of work and the unit of verification. The executing agent sets `claimed: true` when it believes a story is satisfied; that triggers verification, never completion. For a **runnable** story the host runs the declared check outside the agent's tool surface — which is how a build or test result reaches a mission whose executor cannot run the toolchain (§4.4) — and for a **judged** story the independent judge evaluates the claim against the story text. Only the verifier writes `passes`; a failed verification clears `claimed` and records why, and a story with `passes: false` triggers another iteration. A check that cannot fail is not a check: the criteria are reviewed for falsifiability at confirmation (AO-3, AO-7), and an empty or malformed story set is refused, never satisfied (AO-10).
 
 ### 4.4 Phase 2 — Execution loop
 
@@ -101,7 +106,9 @@ else:
     emit mission_max_iterations(passed=count_passed, total=total, max=max_iterations)
 ```
 
-Each iteration the agent receives a continuation message summarizing remaining stories and may use any tools except the deactivated scaffolding set (package-manager CLIs, build runners). This constraint is intentional: the agent writes correct code; builds and tests are verified by external CI or the user — not by the agent invoking them directly within the loop.
+Each iteration the agent receives a continuation message summarizing remaining stories and may use any tools except the deactivated scaffolding set (package-manager CLIs, build runners). This constraint is intentional: the agent writes correct code; builds and tests are verified by the host-run story checks (§4.3), external CI, or the user — not by the agent invoking them directly within the loop. The deactivation is a workflow boundary, not a security one (SEC-12): containment is the sandbox's job.
+
+The confirmed story set is bound to the confirmation (`l1-consent-binding` CB-3). In Phase 2 the executor may update `claimed` and append to `progress.txt`; it cannot add, remove, or reword a story or its check — otherwise it could reach "all stories pass" by editing the stories rather than satisfying them. A change it needs is proposed to the user, and the mission continues only after the changed set is confirmed again.
 
 ### 4.5 State files
 
@@ -110,12 +117,12 @@ Every mission lives in an isolated directory:
 ```plaintext
 <ws>/missions/<mission-id>/
 ├── loop_config.json   # environment metadata (git, session, paths)
-├── prd.json           # task list — worker updates `passes`
+├── prd.json           # task list — worker records `claimed`, verifier sets `passes`
 ├── progress.txt       # append-only iteration log
 └── task.md            # original task description (read-only)
 ```
 
-`<mission-id>` is generated at creation time from a timestamp: `mission-YYYYMMDD-HHMMSS`.
+`<mission-id>` is generated at creation time from a timestamp: `mission-YYYYMMDD-HHMMSS`, with a counter suffix (`-2`, `-3`, …) when a mission with that id already exists, so two missions started within one second never share a directory.
 
 #### loop_config.json
 
@@ -140,10 +147,10 @@ Append-only log, seeded with a `## Codebase Patterns` section that the agent pop
 
 ### 4.6 Resuming a mission
 
-On restart, the agent can call `mission resume` to re-enter Phase 2 from the persisted state:
+On restart, the user can call `mission resume` to re-enter Phase 2 from the persisted state:
 
-1. Locate the most recent `missions/mission-*/loop_config.json` matching the current session.
-2. Read `prd.json` — stories with `passes: true` are already done; only false stories remain.
+1. Locate the named mission, or else the most recent unfinished mission in the workspace. A restart always runs in a new session, so the recorded `session_id` identifies where the mission came from; it is not required to match.
+2. Read `prd.json` — stories with `passes: true` are already done; only false stories remain. A `claimed` story whose verification had not finished is verified again before it counts.
 3. Re-enter the execution loop from the current story count.
 
 Missions are not automatically resumed on process restart; the user issues `mission resume` explicitly.
@@ -184,7 +191,7 @@ Before a mission is planned, a structured discussion phase extracts implementati
 - **D-01:** [Specific decision — concrete enough for planner to act without asking again]
 - **D-02:** [Another decision if applicable]
 
-### Claude's Discretion
+### Agent's Discretion
 [Areas where user explicitly deferred to the agent — agent has flexibility here]
 </decisions>
 
@@ -334,7 +341,7 @@ Mode resolution order (first source that provides a value wins):
      Always available. No setup required — missions work out-of-box.
 ```
 
-The agent reads the resolved mode at session start and applies it to all phases (discuss/plan/execute/verify) for the current session. The mode does not auto-advance or escalate mid-mission unless explicitly changed.
+The agent reads the resolved mode at session start and applies it to all phases (discuss/plan/execute/verify) for the current session. The mode does not auto-advance or escalate mid-mission unless explicitly changed. The mode in force is recorded in the mission's `loop_config.json` when the mission starts. Because the mode sets verification rigor, changing it is a user act (`/mission mode`): the executing agent cannot change it, and a lower mode written into a file the agent can edit (the workspace config) never applies to a mission in progress — a resumed mission whose recorded mode differs from the currently resolved one asks the user which applies.
 
 #### Flag file state tracking
 
@@ -353,7 +360,8 @@ Write events:
 Read by:
   - Status line hook: renders [MISSION], [MISSION:FULL], [MISSION:ULTRA] etc.
   - Pre-phase hooks: may skip expensive steps when mode is lite
-  - Resume logic: verifies the persisted mode matches the current config before re-entering
+  - Resume logic: verifies the persisted mode matches the current config before re-entering;
+    on a mismatch it asks the user, never silently downgrading
 ```
 
 The flag file is the cross-session state signal — it lets peripheral tooling observe mission state without importing core logic.
@@ -424,7 +432,9 @@ Proposal status transitions:
 
 Transition rules:
   - draft → ready: triggered when agent signals completion of the proposal turn
-  - ready → accepted: triggered by user confirmation (/mission confirm or explicit "accepted")
+  - ready → accepted: triggered by user confirmation (/mission confirm or an explicit
+    "accepted" from the user), recorded by the host — a `status: accepted` the agent
+    writes into the file is not an acceptance
   - ready → rejected: triggered by user rejection with reason
   - accepted → (no further transitions): the proposal is immutable once accepted
 
@@ -472,7 +482,7 @@ Default: `flow-forward`. Switching models mid-mission requires a manual migratio
 
 **Flow-back**: agents warn when `prd.json` and `tasks.md` diverge by more than 20% of task count. A reconciliation command (`cronus mission reconcile`) surfaces the diff.
 
-**Living spec**: agents regenerate `plan.md` and `tasks.md` from `prd.json` on every mission start. Manual edits to those files are overwritten — the agent warns once if non-PRD content is detected.
+**Living spec**: agents regenerate `plan.md` and `tasks.md` from `prd.json` on every mission start. Manual edits to those files are overwritten — the prior content is archived before regeneration, and the user is told which non-PRD content was replaced and where it went.
 
 The default `flow-forward` matches Cronus's append-only archive principle: decisions are never rewritten, only superseded.
 
@@ -508,7 +518,7 @@ Status: pending | complete
 **Locked**: true | false
 ```
 
-The agent fills questions it can answer from the PRD (marking `source: prd`). User-facing questions remain `source: user` until answered. Plan generation does not begin until all non-locked questions either have an answer or are marked `skipped: true` with a rationale.
+The agent fills questions it can answer from the PRD (marking `source: prd` and citing the passage). User-facing questions remain `source: user` until answered, and only the user answers or skips them: the agent never supplies the user's side (XPL-4). An `inferred` answer is the agent's assumption, recorded and shown as one (GRD-8), never presented as the user's decision. Plan generation does not begin until all non-locked questions either have an answer or are marked `skipped: true` with a rationale.
 
 #### Iteration
 
@@ -564,14 +574,16 @@ intent_confidence: 82
 | `bugfix` | Rework gate: verify a D-NN decision exists before phase starts |
 | `refactor` | Architecture gate: require AD reference before wave execution |
 | `test` | Verification gate: emit VERIFIED finding on completion |
-| `review` | Safety gate: adversarial review (3-lane, §4.8 of `l2-quality-pipeline.md`) |
+| `review` | Safety gate: adversarial review (3-lane, §4.11 of `l2-quality-pipeline.md`) |
 | `feature` | Default story flow (PLAN.md → wave → SUMMARY.md) |
 | `docs` | Lightweight flow: CONTEXT.md + SUMMARY.md only; no PLAN.md required |
 | `config` | Infrastructure gate: require env-safety checklist (no secrets, .gitignore present) |
 
+The classification is a heuristic read from prompt wording (SEC-12), so it may **add** gates but never remove them: the gates that apply are those of every work type the session's actual changes fall under. A session classified `docs` whose changes touch code gets the gates for code; the lightweight flow applies only when the change set is documentation-only.
+
 ## 5. Drawbacks & Alternatives
 
-- **Deactivated scaffolding tools:** the agent cannot run `cargo build` or `npm test` directly. This means acceptance criteria that require a passing build must be written as observable file-state checks, not build-output checks. Mitigation: the spec guidance for writing user stories should note that `passes` is set by the agent examining artifacts, not by executing toolchains.
+- **Deactivated scaffolding tools:** the agent cannot run `cargo build` or `npm test` directly. Acceptance criteria that require a passing build are written as runnable story checks, which the host runs as the verifier (§4.3) — the executor claims, the check decides.
 - **PRD as sole termination signal:** if the agent writes a story with poorly-chosen acceptance criteria, the mission may loop indefinitely until `max_iterations`. Mitigation: the user reviews and can edit `prd.json` before Phase 2; `max_iterations` is the backstop.
 - **No parallel story execution:** stories execute sequentially within one agent session. A future enhancement could run independent stories in parallel agent forks (requires story-level dependency declarations in prd.json).
 - **Alternative — continuous autonomous loop without checkpoint:** rejected. The Phase 1 → user-confirm → Phase 2 pattern is the safety contract; removing the checkpoint eliminates the user's ability to catch a badly-scoped plan before execution.
@@ -584,3 +596,10 @@ intent_confidence: 82
 | `[L2ORC]` | `.design/main/specifications/l2-orchestration.md` | Goal/judge/budget loop |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | Workspace missions directory |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.6 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ORC-6: the executing agent set the `passes` flags that terminate the loop — self-assessment the spec claimed to exclude. The executor now records `claimed`; `passes` is set only by the story's host-run check or the independent judge, with falsifiable criteria (AO-3/AO-7/AO-10). ORC-9: Phase 1 had full tool access before the plan was confirmed, and in Phase 2 the executor could rewrite the confirmed stories — Phase 1 writes only planning artifacts, and the confirmed story set is bound to the confirmation (CB-3). Resume matched the recorded session, which never matches after a restart. Mission ids could collide within a second. The verification-rigor mode could be lowered through an agent-writable file and a mode mismatch on resume was unspecified. A `status: accepted` written by the agent counted as proposal acceptance. The agent could answer or skip the user's clarification questions (XPL-4). Keyword work-type classification could remove gates — it may only add them. A vendor-specific heading in the decision template renamed; the adversarial-review reference pointed at the wrong quality-pipeline section (§4.8 → §4.11); living-spec regeneration archives what it overwrites. |
+| 1.0.5 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

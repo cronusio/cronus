@@ -1,6 +1,6 @@
 # Cost Rating & Pricing
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -158,11 +158,11 @@ OH-6 (cost accounting + mispricing alerts, CR-8), and `l1-optimization-integrity
 The workflow runtime already meters per-class token counts on `model_response`
 (`l1-nodus-observability` HO-8, `counts-only within the data-safety boundary`) — it
 deliberately does not price them. Rating is a **host concern via a provider seam**
-(LP-1/LP-2), so it needs **no new language invariant**:
+(nodus LP-1/LP-2), so it needs **no new language invariant**:
 
 | Element | nodus seam | Note |
 | --- | --- | --- |
-| Rate card + resolution (CR-1/CR-3) | host-supplied pricing seam (LP-2), alongside `SchemaProvider` / `StorageProvider` / `PolicyProvider` | Rates are deployment data the host owns; core carries no rate table and no currency logic. |
+| Rate card + resolution (CR-1/CR-3) | host-supplied pricing seam (nodus LP-2), alongside `SchemaProvider` / `StorageProvider` / `PolicyProvider` | Rates are deployment data the host owns; core carries no rate table and no currency logic. |
 | Per-class rating (CR-2) | over HO-8 `input`/`output`/`cache_read`/`cache_creation` classes | The count-separation HO-8 already provides is exactly what per-class rating consumes; core changes nothing. |
 | Fail-visible unknown (CR-4) | host rates the counts; an unpriced model yields an `UNKNOWN`-cost audit annotation, never a silent 0 | A host that prices nothing simply reports HO-8 counts with no monetary figure — today's exact behavior (additive). |
 | Estimate vs authoritative (CR-5) | `AuditProvider` cost annotation basis field | Rides the existing observability channel; no new event type. |
@@ -193,6 +193,7 @@ mapping is additive and warrants no new NL invariant.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.1.0 | 2026-08-06 | Core Team | CR-2 amended — the per-class rate list gains **generation that is billed but never delivered** (a deliberating model's internal reasoning, produced under the same call as the answer and frequently larger than it). It is a class in its own right, not a variant of `output`: unreadable, not amortized by prefix reuse, governed by a depth dial rather than a length target, and unreported by some providers. Pricing it as `output` makes a bill that moved because deliberation deepened indistinguishable from one that moved because answers got longer. Where the count is unavailable the class is **unmeasured** and containing aggregates are declared lower bounds — the count-side twin of CR-4's fail-visible unknown *rate*. Full contract in the new `l1-reasoning-spend`. |
 | 1.0.1 | 2026-08-05 | Core Team | Related Specifications extended with `l1-outcome-attributed-cost` — the consumer that attributes priced records to the outputs they produced and to a later survival verdict, closing the loop this layer deliberately leaves open. Link-only; no invariant changed. |
 | 1.0.0 | 2026-07-15 | Core Team | Initial spec — cost rating as the owned middle step (meter → **rate** → charge) between usage metering and budget enforcement: single-producer derivation distinct from metering and charging (CR-1), per-class rates never one blended rate composing CSC-11/HO-8 class separation (CR-2), honest exact-then-family-marked rate resolution (CR-3), fail-visible unknown rate never a silent zero — the cost-side of OI-8 (CR-4), estimate-vs-provider-reported basis labeling with authoritative supersession (CR-5), dated/sourced/staleness-flagged rates paralleling MB-7 (CR-6), explicit currency with immutable native amount and provenance-marked conversion (CR-7), reconstructable/auditable priced record feeding OH-6 + OI-4 (CR-8); §4.2 fail-visible per-class rating pseudocode, §4.3 estimate-superseded-by-authoritative; nodus-relevance mapping needing no new NL invariant — HO-8 already meters per-class counts `counts-only`, the host rates them via an LP-2 pricing seam (additive; a host that prices nothing behaves as today). Owns the `catalog pricing` that l1-model-benchmarking MB-3, l2-dashboard, l2-model-router, and l2-deep-research each assumed without a governing contract. Distilled from an adoption pass over an external LLM cost-tracking reference whose per-call token/latency/success accounting, provider breakdown, and budget-alert surface were already realized by l2-budget-engine / l1-usage-allowance / l1-operational-health / l1-dashboard — CR captures the one unowned delta: the honest rating layer, with the reference's silent-zero-on-unknown-model and blended/hardcoded-currency assumptions inverted into fail-visible invariants. |

@@ -1,6 +1,6 @@
 # Agent Registry
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-roles.md, l1-orchestration.md
@@ -35,8 +35,9 @@ The orchestrator and spawn machinery need a single source of truth for "what con
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ROLE-1 Preset catalog | Built-in agents form the preset catalog; user config entries form the custom catalog. |
-| ROLE-2 Non-destructive | Disabling a built-in agent (config `disable: true`) removes it from the active set; enabling reverts. No agent data is deleted. |
+| ROL-2 Preset + custom | Built-in agents form the preset catalog; user config entries form the custom catalog. |
+| ROL-4 Non-destructive release | Disabling a built-in agent (config `disable: true`) removes it from the active set; enabling reverts. No agent data is deleted. |
+| ROL-7 Catalog integrity | A config entry for a built-in name patches the resolved definition at load time; the built-in definition itself is never edited. |
 | ORC-1 One orchestrator | The orchestrator is always the "all" mode agent at depth 0; its definition is in the registry. |
 | ORC-9 Approval gate | Agents with destructive toolsets must declare it; the gate evaluates the resolved permission profile. |
 
@@ -89,7 +90,7 @@ AgentDefinition {
 | `checkpoint-writer` | subagent | yes | Fork agent for session checkpoints; inherits parent tool schema; see §4.5. |
 | `memory-writer` | subagent | yes | Background memory consolidation; read/write/edit/glob/grep/memory/bash only. |
 
-The `compose` and `general` agents have access to the full skill catalog. The `explore` agent is intentionally read-only so it can be spawned without an approval gate.
+The `compose` and `general` agents have access to the full skill catalog. The `explore` agent carries no edit or write tools, so spawning it needs no approval of its own; its `bash` access is **not** read-only by construction — every bash call is classified from the guard's parse (`l2-tool-security` §4.2), read-class commands proceed, and anything else goes to the autonomy gate like any other call. "Read-only" names the tool set's intent, never a guarantee about what a shell can do.
 
 ### 4.3 Permission layer stack and defaults
 
@@ -104,7 +105,7 @@ Permission profiles are built in three layers (lowest to highest precedence):
      "question":            "deny",
      "plan_enter":          "deny",
      "plan_exit":           "deny",
-     "read":                { "*": "allow", "*.env": "ask", "*.env.*": "ask", "*.env.example": "allow" },
+     "read":                { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
    }
 
 2. per-agent overlay (built-in or custom; applied on top of defaults)
@@ -114,7 +115,9 @@ Permission profiles are built in three layers (lowest to highest precedence):
 
 Merge rule: `Permission.merge(a, b)` → combines the two Rulesets; for a given key pattern, the **last** matching rule wins (`findLast` semantics). The user config layer is always applied last, so workspace policy always has the final say.
 
-`.env` files require "ask" by default — the agent must request permission before reading them, protecting secrets from accidental inclusion in prompts.
+What a resolved rule means at call time (the profile is a policy input to the single autonomy gate, `l2-orchestration` §4.7): `allow` defers to the gate's own matrix — it never suppresses a prompt the gate would raise; `ask` raises at least a prompt; `deny` blocks. A `permission` layer read from project-tier configuration may only tighten (add `deny`/`ask`); a loosening entry is ignored and reported, like every other trust-sensitive key (`l2-security` §4.8).
+
+`.env` files and their variants are always-forbidden for the agent upstream of this profile (`l2-agent-autonomy` §4.4 — no approval opens them), so the defaults state `deny` rather than a prompt that could never be granted; `.env.example`, the committed template that carries no secrets, stays readable.
 
 After building the profile, `external_directory[truncate_glob]` is always ensured to be "allow" unless the profile explicitly sets it to "deny" — this preserves access to the tool result truncation path.
 
@@ -217,3 +220,10 @@ default_agent() -> String:
 | `[TIER]` | `.design/main/specifications/l2-orchestration.md` | AgentTier classification |
 | `[TOOLS]` | `.design/main/specifications/l2-tool-security.md` | Ruleset permission type |
 | `[ROUTER]` | `.design/main/specifications/l2-model-router.md` | model_ref resolution |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance table cited a nonexistent `ROLE-*` prefix — now ROL-2, ROL-4, ROL-7. `explore` was called read-only while carrying `bash`; its bash calls are classified per call and gated. The `.env` defaults said `ask` while `l2-agent-autonomy` §4.4 makes `.env` always-forbidden — now `deny`. The meaning of a resolved rule is stated (allow defers to the gate, never suppresses a prompt), and a project-tier permission layer may only tighten. |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

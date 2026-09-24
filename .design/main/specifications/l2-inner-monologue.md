@@ -1,19 +1,19 @@
 # Inner Monologue
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-inner-monologue.md
 
 ## Overview
 
-The concrete inner-monologue cycle in `crates/core`: a heartbeat-triggered background process that assembles a read-only office state snapshot, runs a token-bounded reflection pass, parses the output into typed intentions, logs every intention (including NoAction) to the Pulse log before dispatch, and routes non-NoAction intentions through standard subsystem interfaces. The Pulse log is backed by the inbox SQLite store under a distinct message type; the reflection prompt is a harness-engineered nodus step.
+The concrete inner-monologue cycle in `crates/core`: a heartbeat-triggered background process that assembles a read-only office state snapshot, runs a token-bounded reflection pass, parses the output into typed intentions, logs every intention (including NoAction) to the Pulse log before dispatch, and routes non-NoAction intentions through standard subsystem interfaces. The Pulse log lives in the inbox SQLite database in a table of its own; the reflection prompt is a harness-engineered nodus step.
 
 ## Related Specifications
 
 - [l1-inner-monologue.md](l1-inner-monologue.md) — the model this implements (IM-1…IM-5).
 - [l2-scheduler.md](l2-scheduler.md) — the heartbeat that fires the cycle (Active/Idle only).
-- [l2-inbox.md](l2-inbox.md) — SQLite store backing the Pulse log (`pulse_monologue` message type).
+- [l2-inbox.md](l2-inbox.md) — the SQLite database the Pulse log lives in, in its own table (§4.4).
 - [l2-office-control.md](l2-office-control.md) — Heartbeat/Pulse subsystem pause toggle (IM-5) suppresses the cycle.
 - [l2-automation-pipeline.md](l2-automation-pipeline.md) — AutomationTrigger intention dispatch target.
 - [l2-navigation.md](l2-navigation.md) — the Pulse sidebar tab surfacing the log.
@@ -56,6 +56,8 @@ on heartbeat (Active/Idle, foreground Waiting/Idle):        // IM-1
 
 Dispatch is async; the cycle completes after LOG. The reflection prompt is a harness-engineered nodus workflow step, evolvable under the harness loop — not a hardcoded system-prompt section.
 
+Because dispatch is asynchronous, the IM-1 check is repeated at dispatch time: a `ProactiveMessage` whose cycle started in an idle window is held if a foreground turn has begun since, and delivered after that turn ends — or dropped as stale and logged as such — so a cycle that began idle cannot interrupt a conversation that began afterwards.
+
 ### 4.2 Intention types
 
 `ProactiveMessage` (→ Chat, user-visible, threshold-gated §4.5), `AutomationTrigger` (→ automation, configurable visibility), `MemoryWriteProposal` (→ memory curator), `TaskProposal` (→ kanban, orchestrator reviews), `NoAction` (logged, no dispatch).
@@ -66,7 +68,7 @@ Work state / schedule health / memory freshness / office health / user engagemen
 
 ### 4.4 Pulse log
 
-Backed by the inbox SQLite store, message type `pulse_monologue`. One row per cycle: `{cycle_id, started_at, duration_ms, tokens_used, focus_areas, intentions[], dispatched[], truncated}`. A suppressed proactive message is logged with `dispatched.status = suppressed` (IM-2).
+Stored in the inbox SQLite database, in its own table `pulse_log` — not as inbox message rows, which are deleted on delivery and pruned after `GC_TTL_MS` (`l2-inbox` §4.6): a log row the dispatcher must find before dispatching (IM-2) cannot live in a table built to delete delivered rows. One row per cycle: `{cycle_id, started_at, duration_ms, tokens_used, focus_areas, intentions[], dispatched[], truncated}`. A suppressed proactive message is logged with `dispatched.status = suppressed` (IM-2). Rows are rotated only by an explicit, stated age horizon shown in the Pulse tab — never by the inbox's delivery-driven deletes.
 
 ### 4.5 Proactivity threshold
 
@@ -76,7 +78,7 @@ Before dispatching a `ProactiveMessage`, a threshold (Local Settings → Office)
 
 1. The monologue prompt is a nodus workflow step (harness-evolvable), not a hardcoded prompt.
 2. IM-1 enforcement is a scheduler guard on foreground turn state.
-3. The Pulse log reuses the inbox store with a distinct `pulse_monologue` message type — no parallel store.
+3. The Pulse log reuses the inbox SQLite database in its own `pulse_log` table — no parallel store, and untouched by the inbox's drain and TTL garbage collection.
 
 ## 6. Drawbacks & Alternatives
 
@@ -90,11 +92,12 @@ Before dispatching a `ProactiveMessage`, a threshold (Local Settings → Office)
 | --- | --- | --- |
 | `[MODEL]` | `.design/main/specifications/l1-inner-monologue.md` | Invariants IM-1…IM-5 |
 | `[SCHED]` | `.design/main/specifications/l2-scheduler.md` | Heartbeat trigger |
-| `[INBOX]` | `.design/main/specifications/l2-inbox.md` | Pulse log SQLite backing |
+| `[INBOX]` | `.design/main/specifications/l2-inbox.md` | SQLite database hosting the Pulse log table |
 | `[OFFICE-CTRL]` | `.design/main/specifications/l2-office-control.md` | Pulse subsystem pause (IM-5) |
 
 ## Document History
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The Pulse log, which the dispatcher must find before dispatching (IM-2), was stored as inbox message rows that the inbox deletes on delivery and prunes by age — it now has its own table with an explicit rotation horizon. IM-1 was checked only when the cycle started, so an asynchronous proactive message could interrupt a conversation begun during the cycle — re-checked at dispatch. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — heartbeat-gated cycle, read-only snapshot, token-bounded reflection, typed intentions, log-before-dispatch, Pulse log over the inbox store, proactivity threshold; maps IM-1…IM-5. |

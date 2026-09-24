@@ -1,6 +1,6 @@
 # Archetype Catalog
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-archetype.md
@@ -42,13 +42,13 @@ The concept fixes what an archetype *is* and what it may never do. What remains 
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| OA-1 Prior, not roster | The definition (§4.2) carries exactly four fields — `pool`, `shape`, `seed`, `norms` — and no field expresses "hire these". Application (§4.5) hires only the `seed`; every later hire enters through the manager's ordinary path, whose gate does not read the archetype (§4.5 flow). There is no code path from a `pool` entry to a hire. |
+| OA-1 Prior, not roster | The definition (§4.2) carries exactly four content fields — `pool`, `shape`, `seed`, `norms` — beside its identity (`id`, `domain`), and no field expresses "hire these". Application (§4.5) hires only the `seed`; every later hire enters through the manager's ordinary path, whose gate does not read the archetype (§4.5 flow). There is no code path from a `pool` entry to a hire. |
 | OA-2 Bounded, justified seed | `seed` is capped at **two** roles beyond the WSL-5 manager, enforced at catalog validation, and each entry carries a mandatory `justification` string naming the first-contact work it performs. A definition exceeding the cap, or omitting a justification, fails validation and is not admitted to the catalog. The shipped `software-engineering` archetype seeds **zero** roles (§4.3). |
-| OA-3 Pool is not a cage | The hire path consults `pool` **after** the ROL-9 gate has already decided, and only to classify the outcome (§4.5). No branch refuses a hire, and none exists to add: `pool` is read by the deviation recorder, never by the gate. A hire outside the pool is recorded as `hired_outside_pool` and proceeds. |
-| OA-4 No authority | The definition schema admits no permission, autonomy, budget, egress, trust, or channel field. Validation rejects a definition carrying any key outside the four (§4.2), so an archetype cannot smuggle authority under an unrecognized name. A domain's capability needs are expressed as prose in `NORMS.md`, which the human resolves through the ordinary approval path — data the agent may read, never a grant it receives. |
+| OA-3 Pool is not a cage | The hire path consults `pool` **after** the hire has been decided — including, for a new custom role, the ROL-9 gate — and only to classify the outcome (§4.5). No branch refuses a hire, and none exists to add: `pool` is read by the deviation recorder, never by the gate. A hire outside the pool is recorded as `hired_outside_pool` and proceeds. |
+| OA-4 No authority | The definition schema admits no permission, autonomy, budget, egress, trust, or channel field. Validation rejects a definition carrying any key outside the four content fields and the identity pair (§4.2), so an archetype cannot smuggle authority under an unrecognized name. A domain's capability needs are expressed as prose in `NORMS.md`, which the human resolves through the ordinary approval path — data the agent may read, never a grant it receives. |
 | OA-5 Untrusted until vetted | First-party archetypes ship in the immutable program tier. Any other source — marketplace, sideload, custom import — is admitted only after content vetting of its prose artifacts (§4.7), and its text carries untrusted provenance into every context that reads it. `archetype.json` is a reference list and is validated structurally; `NORMS.md` and any persona overlay are the vetted surface. |
 | OA-6 Preset + custom | Program-tier definitions are read-only. `archetype create <name> --from <preset>` copies into the state tier and records `derived_from`, never mutating the source (§4.8), mirroring the role catalog's preset/custom split exactly (STO-3, ROL-7). |
-| OA-7 Inferred selection | At office instantiation the orchestrator infers the archetype from captured intent and applies it silently, narrating the choice. It asks the client only when two or more archetypes score within an ambiguity band **and** the choice changes the pool materially; the question names kinds of work ("building software" / "running campaigns"), never roles or structure (OFF-5/OFF-6). No archetype is a prerequisite for proceeding (OA-11). |
+| OA-7 Inferred selection | At office instantiation the orchestrator infers the archetype from captured intent and applies it without asking, narrating the choice. It asks the client only when two or more archetypes score within an ambiguity band **and** the choice changes the pool materially; the question names kinds of work ("building software" / "running campaigns"), never roles or structure (OFF-5/OFF-6). No archetype is a prerequisite for proceeding (OA-11). |
 | OA-8 One active, revisable | The office records exactly one `active_archetype` identity. `archetype set <id>` re-scopes future decisions and touches no staff: it does not release a role, discard memory, or invalidate work. Switching away from an archetype leaves the roles it seeded in place, because they were hired by the manager and are the manager's to release (ROL-4/ROL-5). |
 | OA-9 Falsifiable | Three deviation counters are recorded per office and attributed to the archetype identity (§4.6): `hired_outside_pool`, `seeded_never_worked`, `shape_never_grown`. They are readable through the command surface and are the input `l1-pattern-codification` consumes. An archetype with no recorded outcomes is reported as *unvalidated*, not as *correct*. |
 | OA-10 Composes, never forks | `pool` and `seed` hold catalog role identifiers only; the schema has no field in which a role could be defined. Catalog validation resolves every identifier against the role catalog and **rejects the archetype** if any is unknown — which is precisely why the advertising and finance archetypes are blocked rather than shipped (§4.4). |
@@ -94,7 +94,7 @@ The split of `archetype.json` from `NORMS.md` is not cosmetic. The JSON contains
 }
 ```
 
-Four fields, and validation rejects a fifth. This is how OA-4 is enforced rather than merely asserted: there is no key named `permissions`, no key named `budget`, and an unrecognized key is a validation failure, not an ignored extra. An archetype cannot express authority because the schema gives it no vocabulary for authority.
+Four content fields beside the identity pair (`id`, `domain`), and validation rejects any other key. This is how OA-4 is enforced rather than merely asserted: there is no key named `permissions`, no key named `budget`, and an unrecognized key is a validation failure, not an ignored extra. An archetype cannot express authority because the schema gives it no vocabulary for authority.
 
 `seed` entries, when present, take the form `{ "role": "<id>", "justification": "<first-contact work this role performs>" }`, and the array is capped at two (OA-2).
 
@@ -144,8 +144,9 @@ The hire path afterward is the office's ordinary one, and the archetype does not
 
 ```text
 [REFERENCE] manager needs a specialty
-  1. ROL-9 justification gate        -> refuse, or allow
-  2. if allowed:
+  1. pick the catalog role that covers it; if none does, a new custom role
+     must first clear the ROL-9 justification gate   -> refuse, or allow
+  2. if a role is available:
        hire the role
        if role NOT in active_archetype.pool:
            record deviation `hired_outside_pool`   // OA-3, OA-9 — classify, never refuse
@@ -159,7 +160,7 @@ Three counters per office, attributed to the archetype identity so signals aggre
 
 | Signal | Recorded when | What it means |
 | --- | --- | --- |
-| `hired_outside_pool` | a hire clears ROL-9 and its role is absent from `pool` | the domain draws on a specialty the archetype did not anticipate |
+| `hired_outside_pool` | a hire proceeds and its role is absent from `pool` | the domain draws on a specialty the archetype did not anticipate |
 | `seeded_never_worked` | a seeded role is released, or the office closes, having received no delegated task | the seed seated someone first-contact work did not need |
 | `shape_never_grown` | the office closes with no department layer introduced | the shape planned a structure the work never required |
 
@@ -232,5 +233,6 @@ There is deliberately **no** `archetype hire` verb. Hiring belongs to `role` (`l
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): The definition was said to carry exactly four fields and validation to reject a fifth, while the shipped example carries six keys — restated as four content fields beside the `id`/`domain` identity pair, any other key rejected. The hire flow put every hire through the ROL-9 gate, which governs minting a custom role, not hiring a catalog one — the flow picks a catalog role first and applies ROL-9 only to a new custom role (OA-3 row and `hired_outside_pool` trigger aligned). "Applies it silently, narrating" reworded. |
 | 1.0.1 | 2026-07-17 | Promoted RFC→Stable via `/magic.spec` adversarial review (spec-critic + prompt-engineer PASS). No requirement change: OA-1…OA-11 were reviewed as-authored and found substantively complete, coherent, and honest about their own coverage (the ship-one-of-three finding, the pool-read-by-recorder-not-gate discipline, the closed-schema enforcement of OA-4). The only edit was cosmetic — the §4.4 deferred-scope `<!-- TBD -->` marker was converted to visible prose, since a Stable spec should carry no dangling TBD and its content (the ROL-9-gated `l2-role-catalog` §4.2 amendment that would unblock the two blocked archetypes) was already fully stated in the surrounding text. Now buildable at its shipped scope: `software-engineering` archetype + the declared-blocked treatment of `advertising-agency`/`finance-department`. |
 | 1.0.0 | 2026-07-10 | Initial spec. Realizes OA-1…OA-11: two-artifact definition (`archetype.json` references + `NORMS.md` prose) split along the trust boundary, closed four-key schema that makes OA-4 unrepresentable rather than merely forbidden, pool consulted by the deviation recorder and never by the hire gate (OA-3), three deviation counters with an explicit *unvalidated* state (OA-9). Ships `software-engineering` (18-role pool, empty seed); declares `advertising-agency` and `finance-department` **blocked**, naming the nine roles each requires and deferring them to a ROL-9-gated amendment of `l2-role-catalog` §4.2. Records the finding that every examined domain seeds zero roles, since WSL-5's manager already performs all first-contact work. |

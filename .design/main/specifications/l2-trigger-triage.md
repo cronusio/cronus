@@ -1,6 +1,6 @@
 # Trigger Triage
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-scheduler-model.md
@@ -15,7 +15,8 @@ The trigger intake pipeline: every inbound signal — chat message, webhook, cro
 - [l1-scheduler-model.md](l1-scheduler-model.md) - Cron and event-driven fire actions.
 - [l2-scheduler.md](l2-scheduler.md) - Event-driven triggers (§4.8) that produce `TriggerEnvelope` objects.
 - [l2-agent-session.md](l2-agent-session.md) - Sessions spawned by SpawnReactor and SpawnOrchestrator.
-- [l2-orchestration.md](l2-orchestration.md) - SpawnOrchestrator hands off to the goal-execution loop.
+- [l2-orchestration.md](l2-orchestration.md) - SpawnOrchestrator hands off to the goal-execution loop; `MAX_SPAWN_DEPTH` bounds triage-spawned reactors (§4.6).
+- [l1-security.md](l1-security.md) - SEC-3: a classification excerpt is user data; the cloud fallback runs only under authorized egress.
 
 ## 1. Motivation
 
@@ -26,14 +27,15 @@ Without a triage layer, every inbound signal spawns a full agent session. This w
 - The local classifier runs in-process and must return a decision in under 200 ms for the common case.
 - Cloud fallback is optional; if unavailable (offline, rate-limited), the pipeline falls to rule-based classification.
 - The dedup cache is in-memory, per-process; restart clears it.
-- Triage does not inspect full payload content — only short classification excerpts — so user data is not read in this pipeline.
+- Triage reads only a short classification excerpt, never the full payload. The excerpt of a chat message or a webhook body is still user data: it stays on the device unless the office's routing policy already authorizes cloud egress (§4.5, `l1-security` SEC-3).
 
 ## 3. Invariant Compliance (Layer 2 only)
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ORC-1 One orchestrator | `SpawnOrchestrator` always creates work under the manager; triage never spawns peer orchestrators. |
-| SCH-3 Single action | Each `TriggerEnvelope` maps to exactly one `TriageDecision`; no multi-dispatch. |
+| ORC-1 One orchestrator | `SpawnOrchestrator` always creates work under the manager; triage never spawns peer orchestrators, and a `sub_agent_spawn` envelope can never become one (§4.3). |
+| SCH-3 Single action | A `cron` envelope carries the schedule's declared action and is routed by it deterministically — never re-classified (§4.3 step 0); every other envelope maps to exactly one `TriageDecision`; no multi-dispatch. |
+| SCH-4 Wake produces no work item | A `wake` fire is routed to the office wake entry point only; no classifier or rule can turn it into `SpawnReactor` or `SpawnOrchestrator`, so it creates no card. |
 
 ## 4. Detailed Design
 
@@ -61,7 +63,7 @@ SourceType:
   "sub_agent_spawn"   // sub-agent requesting a resource or decision from its parent
 ```
 
-`TriggerPayload` contains only classification-relevant fields: a text excerpt (≤ 200 tokens), `event_kind` (if present), and an `urgency_hint` set by the source. Full payload content is not read by triage.
+`TriggerPayload` contains only classification-relevant fields: a text excerpt (≤ 200 tokens), `event_kind` (if present), and an `urgency_hint` set by the source. Full payload content is not read by triage. Two sources carry one more field each: a `cron` envelope carries the schedule's `declared_action` (`wake` | `routine` | `reminder`), and a `sub_agent_spawn` envelope carries the requester's `spawn_depth` (`l2-orchestration` §4.6).
 
 ### 4.2 TriageDecision
 
@@ -87,6 +89,12 @@ TriageDecision:
 [REFERENCE]
 triage(envelope: TriggerEnvelope) -> TriageDecision:
 
+  0. if envelope.source_type == "cron":            // SCH-3: the action was declared by the schedule
+       wake     → office wake entry point; no decision spawns work (SCH-4)
+       routine  → the routine's own run (l2-scheduler §4.7 policies apply)
+       reminder → Notify
+       return — the model never re-decides a declared action; the envelope is kept for history
+
   1. rate_limit_check(envelope)
        → if exceeded: return Drop { reason: "rate_limit" }
 
@@ -98,8 +106,13 @@ triage(envelope: TriggerEnvelope) -> TriageDecision:
 
   4. classify(envelope) -> (TriageDecision, confidence: f32)
        → local LLM classifier (§4.4)
-       → if confidence < CONFIDENCE_THRESHOLD (0.8): cloud_classify(envelope)
-       → if cloud unavailable: rule_classify(envelope)
+       → if confidence < CONFIDENCE_THRESHOLD (0.8): cloud_classify(envelope)   // only where SEC-3 egress is authorized (§4.5)
+       → if cloud unavailable or not authorized: rule_classify(envelope)
+
+  4b. if envelope.source_type == "sub_agent_spawn":
+       SpawnOrchestrator is never returned — downgrade it to SpawnReactor;
+       a SpawnReactor is spawned at spawn_depth + 1 and refused with MaxSpawnDepthError
+       at MAX_SPAWN_DEPTH (l2-orchestration §4.6), so triage is not a path around the depth cap
 
   5. record_dedup(envelope)
 
@@ -119,7 +132,7 @@ If the local model is unavailable (initialization failure, not loaded), the pipe
 
 ### 4.5 Cloud fallback
 
-When local confidence is below threshold, the pipeline calls the configured cloud model with a structured classification prompt. The cloud call:
+When local confidence is below threshold, the pipeline calls the configured cloud model with a structured classification prompt — but only where the office's routing policy already authorizes cloud egress (`l1-security` SEC-3, local-first routing); otherwise it goes straight to rule classification. The cloud call:
 
 - Uses the primary model from the model router (may be rerouted to a cheaper model by the router's cost policy).
 - Receives the same `TriggerPayload` fields as the local classifier (no full content).
@@ -133,7 +146,7 @@ Deterministic fallback when both classifiers are unavailable or below confidence
 
 | Condition | Decision |
 | --- | --- |
-| `source_type == "cron"` | `SpawnReactor` |
+| `source_type == "cron"` | never reaches this table — routed by its declared action (§4.3 step 0) |
 | `source_type == "webhook"` | `SpawnReactor` |
 | `source_type == "event"` and `event_kind` contains `"error"` | `SpawnOrchestrator` |
 | `source_type == "chat_message"` | `SpawnReactor` |
@@ -151,7 +164,7 @@ DeduplicateCache {
 }
 ```
 
-`ContentHash` is a truncated SHA-256 of the payload text excerpt and `event_kind` (if present). The cache is populated AFTER a successful dispatch (step 5 in §4.3), so a triage failure does not prevent re-delivery.
+`ContentHash` is a truncated SHA-256 of the payload text excerpt and `event_kind` (if present). The cache is populated at step 5 of §4.3, once a decision has been reached; a signal rejected at steps 1–3 (rate limit, duplicate, malformed payload) is not recorded, so a corrected re-delivery is not suppressed.
 
 ### 4.8 Rate limiting
 
@@ -186,4 +199,5 @@ Each `SourceType` has an independent rate limit (configurable; defaults: `webhoo
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): A `cron` envelope is routed by its declared action and never re-classified (SCH-3/SCH-4 rows; a wake can no longer become a spawn). `sub_agent_spawn` can never yield `SpawnOrchestrator` and its reactor inherits `spawn_depth + 1`, closing a path around `MAX_SPAWN_DEPTH`. The claim that triage reads no user data is corrected: the excerpt is user data and the cloud fallback runs only under authorized egress (SEC-3). Dedup timing now matches pipeline step 5. |
 | 1.0.1 | 2026-07-16 | Disclosed simplification (FR-6) recorded in §5: the shipped local classifier stub always reports 0.0 confidence, so classification currently resolves via the rule-based fallback; upgrade trigger = a bundled or extension-installed quantized classifier. History table added with this entry. |

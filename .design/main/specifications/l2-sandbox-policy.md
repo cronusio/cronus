@@ -1,6 +1,6 @@
 # Sandbox Network Policy
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md
@@ -57,9 +57,9 @@ SandboxPolicy {
   },
 
   process: ProcessConfig {
-    run_as_user:  String,               // e.g. "sandbox"
-    run_as_group: String,               // e.g. "sandbox"
-  },
+    run_as_user:  String,               // e.g. "sandbox" — honored inside a container or remote backend, or through an
+    run_as_group: String,               //   unprivileged user-namespace mapping; never by creating or switching to an OS
+  },                                    //   account (that needs rights the engine does not hold); otherwise reported "not applied"
 
   // Optional OS-native isolation compatibility:
   // "strict"       — abort sandbox creation if kernel isolation cannot be applied.
@@ -197,7 +197,7 @@ PolicyPreset {
 Preset resolution:
 
 1. The active tier's preset list is the starting set.
-2. Additional presets may be requested through the approval gate (`l2-agent-autonomy.md §4.8`).
+2. Additional presets may be requested through the approval gate (`l2-agent-autonomy.md §4.6`); an unattended caller gets a visible refusal instead (AG-9).
 3. Unknown or unverified presets are listed in `known_unapplied_presets` (§4.8) and not automatically applied.
 
 ### 4.8 PolicyContext — agent visibility
@@ -251,36 +251,34 @@ AccessFailureClassification {
 }
 ```
 
-Classification heuristics:
+Classification rules:
 
 ```text
 [REFERENCE]
-// OS error codes that strongly indicate a policy block (confidence: "high"):
-POLICY_BLOCK_ERROR_CODES = {
-  EAI_AGAIN,    // DNS resolution failure in a restricted namespace
-  ENETUNREACH,  // network unreachable (interface blocked)
-  EHOSTUNREACH, // host unreachable
-  ECONNREFUSED, // connection refused (port-level block)
-  ETIMEDOUT,    // connection timed out
-  ENOTFOUND,    // DNS NXDOMAIN
-}
-
-// HTTP status codes that indicate missing approval (confidence: "high"):
-MISSING_APPROVAL_STATUS_CODES = { 401, 403 }
-
+// Only the enforcing layer knows it denied something. Its record is the evidence.
 Classification logic (first match wins):
-  if error.os_code ∈ POLICY_BLOCK_ERROR_CODES            → "blocked-by-policy", high
-  if error.http_status ∈ MISSING_APPROVAL_STATUS_CODES   → "missing-approval", high
-  if target_host matches known_unapplied_preset           → "missing-approval", high
-  else                                                    → "unknown", low
+  if the egress proxy / backend recorded a denial for this connection
+     (the typed Denial{axis: net} of l2-execution-sandbox §4.8):
+       if target_host matches a known_unapplied_preset      → "missing-approval", high, matched_preset set
+       else                                                  → "blocked-by-policy", high
+  if no denial was recorded and target_host is in no preset  → "unsupported", low
+  else                                                       → "unknown", low
+
+// An OS error (EAI_AGAIN, ENETUNREACH, EHOSTUNREACH, ECONNREFUSED, ETIMEDOUT, ENOTFOUND) or a
+// remote HTTP 401/403 WITHOUT a recorded denial is a failure of the network or of the remote
+// service's own authentication — not of this policy. It is classified "unknown" and its
+// next_step never proposes a preset: recommending a policy expansion for a server that is
+// simply down would push the human to widen egress for nothing.
 ```
+
+This matches the backend's own rule that unknown failures are not reported as denials (`l2-execution-sandbox` §4.8): a classification that blames confinement for an ordinary outage invites exactly the authority widening SEC-10 exists to keep deliberate.
 
 Every access failure classification is written to the audit log with the full `AccessFailureClassification` struct.
 
 ## 5. Drawbacks & Alternatives
 
 - **File-based policy vs compiled rules:** the YAML/JSON schema is human-readable and auditable; compiled rules would be faster but opaque. Speed is not a concern for policy enforcement (checked at connection setup, not per-packet).
-- **Binary allowlisting via absolute canonical path:** a binary binary replaced at its path between resolution and spawn could bypass the check. Mitigation: pin the canonical path at fork time and verify it has not changed at exec time.
+- **Binary allowlisting via absolute canonical path:** a binary replaced at its path between resolution and spawn could bypass the check. Mitigation: pin the canonical path at fork time and verify it has not changed at exec time.
 - **`isolation_compatibility: "best_effort"` on constrained hosts:** reduces enforcement guarantees, and `[MODIFIED v1.1.0]` it no longer means "proceed with a warning": a run degrades only on the axes the human names in `accept_unconfined`, each visibly and persistently labeled (`l2-execution-sandbox` §4.1, §4.2). Production deployments should prefer `strict`.
 - **Alternative — single allowlist for all binaries:** simpler, but loses per-process least-privilege. Any compromised binary gains the full endpoint set allowed by any entry.
 
@@ -298,5 +296,6 @@ Every access failure classification is written to the audit log with the full `A
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): §4.9 access-failure classification no longer labels ordinary network errors (ECONNREFUSED, ETIMEDOUT, ENOTFOUND…) and a remote 401/403 as `blocked-by-policy`/`missing-approval` with high confidence — that nudged users toward widening egress for a server that was merely down, and contradicted `l2-execution-sandbox` §4.8 (unknown failures are not denials); only a recorded proxy/backend denial is a policy block. `run_as_user` is honored only where no elevation is needed. Approval-gate cross-reference corrected (§4.8 → §4.6, AG-9); typo fixed. |
 | 1.1.0 | 2026-09-19 | `isolation_compatibility: "best_effort"` reconciled with `l1-execution-sandbox` ES-8 (fail closed for untrusted code): it read as "proceed without kernel isolation; emit a warning", a silent downgrade the L1 forbids and that `l2-execution-sandbox` refuses. It now proceeds only on the axes the human lists in the new `accept_unconfined` field — each recorded, stamped on every surface that runs under it, and shown by `cronus sandbox status`; an axis not listed still refuses. Found while decomposing `l2-execution-sandbox` into tasks. |
 | 1.0.1 | 2026-09-19 | Cross-reference only — `l2-execution-sandbox` is the enforcement mechanism this policy schema lacked; Related Specifications and Canonical References extended. No invariant or schema changed. (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

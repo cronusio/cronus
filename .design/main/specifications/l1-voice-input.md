@@ -181,3 +181,4 @@ written (VI-5). History never leaves the device (VI-1).
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — VI-1…VI-5, pipeline stages, activation modes, review overlay |
 | 1.1.0 | 2026-06-25 | Core Team | VI-6…VI-10 added — optional post-transcription transform (deterministic + opt-in consent-gated LM), pluggable transcription engine (accel-when-available, streaming, auto-language, platform-native), on-device speech-model lifecycle (resolves §4.4 TBD: bundled default + on-demand catalog), optional local transcription history, non-destructive clipboard-safe injection. Pipeline extended with optional TRANSFORM/HISTORY stages; §4.5–4.8 added. |
+| 1.1.1 | 2026-07-23 | Core Team | Related Specifications gains `l1-voice-output` — the output sibling that completes the voice loop. No invariant changed. (Row reconstructed from version control in the 2026-09-24 consistency pass.) |

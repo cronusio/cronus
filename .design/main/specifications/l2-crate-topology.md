@@ -1,6 +1,6 @@
 # Crate Topology (Core Decomposition)
 
-**Version:** 1.1.2
+**Version:** 1.1.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -49,15 +49,15 @@ This spec closes that gap. It is not a new architectural decision; it is the mis
 - **The public contract does not change.** The facade crate re-exports the current module paths, so `cronus::memory::…` and every existing frontend call site keep working. This is a physical reorganization, not an API redesign.
 - **`l2-technology-stack.md` §"One crate → desktop + mobile is real"** is read as *one Rust codebase serves both targets*, not *exactly one Cargo crate*. Every crate defined here builds for desktop and mobile targets; the property is preserved. This reading is confirmed against the stack spec's INV-1 row — "Core is a **Rust** library crate with a C-ABI/FFI surface; linkable into Tauri, CLI/TUI binaries, and external host programs": the constraint is on the *embeddable unit*, which the `cronus` facade preserves (§3 INV-1), not on the Cargo-crate count. The workspace already ships five crates (`core`, `nodus`, `cli`, `tui`, `codegraph`), so a literal one-crate reading is already inconsistent with the shipped tree and was never the intended meaning.
 - **The domain tier performs no I/O and links no C toolchain, platform service, or cryptographic implementation.** It may depend on pure-computation, leaf, no-I/O crates (see §4.3 allowlist). This is a weaker rule than nodus's absolute LP-1 zero-dependency contract, and deliberately so: the core is a host, not a portable library.
-- **The async runtime, if adopted, is not a domain dependency.** `l2-core-library.md` §2 specifies Tokio; no async runtime is present in the tree today (§6.5). Whenever it lands, it belongs to the adapter and facade tiers, where I/O lives — never to the domain tier.
-- Crate count is a cost. This topology mints five crates, not fifty; the minting rule (§4.4) is what keeps it there.
+- **No async runtime in the domain tier.** The core is synchronous by design (`l2-core-library` §2, `l2-model-runtime` §2), matching the tree (§6.5). Should a runtime ever be adopted, it belongs to the adapter and facade tiers, where I/O lives — never to the domain tier.
+- Crate count is a cost. This topology minted five crates, not fifty; later ones entered only through the minting rule (§4.4), which is what keeps the count there.
 
 ## 3. Invariant Compliance (Layer 2 only)
 
 | L1 Invariant | Implementation |
 | --- | --- |
 | INV-1 Embeddable core | The facade crate (`cronus`) remains the embeddable unit and the sole owner of the C-ABI/FFI surface. Embedding hosts link one crate exactly as today. A host wanting the domain without persistence may instead link `cronus-domain`, which has no platform or C dependencies at all — strictly *more* embeddable than the status quo. |
-| INV-2 Logic in core only | Enforced by the compiler rather than by review. Domain logic lives in `cronus-domain`; the tier holds no I/O, so a frontend cannot host domain logic by accident and an adapter cannot host it at all. The current CLI violation (a frontend opening a database `Connection`, §6.4) becomes unrepresentable once `codegraph` hides its storage engine. |
+| INV-2 Logic in core only | Enforced by the compiler rather than by review. Domain logic lives in `cronus-domain`; the tier holds no I/O, so a frontend cannot host domain logic by accident and an adapter cannot host it at all. The former CLI violation (a frontend opening a database `Connection`, §6.4) is gone: `codegraph` now keeps its storage engine private. |
 | INV-3 Command parity | Unchanged. The capability contract stays on the facade crate, which every frontend binds to. Parity is a property of the contract, and the contract does not move. |
 | INV-4 Hub-and-spoke autonomy | Unchanged. The autonomous loop is domain logic (`autonomy`, `scheduler`, `orchestration`) plus a persistence adapter. A hub links the facade with durable providers; a spoke may link the domain tier with in-memory providers, which makes the spoke's foreground/sync-only posture a *link-time* fact rather than a runtime promise. |
 | INV-5 Durable, restartable state | Unchanged in behavior, strengthened in structure. Durability moves behind the `UserDataStore` seam (§4.5); the default on-device provider is the same SQLite store, wired by the facade. The domain cannot bypass the seam to write state, because it cannot reach a database. |
@@ -79,6 +79,8 @@ graph TD
     FACADE[cronus — facade: wiring, Engine, C-ABI/FFI]
     STORE[cronus-store-local]
     AUTH[cronus-auth-local]
+    MODEL[cronus-model-local]
+    ACT[cronus-activation-os]
     DOMAIN[cronus-domain — no I/O]
     CONTRACT[cronus-contract — types + seam traits, zero deps]
     NODUS[nodus — zero deps]
@@ -86,9 +88,13 @@ graph TD
     FE --> FACADE
     FACADE --> STORE
     FACADE --> AUTH
+    FACADE --> MODEL
+    FACADE --> ACT
     FACADE --> DOMAIN
     STORE --> CONTRACT
     AUTH --> CONTRACT
+    MODEL --> CONTRACT
+    ACT --> CONTRACT
     DOMAIN --> CONTRACT
     DOMAIN --> NODUS
 ```
@@ -113,6 +119,14 @@ Two properties fall out of the graph and are worth naming because they are what 
 
 `crates/nodus` and `crates/codegraph` are unchanged by this spec, except that `codegraph` must stop exposing `rusqlite::Connection` in its public API (§6.4).
 
+Crates minted after this table was first written, each through §4.4:
+
+| Crate | Path | Clause | Contents |
+| --- | --- | --- | --- |
+| `cronus-activation-os` | `crates/activation-os` | (a) — platform APIs (`windows-sys`, launch agents, systemd) | The OS service-registration adapter behind the background-activation seam (`l2-service-activation`). |
+| `cronus-conformance` | `crates/conformance` | (d) — verification harness | The surface-conformance harness (`l2-surface-conformance`); depends on `cronus-contract` only. |
+| `cronus-simulation` | `crates/simulation` | (d) — verification harness | The usage-simulation harness and `cronus-sim` binary (`l2-simulation-suite`); depends on `cronus-contract` plus serialization only. |
+
 ### 4.3 The domain dependency allowlist
 
 `cronus-domain` may depend only on crates that are **leaf, pure-computation, no-I/O, no-C, no-platform**. Today that admits exactly three, each already in the tree:
@@ -133,13 +147,17 @@ This rule is the whole defense against a fifty-crate workspace, and it is the di
 > **A crate is minted when, and only when, a module**
 > **(a) requires an external dependency the domain tier may not hold; or**
 > **(b) implements one of the DN-2 provider planes (identity / auth / user-data); or**
-> **(c) acquires a consumer outside this workspace.**
+> **(c) acquires a consumer outside this workspace; or**
+> **(d) is a verification harness that must exercise the product only through the contract**
+> **tier — it cannot share a compilation unit with the code it checks.**
 >
 > **Size, age, and domain distinctness never justify a crate.**
 
 The open TBD proposed splitting along domain lines — `engine` / `memory` / `scheduler`. The measurements reject that axis: with 11 edges across 53 modules, domain-to-domain coupling is already near zero, so a domain split would purchase nothing and pay in manifests, version skew, and cross-crate refactoring friction. `router` (1,300 lines) and `tool_security` (1,116 lines) are the largest domain modules and stay exactly where they are, because neither triggers (a), (b), or (c).
 
 Conversely `memory/store.rs` (14.5k characters) and `auth.rs` (794 lines) are not extracted because they are large. They are extracted because one opens a database and the other hashes passwords — clauses (a) and (b).
+
+Clause (d) records why the two harness crates exist: a conformance or simulation harness that linked the domain or the facade could pass by calling the very helpers it is meant to check, so it drives the product through the contract tier and nothing else.
 
 Applied in reverse, the rule also says when to *merge*: a crate whose last external dependency is removed, and which backs no provider plane, folds back into the domain tier.
 
@@ -247,8 +265,8 @@ Recorded here because each bears on the topology, and each is independently acti
 - **6.1 — DN-2 seams are specified but absent.** No `IdentityProvider`, `AuthProvider`, or `UserDataStore` trait exists anywhere in the tree, though `l1-deployment-neutrality` is `Stable`. DN-3 is therefore currently unrealizable. §4.5 is the remedy.
 - **6.2 — The core is less portable than its own dependency.** `nodus` holds LP-1/LP-2 (zero deps, adapters in separate crates) across 11,895 lines; `crates/core` embeds a database, a keychain, and two password-hashing schemes.
 - **6.3 — `pub mod` provides no enforcement.** Today's low coupling (11 edges) is a product of discipline, not structure. INV-8's "strongly-bounded" is currently unfalsifiable.
-- **6.4 — INV-2 violation in the CLI.** `crates/cli` opens a `rusqlite::Connection` and calls `migrate` / `store_symbols` / `fts_search` in production code (not tests), because `codegraph` exposes `Connection` in its public API. A frontend is performing persistence. `codegraph` must hide its storage engine behind its own API; the CLI then drops `rusqlite` from its manifest.
-- **6.5 — Async-runtime gap.** `l2-core-library.md` §2 specifies "Async via Tokio"; the tree contains no `tokio` dependency and no `async fn`. This is an implementation gap rather than a spec defect, and it is left to that spec's owner. This topology only constrains *where* a runtime may live when it arrives: the adapter and facade tiers, never the domain (§2).
+- **6.4 — INV-2 violation in the CLI (resolved).** `crates/cli` opened a `rusqlite::Connection` and called `migrate` / `store_symbols` / `fts_search` in production code (not tests), because `codegraph` exposed `Connection` in its public API — a frontend performing persistence. Since fixed as specified: those functions are private to `codegraph`, and the CLI manifest no longer lists `rusqlite`.
+- **6.5 — Async-runtime gap (resolved).** `l2-core-library.md` §2 once specified "Async via Tokio" while the tree contained no `tokio` dependency and no `async fn`, and `l2-model-runtime` built its transport synchronous by design. The contradiction was resolved in favour of the tree: `l2-core-library` §2 now specifies a synchronous core with bounded worker threads. This topology still constrains *where* a runtime could live if one were ever adopted: the adapter and facade tiers, never the domain (§2).
 
 ## 7. Drawbacks & Alternatives
 
@@ -276,15 +294,16 @@ Recorded here because each bears on the topology, and each is independently acti
 | `[CORE-LIB]` | `crates/core/src/lib.rs` | The 53 `pub mod` declarations this topology partitions |
 | `[CORE-MANIFEST]` | `crates/core/Cargo.toml` | The external dependencies that determine each module's tier |
 | `[PIVOT]` | `crates/domain/src/context_router.rs` | The realized migration pivot (§4.6) — moved here from `crates/core/src/`; depends on `cronus_contract::MemorySearch`, not the concrete store. |
-| `[EXEMPLAR]` | `crates/nodus/Cargo.toml` | The zero-dependency discipline (LP-1/LP-2) this spec applies to the core |
+| `[EXEMPLAR]` | `crates/nodus/Cargo.toml` | The zero-dependency discipline (nodus LP-1/LP-2) this spec applies to the core |
 
 ## Document History
 
 | Version | Date | Notes |
 | --- | --- | --- |
-| 1.1.2 | 2026-09-12 | **Migration confirmed realized** (Retro L2 finding, `/magic.spec main`): §4.6 and the `[PIVOT]` Canonical Reference described the pre-migration state (`crates/core/src/context_router.rs`, holding a concrete `&MemoryStore`) as though it were still current. Verified by direct inspection that the migration this section specified actually landed: the module is now `crates/domain/src/context_router.rs`, depends on `cronus_contract::MemorySearch`, and its own doc comment names this section by number as the pivot it realized. `crates/domain/Cargo.toml` carries no `store-local` dependency; `crates/core/src/lib.rs` imports the module *from* domain, confirming the inward direction. §4.6 rewritten to past tense with the confirming evidence; `[PIVOT]` path corrected. No invariant, decomposition rule, or migration step changed — this is a realization-status correction only. |
-| 1.0.0 | 2026-07-10 | Initial spec. Resolves the `l2-source-layout.md` §4.4 crate-granularity TBD: decompose on the dependency/seam axis (contract · domain · store-local · auth-local · facade), not the domain axis. Establishes the crate-minting rule (§4.4), realizes the DN-2 provider seams as crate boundaries (§4.5), identifies the single inverted `context_router → MemoryStore` edge as the migration pivot (§4.6), and distinguishes a crate boundary from a process boundary under INV-8 (§4.7). Records five analysis findings (§6), incl. an INV-2 violation in the CLI and the absent DN-2 seams. |
-| 1.0.0 | 2026-07-10 | `RFC → Stable`. Post-Update Review passed (`@role:spec-critic` + `@role:prompt-engineer`). The sole open question — the §2 reading of the stack spec's "one crate → desktop + mobile" — was resolved against `l2-technology-stack` INV-1 (the constraint is on the embeddable unit, preserved by the facade; the workspace already ships five crates) with no conflict; the TBD marker was cleared and the confirming rationale recorded inline. No design change; status advance only. |
+| 1.0.0 | 2026-07-10 | Initial spec. Resolves the `l2-source-layout.md` §4.4 crate-granularity TBD: decompose on the dependency/seam axis (contract · domain · store-local · auth-local · facade), not the domain axis. Establishes the crate-minting rule (§4.4), realizes the DN-2 provider seams as crate boundaries (§4.5), identifies the single inverted `context_router → MemoryStore` edge as the migration pivot (§4.6), and distinguishes a crate boundary from a process boundary under INV-8 (§4.7). Records five analysis findings (§6), incl. an INV-2 violation in the CLI and the absent DN-2 seams. `RFC → Stable`. Post-Update Review passed (`@role:spec-critic` + `@role:prompt-engineer`). The sole open question — the §2 reading of the stack spec's "one crate → desktop + mobile" — was resolved against `l2-technology-stack` INV-1 (the constraint is on the embeddable unit, preserved by the facade; the workspace already ships five crates) with no conflict; the TBD marker was cleared and the confirming rationale recorded inline. No design change; status advance only. |
 | 1.0.1 | 2026-07-17 | Registered `cronus-model-local` (`crates/model-local`) as a fourth **adapter** crate in the §4.2 crate set — the model-transport adapter shipped in the Model Transport build phase, implementing `contract::InferenceBackend` over a loopback HTTP endpoint plus egress-gated remote profiles. It was already minted by the existing §4.4(a) rule (needs network I/O) and already covered by the CI `domain → adapter` boundary guard; this patch records the existing crate in the table and notes it is **not** one of the three DN-2 provider planes. Also extended the `cronus-contract` row to list the later-added `InferenceBackend` and `WikiCache`/`WikiReadSurface` seam traits. Documentation reconciliation of shipped structure — no new requirement, no design change; stays Stable. |
 | 1.1.0 | 2026-07-26 | Addressed new L1 invariant INV-10 (representation isolation at the inward seam) — added its Invariant-Compliance row (§3) and a §4.5 note: an adapter crate's storage/wire representation is **private to it** (not re-exported from `cronus-contract`, unnameable by `cronus-domain`) and mapped to/from contract types at the trait seam, so the SQLite schema / on-disk record / future remote DTO evolve inside their crate without touching the domain — the data twin of the §4.6 behavioral trait inversion, and what lets the pure-`std` domain compile and unit-test with an in-memory provider. No structural change to the crate set; the graph already enforces it once the representation types stay adapter-private. |
 | 1.1.1 | 2026-07-29 | Completeness fix: added the INV-9 (shipped-surface honesty) Invariant-Compliance row (§3), absent since INV-9 entered l1-architecture — the table had jumped INV-8 → INV-10, leaving the L1 "all invariants addressed" gate unmet for a Stable spec. The row addresses INV-9 honestly: it is chiefly a frontend-surface invariant enforced in l2-cli/l2-tui; the topology's one structural bearing is that the facade crate is the sole owner of the capability contract (an advertised verb has exactly one binding target) and that the §6.4 codegraph fix removes the case of a CLI affordance bound to a leaked adapter type rather than a core capability. Also normalized this history table to its 3-column schema (a prior 1.1.0 row had carried a stray Author column) and restored ascending version order. No new design or requirement. Stays Stable. |
+| 1.1.2 | 2026-09-12 | **Migration confirmed realized** (Retro L2 finding, `/magic.spec main`): §4.6 and the `[PIVOT]` Canonical Reference described the pre-migration state (`crates/core/src/context_router.rs`, holding a concrete `&MemoryStore`) as though it were still current. Verified by direct inspection that the migration this section specified actually landed: the module is now `crates/domain/src/context_router.rs`, depends on `cronus_contract::MemorySearch`, and its own doc comment names this section by number as the pivot it realized. `crates/domain/Cargo.toml` carries no `store-local` dependency; `crates/core/src/lib.rs` imports the module *from* domain, confirming the inward direction. §4.6 rewritten to past tense with the confirming evidence; `[PIVOT]` path corrected. No invariant, decomposition rule, or migration step changed — this is a realization-status correction only. |
+| 1.1.3 | 2026-09-23 | Consistency pass (2026-09-23): §2 and §6.5 carried the core-library's Tokio claim — resolved: the core is synchronous. Three shipped crates (`activation-os`, `conformance`, `simulation`) were absent from the crate set and the minting rule could not account for the two harnesses — the table lists them and clause (d) records verification harnesses confined to the contract tier; the tier diagram shows the model and activation adapters. §6.4 (CLI opening a database connection) is recorded as resolved — `codegraph` keeps its storage private and the CLI dropped `rusqlite`. Duplicate 1.0.0 history rows merged and the table restored to ascending order. |
+| 1.1.4 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |

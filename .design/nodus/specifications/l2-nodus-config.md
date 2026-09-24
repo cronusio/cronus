@@ -1,6 +1,6 @@
 # Nodus Declarative Configuration Surface (Rust)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -30,8 +30,8 @@ spec maps each to its Rust type and enforcement site.
 - [l2-nodus-portability.md](l2-nodus-portability.md) — the extension-point framework this spec adds a role to: `ExtensionRole`, `HostCapabilities`, `CapabilityManifest`, `validate_manifest` (LP-8); the host-supplied seam pattern (LP-2/LP-15)
 - [l2-nodus-errors.md](l2-nodus-errors.md) — owns the canonical `NODUS:*` taxonomy this spec's `CONFIG_INVALID` code registers into (validation category)
 - [l2-nodus-dialog.md](l2-nodus-dialog.md) — the precedent this spec mirrors: a host-supplied provider (`DialogProvider`) with a deterministic non-interactive default and an `ExtensionRole` binding
-- [../main/specifications/l1-declarative-configuration.md](../main/specifications/l1-declarative-configuration.md) — the host-side contract NL-20 realizes (DC-1 owner-published declaration, DC-3/DC-4 owner-side pre-run validation, DC-9 secret write-only, DC-10 config-is-shape-not-authority)
-- [../main/specifications/l2-config-hotreload.md](../main/specifications/l2-config-hotreload.md) — a host-workspace sibling realization (config hot-reload); the accepted-set-stays-in-force guarantee here is the invariant its reload path depends on
+- [../../main/specifications/l1-declarative-configuration.md](../../main/specifications/l1-declarative-configuration.md) — the host-side contract NL-20 realizes (DC-1 owner-published declaration, DC-3/DC-4 owner-side pre-run validation, DC-9 secret write-only, DC-10 config-is-shape-not-authority)
+- [../../main/specifications/l2-config-hotreload.md](../../main/specifications/l2-config-hotreload.md) — a host-workspace sibling realization (config hot-reload); the accepted-set-stays-in-force guarantee here is the invariant its reload path depends on
 
 ## 1. Motivation
 
@@ -57,18 +57,17 @@ now a missing first-class surface. Closing it requires what the crate lacks:
 - A `secret` field is write-only (DC-9): the value model permits its use as a step input but exposes no construct that renders it into a model-facing prompt (GEN/REFINE) and no path that writes it to an audit trace. This composes NL-11 and the §4.4 data-safety boundary; it is a structural property of the value, not a redaction pass.
 - Configuration confers no trust: an accepted value carries provenance (NL-11) and MAY carry an origin taint (NL-17) when the host populates it from an external or synced source. Unclassified config defaults to untrusted, exactly like any other externally-sourced value.
 - A workflow reads its configuration but can never author, widen, or self-grant it (LP-10 / DC-10). `§config` declares a shape; it never declares an authority.
-- Determinism (NL-6): the same declaration and the same accepted value set produce the same in-run configuration; the built-in acceptor performs no I/O.
+- Determinism: the same declaration and the same accepted value set produce the same in-run configuration; the built-in acceptor performs no I/O.
 
 ## 3. Invariant Compliance
 
 | L1 Invariant | Rust Enforcement |
 | --- | --- |
-| NL-20 Declarative configuration surface | A `§config` file parses to a `ConfigDecl` (ordered `ConfigField` set). `check_config_values(&ConfigDecl, proposed)` runs the shape check pre-run; the `ConfigProvider` seam supplies host acceptance; `run_with_config` sequences declaration → proposed → shape check → host acceptance → run. |
+| NL-20 Declarative configuration surface | A `§config` file parses to a `ConfigDecl` (ordered `ConfigField` set). `check_config_values(&ConfigDecl, proposed)` runs the shape check pre-run; the `ConfigProvider` seam supplies host acceptance; `run_with_config` sequences declaration → proposed → shape check → host acceptance → run. The check is pure and `DefaultConfigProvider` accepts a programmatically supplied set with no I/O, so a non-interactive run is reproducible from (declaration, proposed set). |
 | NL-1 Schema-first / NL-9 typed I/O | The shape check is a validation-category gate: type match, range/enumeration, required-present, and unknown-field rejection are decided before the executor boots, never first surfaced at run time. A `§config` field type reuses the primitive-type registry (`l2-nodus-registries.md`). |
-| NL-6 Deterministic execution | `check_config_values` is pure; `DefaultConfigProvider` accepts a programmatically-supplied set with no I/O, so a non-interactive run is reproducible from (declaration, proposed set). |
 | NL-11 Provenance-safe interpolation | An accepted value enters as a `Value` with provenance; unclassified/host-external config is `untrusted` and neutralized-as-data at any model-facing render. A `secret` field additionally has no prompt-rendering construct at all (write-only), the neutralize-by-removing-the-capability form of NL-11. |
 | NL-17 Origin-taint provenance | The `ConfigProvider` MAY attach a host-supplied origin taint when a value is populated from an external/synced source; the taint rides the value and never upgrades it untrusted → trusted. |
-| LP-2 / LP-15 Host-supplied deployment neutrality | Rendering, editing, persistence, and accept/reject authority live behind `ConfigProvider`; nodus core ships only `DefaultConfigProvider` (programmatic acceptance, no store, no UI). |
+| LP-2 Extension via abstract interfaces / LP-15 Host-supplied durable state | Rendering, editing, persistence, and accept/reject authority live behind `ConfigProvider`; nodus core ships only `DefaultConfigProvider` (programmatic acceptance, no store, no UI). |
 | LP-8 Capability manifest | A workflow that consumes a `§config` surface requires `ExtensionRole::Config`; `validate_manifest` rejects fail-fast with `NODUS:CAPABILITY_UNMET` when the host does not provide it. `HostCapabilities::builtin()` provides `Config` via the default acceptor. |
 | LP-10 No self-granted authority | The parser accepts only field *declarations* in a `§config` file; there is no construct by which a workflow widens a range, clears `required`, or promotes its own value set. Acceptance authority is the host's alone. |
 
@@ -298,5 +297,6 @@ appears in a `CONFIG_INVALID` payload — only the offending field name and reas
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Links to the two main-workspace specifications resolved one directory short. An `NL-6 Deterministic execution` row cited the wrong invariant — NL-6 is dual representation; the determinism statement now sits in the NL-20 row, where the behaviour lives. The LP-2/LP-15 row title now names both invariants as the portability contract defines them. |
 | 1.0.1 | 2026-07-24 | Core Team | Patch clarification (no logic change): §4.3 realigned to the actual `Parser::parse`/`parse_with_schema` return type (`Result<WorkflowFile>`) — their `§config` arm cannot return a `ConfigDecl`, so it is rewritten to a precise redirect error naming `parse_config` rather than literally "delegating"; the `§schema` arm is unchanged. |
 | 1.0.0 | 2026-07-24 | Core Team | Initial spec — Rust realization of the `§config` declarative-configuration surface (`l1-nodus-language.md` §4.1 / NL-20): `ConfigDecl`/`ConfigField` AST, `parse_config` replacing the parser deferral, pure pre-run `check_config_values` shape check, provenance-carrying + write-only-secret value model, `ConfigProvider`/`ExtensionRole::Config` host-acceptance seam with a deterministic `DefaultConfigProvider`, `run_with_config[_and_audit]` sequencing declaration → proposed → shape check → host acceptance → run, and the `CONFIG_INVALID` validation code. |

@@ -1,6 +1,6 @@
 # Role Catalog
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-roles.md
@@ -41,6 +41,7 @@ The model needs a concrete place for blueprints versus instances and a uniform d
 | ROL-6 Composition | Each role: `config.json` + `RULES.md` + `skills/` + `skins/`. |
 | ROL-7 Catalog integrity | Presets are not edited; "customize a preset" writes a new custom under state (`hired_from: <preset>`). |
 | ROL-8 Hierarchy placement | A hired instance's `config.json` records `reportsTo`. |
+| ROL-9 Anti-sprawl justification gate | **Pending.** `role create` is to record, in the custom's `config.json`, its justification on at least two independent axes (expertise, parallelism, context isolation, reuse), and to run the corpus-originality admission check against the whole catalog and any pending sibling candidates on neutralized content (`l1-corpus-originality` ORI-1…ORI-5). A near-duplicate is admitted only once made substantively distinct or declared a variant of the preset it resembles (`hired_from: <preset>`); neither half of the gate is loosened to let it through. |
 
 ## 4. Detailed Design
 
@@ -105,6 +106,8 @@ Hired agents may be backed by external runtimes (a locally spawned process, a re
 
 The orchestration layer treats a callable adapter as a black box — it cannot monitor progress or enforce a budget mid-run. A fully-instrumented adapter enables real-time budget enforcement, liveness checks, and fine-grained audit logs. New adapters should target fully instrumented; callable is the minimum for third-party integration.
 
+Because a callable adapter cannot be bounded mid-flight, it is bounded at dispatch: every run carries a wall-clock deadline, and its budget slice is reserved in full before the call and charged whether or not the adapter reports cost — so an uninstrumented runtime can never spend past the cap it was given (ORC-7). A status-reporting adapter gets the same deadline; only a fully instrumented one is metered live.
+
 #### Context delivery: fat payload vs thin ping
 
 ```text
@@ -120,7 +123,7 @@ The `config.json` for a hired instance records which delivery mode the adapter r
 
 #### Config revisions and rollback
 
-Every change to a hired agent's `config.json` is recorded as a revision, enabling rollback:
+Every change to a hired agent's `config.json` is recorded as a revision, enabling rollback. A revision is written by the manager the instance reports to or by the user — never by the instance itself: the file carries the instance's model and budget, and an agent that could patch them would widen its own authority (SEC-10; budget changes also follow the cascade of `l2-budget-engine` §4.4). A rollback that would restore a wider grant than the current one is subject to the same rule.
 
 ```text
 [REFERENCE]
@@ -154,3 +157,10 @@ Revision records are stored in `<state>/employees/<id>/config-revisions/` as app
 | `[ROLES]` | `.design/main/specifications/l1-roles.md` | Invariants this catalog satisfies |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | Catalog and instance locations |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ROL-9 (anti-sprawl justification gate, including its corpus-originality half added to the L1 in 1.2.0) was unmapped — Pending row added. A callable adapter could spend without bound because it "cannot enforce a budget mid-run" — it is bounded at dispatch (deadline plus a budget slice reserved and charged in full). Config revisions could be written by the instance itself, whose config carries its own model and budget — only the manager above it or the user writes them (SEC-10, budget cascade). |
+| 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

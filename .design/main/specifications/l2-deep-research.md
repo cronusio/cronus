@@ -1,6 +1,6 @@
 # Deep Research
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-deep-research.md, l1-orchestration.md
@@ -12,7 +12,7 @@ An iterative Think→Plan→Search→Extract→Synthesize research engine. The a
 ## Related Specifications
 
 - [l1-deep-research.md](l1-deep-research.md) - The Layer-1 concept this realizes: autonomous investigation over open sources ending in a claim-verified, attributed report (DR-1…DR-11).
-- [l1-orchestration.md](l1-orchestration.md) - ORC-1 adaptive topology; research runs as a multi-step goal.
+- [l1-orchestration.md](l1-orchestration.md) - Context isolation (ORC-5) and the budget circuit-breaker (ORC-7); research runs as a multi-step goal.
 - [l1-recursive-decomposition.md](l1-recursive-decomposition.md) - The map-then-reduce discipline for the sub-question tree and for oversized fetched pages (DR-2/DR-3).
 - [l1-claim-verification.md](l1-claim-verification.md) - The faithfulness gate the delivered report should pass (DR-4); the enhancement path beyond inline citations.
 - [l1-context-provenance.md](l1-context-provenance.md) - The untrusted-content neutralization the §4.6 wrapper realizes (DR-5).
@@ -49,7 +49,7 @@ Primary parent — l1-deep-research (DR-1…DR-11):
 | DR-4 Grounded, claim-verified synthesis | **Partial.** The report carries inline citations and a `success_criteria_met`/`partial_reason` honesty flag (§4.7). A dedicated claim-verification gate (l1-claim-verification CV-9) over the synthesized report is the enhancement path — currently grounding is by cited extraction, not an independent per-claim verdict. |
 | DR-5 Untrusted-by-default content | Every fetched page and search result is wrapped via the untrusted-context protocol before injection (§4.6); progress events never carry page content (§4.10). |
 | DR-6 Fixed budget; question-measured progress | `max_rounds` circuit breaker (§4.8) plus per-task cost estimate and hard-threshold budget gating (§4.10, l2-budget-engine) bound effort; completion is judged against the plan's success criteria, not fetch count. |
-| DR-7 Monotonic findings, keep/discard | The running report accumulates extracted facts across rounds (§4.1); the content filter (§4.5) discards low-quality/duplicate results before inclusion; filtered results are logged, not blended in. |
+| DR-7 Monotonic findings, keep/discard | **Partial.** The running report accumulates extracted facts across rounds (§4.1); the content filter (§4.5) discards low-quality/duplicate results before inclusion; filtered results are logged, not blended in. The append-only finding ledger with a per-sub-investigation keep / discard / contradicted disposition is pending — today a contradiction between sources is not recorded as one. |
 | DR-8 Frozen criteria + gated faithfulness | The `ResearchPlan.success_criteria` is fixed at the plan phase and reused every round (§4.3) — not moved mid-run; `max_rounds` is the frozen hard ceiling; output faithfulness rests on citations today, with the claim-verification gate as the independent-check path (see DR-4). |
 | DR-9 Autonomous, never-stall, ceilinged | The loop runs autonomously round-to-round without asking to continue; `max_rounds` is the hard ceiling; a detached job runs on the durable tier and survives frontend exit (§4.10). |
 | DR-10 Observable, cost-rolled-up, resumable | Streaming progress events at phase/round granularity (§4.10); token/cost accounting recorded on the finished job through the budget engine; a detached job is durable and addressable by id. |
@@ -59,9 +59,10 @@ Secondary parent — l1-orchestration + security envelope:
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ORC-1 Adaptive topology | Research rounds are determined dynamically by the model; the number of rounds is not fixed. |
-| SEC-3 No exfiltration | All fetched pages pass through the egress gate; only HTTP/HTTPS is allowed. |
-| SEC-6 Sandboxed execution | Fetch operations run under the egress gate (l2-security.md §4.2); no shell execution. |
+| ORC-5 Context-isolated execution | Fetched pages are read in the extract stage; only extracted facts enter the running report the loop carries forward — raw pages never do (DR-3). |
+| ORC-7 Budget circuit-breaker | `max_rounds` (§4.8) plus the budget engine's hard stop (§4.10) bound every run; the number of rounds within that ceiling is decided dynamically. |
+| SEC-3 No exfiltration | Search queries are egress of the user's question, so starting a research task is the user's authorization for sending generated queries to the configured search backend, which must be on the egress allowlist. Query generation sees the question, the plan, and the running report — never the office's private memory or workspace content — so what leaves the device is what the user asked plus what was already public (§4.4). All fetches pass through the egress gate; only HTTP/HTTPS is allowed. |
+| SEC-6 Sandboxed execution | Fetch operations run under the egress gate (l2-security.md §4.2) and the SSRF guard (§4.4 there): result URLs are untrusted input and may point at loopback, link-local, or private addresses. No shell execution. |
 
 ## 4. Detailed Design
 
@@ -124,6 +125,8 @@ Each round generates `num_queries` search queries (default 3–5) as a JSON arra
 - The running report (what is already known).
 - The round number (with a round-specific instruction, e.g. "focus on gaps from previous rounds").
 
+Nothing else: query generation does not receive recalled memory or workspace content, because every generated query leaves the device. The running report it does receive was extracted from untrusted pages, so a query is checked like any other egress before it is sent, and a page cannot turn query generation into a channel for private data it was never shown.
+
 ### 4.5 Content filtering
 
 Before wrapping and injecting fetched content, a quality filter rejects:
@@ -155,7 +158,7 @@ ResearchReport {
 }
 ```
 
-The report is marked `_protected` in the session history so it is never trimmed or compacted.
+The report is marked `_protected` in the session history so it is never trimmed or compacted. Protection is bounded so it can never exhaust the window: the most recent report is protected verbatim while it fits within the preserved-tail bound (`l2-context-management` §4.7); a larger or older report is protected as its archived handle plus its summary and citations (EA-2), expandable on demand.
 
 ### 4.8 Circuit breaker
 
@@ -198,7 +201,7 @@ Progress events are advisory and carry only counts and labels — never untruste
 
 **Wait.** `wait` blocks on an existing job until it reaches a terminal state (`done | partial | cancelled | error`) and returns the report. Polling (`status`) and waiting are equivalent — they differ only in who owns the wait loop, the caller or the engine.
 
-**Threaded continuation.** `continue <job-id> "<follow-up>"` starts a new job that inherits the parent job's plan, accumulated report, and citations as seed context — distinct from the cold follow-up of §4.8, which starts from nothing. Use it to drill into a single point ("elaborate on finding 2") without re-researching the whole question. The continuation records a `parent_job_id` back-pointer for lineage. The inherited report is wrapped as the office's own prior output (trusted); any newly fetched pages remain untrusted (§4.6).
+**Threaded continuation.** `continue <job-id> "<follow-up>"` starts a new job that inherits the parent job's plan, accumulated report, and citations as seed context — distinct from the cold follow-up of §4.8, which starts from nothing. Use it to drill into a single point ("elaborate on finding 2") without re-researching the whole question. The continuation records a `parent_job_id` back-pointer for lineage. The inherited report is the office's own prior output, but it was synthesized from untrusted pages and keeps their provenance (CP-4, DR-5): it enters the continuation as wrapped source material, never as instructions — a hostile page must not gain authority by surviving one synthesis step. Newly fetched pages are untrusted as always (§4.6).
 
 **Caller-supplied output contract.** `start --format "<skeleton>"` lets the caller declare the report's section structure up front (e.g. `"1. Executive Summary / 2. Comparison Table / 3. Recommendations"`). The skeleton becomes part of the synthesis prompt and an output-validation contract (l1-output-contracts): a missing required section forces one repair pass before the report is returned. Absent a skeleton, the default `ResearchReport` structure (§4.7) applies.
 
@@ -232,7 +235,7 @@ These facets compose cleanly with existing subsystems: the durability tier from 
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-1 adaptive topology |
+| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-5 context isolation, ORC-7 budget circuit-breaker |
 | `[TOOLSEC]` | `.design/main/specifications/l2-tool-security.md` | Untrusted-context wrapper |
 | `[CTX]` | `.design/main/specifications/l2-context-management.md` | _protected report + compaction |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
@@ -244,6 +247,7 @@ These facets compose cleanly with existing subsystems: the durability tier from 
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0.0 | 2026-06-22 | Initial specification: iterative Think→Plan→Search→Extract→Synthesize loop, date grounding, ResearchPlan (sub-questions + success criteria), content filtering, untrusted-content wrapping, ResearchReport with citations, `max_rounds` circuit breaker, async-job command surface. |
-| 1.3.0 | 2026-07-10 | Re-parented under the new l1-deep-research concept (Implements: l1-deep-research.md, l1-orchestration.md) — this engine is the Layer-2 realization of deep research, previously parented only under orchestration. Invariant Compliance extended to map DR-1…DR-11 (most fully satisfied by the existing design; DR-4 grounded/claim-verified synthesis marked Partial — inline citations today, an independent claim-verification gate is the enhancement path). Implementation design unchanged; this is a layer-integrity/traceability correction. |
-| 1.2.0 | 2026-07-04 | Bounded-concurrent fan-out within a round (§4.1): per-round searches and top-k page fetches run under one shared worker cap (default 4) with a join before extraction; per-result filtering/wrapping unchanged; failed fetches drop via the quality filter instead of failing the round. |
 | 1.1.0 | 2026-06-25 | Long-running operation lifecycle (§4.10): detached/attached start, streaming progress events, blocking wait, threaded continuation with `parent_job_id` lineage, caller-supplied output-format contract, and cost/time/token transparency with budget-engine gating. Command surface extended (stream/wait/continue, `--format`/`--detach`/`--json`/`--raw`). |
+| 1.2.0 | 2026-07-04 | Bounded-concurrent fan-out within a round (§4.1): per-round searches and top-k page fetches run under one shared worker cap (default 4) with a join before extraction; per-result filtering/wrapping unchanged; failed fetches drop via the quality filter instead of failing the round. |
+| 1.3.0 | 2026-07-10 | Re-parented under the new l1-deep-research concept (Implements: l1-deep-research.md, l1-orchestration.md) — this engine is the Layer-2 realization of deep research, previously parented only under orchestration. Invariant Compliance extended to map DR-1…DR-11 (most fully satisfied by the existing design; DR-4 grounded/claim-verified synthesis marked Partial — inline citations today, an independent claim-verification gate is the enhancement path). Implementation design unchanged; this is a layer-integrity/traceability correction. |
+| 1.3.1 | 2026-09-23 | Consistency pass (2026-09-23): Compliance cited ORC-1 as "adaptive topology" (that is ORC-2, and neither fits) — replaced by ORC-5 and ORC-7. Security: queries are egress of the user's question and were generated with no rule on what context they may carry — query generation now excludes recalled memory and workspace content; fetches of URLs taken from untrusted results now pass the SSRF guard. A threaded continuation treated the inherited report as trusted although it was synthesized from untrusted pages (CP-4, DR-5) — provenance now sticks. `_protected` reports could accumulate past the window — protection is bounded (verbatim only within the preserved-tail bound, else archived handle plus summary). DR-7 marked Partial (no keep/discard/contradicted ledger yet). Document History reordered chronologically. |

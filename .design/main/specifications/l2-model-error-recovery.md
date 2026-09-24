@@ -1,6 +1,6 @@
 # Model Error Recovery
 
-**Version:** 1.0.1
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-routing.md, l1-doctor.md
@@ -15,6 +15,7 @@ The runtime error-recovery pipeline for model API calls: a structured taxonomy o
 - [l1-doctor.md](l1-doctor.md) - Self-healing and escalation model.
 - [l2-model-router.md](l2-model-router.md) - Model selection and fallback cascade source.
 - [l2-agent-session.md](l2-agent-session.md) - Turn loop that calls the classifier per iteration.
+- [l2-context-management.md](l2-context-management.md) - The conservative budget applied when a context window is unknown (§4.6).
 
 ## 1. Motivation
 
@@ -32,10 +33,13 @@ Model API calls fail in many distinct ways — auth, billing, rate limiting, con
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| RTG-2 Fallback | `ClassifiedError.should_fallback` triggers cascade advancement in the retry loop. |
-| DOC-1 Continuous checks | The classifier runs after every API call before any recovery action. |
-| DOC-2 Repair before escalate | Retryable errors retry with backoff; compression fires before fallback; credentials rotate before aborting. |
-| SEC-2 Audit | Each classified error (kind, provider, model, recovery taken) is appended to the audit log. |
+| RTG-2 Fallback | `ClassifiedError.should_fallback` triggers cascade advancement in the retry loop — through the router's eligible candidates only (`l2-model-router` selection pipeline): a failure never moves a request off-device that routing would keep local. |
+| HEAL-1 Continuous checks | The classifier runs after every API call before any recovery action; the health probe (§4.6) runs before a turn and on each cascade advance. |
+| HEAL-2 Safe self-repair | Deterministic, safe recoveries apply automatically and are recorded: retry with backoff, compression before fallback, credential rotation before abort. |
+| HEAL-3 Escalate the risky | What recovery must not decide alone is surfaced instead: a provider or content-policy block, a permanent auth failure, an exhausted cascade. |
+| HEAL-5 Traceable | Each classified error (kind, provider, model, recovery taken) is appended to the audit log (SEC-7). |
+
+Scope: the `l1-doctor` rows cover only the invariants model-call recovery realizes. HEAL-4, HEAL-6, HEAL-7 and HEAL-8 are realized by `l2-doctor`, which carries the full HEAL-1…HEAL-8 table.
 
 ## 4. Detailed Design
 
@@ -67,7 +71,8 @@ enum FailoverKind {
   // Model / provider policy
   ModelNotFound,      // 404 / invalid model — fallback to different model
   ProviderBlocked,    // Aggregator policy or privacy guardrail — no fallback; surface to user
-  ContentBlocked,     // Provider safety filter — deterministic refusal; try fallback provider
+  ContentBlocked,     // Provider safety filter — deterministic refusal; no automatic fallback;
+                      //   surface to user (a retry elsewhere only on the user's explicit request)
 
   // Request format
   FormatError,        // 400 bad request — non-retryable; fallback or abort
@@ -101,7 +106,7 @@ The classifier checks these stages in order, returning on the first match:
 
 **1. Provider-specific** patterns (highest priority)
 
-- Content-policy blocks: deterministic refusals by provider safety filters. `retryable: false, should_fallback: true`. Must run before status-based classification so a 400 safety block is not downgraded to a generic `FormatError`.
+- Content-policy blocks: deterministic refusals by provider safety filters. `retryable: false, should_fallback: false` — the refusal is surfaced, never laundered by re-sending the same request to another provider until one accepts it; the user may explicitly retry elsewhere. Must run before status-based classification so a 400 safety block is not downgraded to a generic `FormatError`.
 - Provider-specific subscription/entitlement errors (e.g. expired OAuth tokens, model tier restrictions). Classify as `Auth` with `retryable: false, should_fallback: true`.
 - Thinking-block signature invalidity: `retryable: true` (strip reasoning blocks and retry).
 - Long-context tier gate: `should_compress: true, retryable: true`.
@@ -249,17 +254,15 @@ When the fallback cascade advances to a different model, the new model's context
 
 ```text
 [REFERENCE]
-DEFAULT_CONTEXT_WINDOW: u32 = 131_072  // fallback when discovery is not possible
-
-resolve_context_window(provider, model) -> u32:
+resolve_context_window(provider, model) -> u32:     // 0 = unknown
   match provider:
     "ollama"  → warm_model(model); probe_ollama_context_window(model)
     "vllm"    → GET /v1/models → extract max_model_len for this model
-    "cloud"   → DEFAULT_CONTEXT_WINDOW  // cloud providers do not expose this via API
-    _         → DEFAULT_CONTEXT_WINDOW
+    "cloud"   → the model's declared window in models.json, else 0   // not exposed via API
+    _         → the declared window if the catalog has one, else 0
 ```
 
-On discovery failure (probe error, model not found), `DEFAULT_CONTEXT_WINDOW` is used and a WARNING is logged. The session continues — a conservative context window is safer than aborting the turn.
+On discovery failure (probe error, model not found) the window is reported **unknown** (0) and a WARNING is logged. The session continues, and the context engine applies its conservative default for an unknown window (`l2-context-management` §4.1) — an assumed large window would make the engine scale its budget off a window nobody proved, which is exactly what that rule forbids.
 
 ## 5. Drawbacks & Alternatives
 
@@ -277,3 +280,11 @@ On discovery failure (probe error, model not found), `DEFAULT_CONTEXT_WINDOW` is
 | `[DOCTOR]` | `.design/main/specifications/l1-doctor.md` | Self-healing model |
 | `[ROUTER]` | `.design/main/specifications/l2-model-router.md` | Cascade and credential pool |
 | `[SESSION]` | `.design/main/specifications/l2-agent-session.md` | Turn loop consuming the classifier |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.3 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): A scope note names `l2-doctor` as the carrier of HEAL-4, HEAL-6, HEAL-7 and HEAL-8, which this table does not list. |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited DOC-1/DOC-2 (the doctor prefix is HEAL) and SEC-2 as "Audit" — now HEAL-1/2/3/5 with the audit log under SEC-7; the RTG-2 row confines the cascade to the router's eligible candidates. A provider safety refusal (`ContentBlocked`) triggered automatic fallback, shopping the same request across providers until one accepted it — it is now surfaced, with a retry elsewhere only on the user's explicit request. Context-window discovery failure assumed 131 072 tokens, which makes the context engine budget off an unproven window — an undiscoverable window is now reported unknown and the engine's conservative default applies. |
+| 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

@@ -1,6 +1,6 @@
 # Scheduler
 
-**Version:** 1.0.4
+**Version:** 1.0.5
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-scheduler-model.md
@@ -16,6 +16,9 @@ The concrete scheduler: a friendly recurrence model (alarm-clock style presets) 
 - [l2-kanban-board.md](l2-kanban-board.md) - Where `routine` fires may place cards.
 - [l2-cli.md](l2-cli.md) - Command grammar standard the schedule commands follow.
 - [l2-security.md](l2-security.md) - Prompt injection scanning and sandbox constraints applied at fire time.
+- [l2-agent-autonomy.md](l2-agent-autonomy.md) - The autonomy gate every fired job still passes; its unattended rows refuse what they cannot ask (AG-9).
+- [l2-trigger-triage.md](l2-trigger-triage.md) - Intake of cron, webhook and event fires; a fire's declared action is routed, never re-classified (SCH-3).
+- [l1-security.md](l1-security.md) - SEC-10: a webhook trigger opens an ingress path and is therefore human-authored.
 
 ## 1. Motivation
 
@@ -39,6 +42,7 @@ The model wants recurrence-first scheduling that a non-technical client can use,
 | SCH-5 Workspace-scoped | Schedule files live under `<ws>/schedules/`; firing targets that office only. |
 | SCH-6 Autonomous & durable | Schedules persist as files; the scheduler service reloads and re-arms them on restart. |
 | SCH-7 Lifecycle control | `enabled` flag plus create/edit/delete operations; disabling stops firing without deletion. |
+| SCH-8 Bounded catch-up window | Optional per-schedule `catch_up_window` (§4.7): a missed occurrence is eligible for catch-up only while `recovery_time ≤ fire_at + catch_up_window`; absent = zero width, so every missed occurrence is dropped whatever the `catchUpPolicy`. A catch-up run is recorded `fired_late: true` with its intended `fire_at_ms` (§4.9 run log). Pending realization. |
 
 ## 4. Detailed Design
 
@@ -58,7 +62,8 @@ The model wants recurrence-first scheduling that a non-technical client can use,
   },
   cron?: "0 9 * * 1-5",         // advanced: raw cron, instead of recurrence
   at?: "2026-07-01T09:00",      // for oneshot
-  start_at?, end_at?,           // optional window
+  start_at?, end_at?,           // optional window (when the schedule as a whole is active)
+  catch_up_window?,             // SCH-8 per-occurrence lateness bound (§4.7); absent = drop-if-missed
   timezone,                     // default: host
   enabled: true,
   delete_after_fire: false,     // true for oneshot (SCH-1)
@@ -81,11 +86,11 @@ The model wants recurrence-first scheduling that a non-technical client can use,
 
 ### 4.3 Firing
 
-The scheduler service evaluates due schedules against the host clock + timezone, fires the declared action, and for one-shot schedules deletes the file after firing. On restart it reloads all files and re-arms (SCH-6). Missed-fire handling during downtime is configurable. <!-- TBD: missed-fire behavior (skip vs catch-up) -->
+The scheduler service evaluates due schedules against the host clock + timezone, fires the declared action, and for one-shot schedules deletes the file after firing. On restart it reloads all files and re-arms (SCH-6). Occurrences missed during downtime follow the catch-up rules of §4.7: the SCH-8 `catch_up_window` bounds how late a missed occurrence may still run, and `catchUpPolicy` chooses how many of the eligible ones replay.
 
 ### 4.4 Board interaction
 
-`heartbeat` never touches the board (SCH-4). `routine` may create a board card; the exact de-duplication behavior is governed by the concurrency policy defined in §4.7.
+`heartbeat` never touches the board (SCH-4). `routine` may create a board card. Overlap between *runs* is governed by the concurrency policy of §4.7 (a new fire while the previous run is still active). Overlap between *cards* — a new fire while the card an earlier, already-finished run created is still open — is not covered by that policy and stays deferred, as the model defers it (`l1-scheduler-model` §5).
 
 ### 4.5 Command surface
 
@@ -106,7 +111,7 @@ Schedule operations across all three surfaces, conforming to the CLI grammar sta
 
 ### 4.6 Security constraints for fired jobs
 
-Scheduled jobs run in a non-interactive, auto-approved context — there is no human in the loop to catch a bad action. Three constraints are enforced unconditionally at fire time:
+Scheduled jobs run in a non-interactive context with no answering surface — there is no human in the loop to catch a bad action, and nothing is auto-approved to keep the run moving: every tool call still passes the autonomy gate, whose unattended rows turn each `Prompt` into a visible refusal and always refuse `destructive` (`l2-agent-autonomy` §4.3, AG-9). Three further constraints are enforced unconditionally at fire time:
 
 **Anti-recursion guard**
 A cron-spawned agent always has the `cronjob` toolset disabled. This prevents a fired job from scheduling additional cron jobs — an attack surface for exponential schedule growth via prompt injection in a workflow or skill.
@@ -149,11 +154,23 @@ Schedule.concurrencyPolicy: "coalesce_if_active" | "run_parallel" | "skip_if_act
 Schedule.catchUpPolicy: "skip_missed" | "run_once" | "run_all"
 ```
 
-| Policy | Behavior after downtime |
+```text
+[REFERENCE]
+Schedule.catch_up_window?: Duration   // SCH-8 lateness bound; absent = zero width (drop-if-missed)
+
+on recovery at time T:
+  eligible := missed occurrences with fire_at ≤ T ≤ fire_at + catch_up_window
+  dropped  := all other missed occurrences            // genuine misses — never fired stale
+  apply catchUpPolicy to `eligible` only
+```
+
+| Policy | Behavior after downtime (applies only to occurrences still inside their catch-up window) |
 | --- | --- |
-| `skip_missed` (default) | Fires that were due during downtime are dropped; only the next scheduled fire runs. |
-| `run_once` | One catch-up run is started immediately on recovery, then normal cadence resumes. |
-| `run_all` | All missed fires are replayed in sequence. Use with caution — can produce burst load. |
+| `skip_missed` (default) | Every missed occurrence is dropped; only the next scheduled fire runs. |
+| `run_once` | One catch-up run is started immediately on recovery for the latest eligible occurrence, then normal cadence resumes. |
+| `run_all` | Every eligible occurrence is replayed in sequence. Use with caution — can produce burst load. |
+
+The window bounds lateness and the policy chooses replay breadth (SCH-8): with no window declared, `run_once` and `run_all` have nothing eligible and behave as `skip_missed`, so drop-if-missed stays the default and a catch-up is always an explicit opt-in. A catch-up run is recorded `fired_late: true` and carries its intended `fire_at_ms`; a late reminder says it is late.
 
 #### Idempotency and dispatch fingerprint
 
@@ -166,7 +183,7 @@ RoutineRun.dispatchFingerprint: String // hash of (schedule_id, fire_at, concurr
 RoutineRun.coalescedIntoRunId?: String // set if this fire was merged into an existing run
 ```
 
-Before dispatching, the scheduler checks for an existing run with the same `idempotencyKey`. If one exists, dispatch is a no-op (idempotent re-fire). This ensures exactly-once delivery even under restart conditions.
+Before dispatching, the scheduler records the `idempotencyKey` with a single atomic insert-if-absent in the durable run log; if the key is already present, dispatch is a no-op (idempotent re-fire). A `(schedule_id, scheduled_fire_at)` pair therefore dispatches **at most once**, even across restarts. A crash after the key is recorded but before the run finishes is surfaced as an interrupted run on recovery — it is not silently re-dispatched, and it is not reported as delivered.
 
 #### Webhook triggers
 
@@ -178,19 +195,19 @@ ScheduleTrigger {
   kind: "cron" | "webhook",
   cronExpression?: String,       // for kind = "cron"
   publicId?: String,             // public endpoint path component (webhook URL)
-  secretId?: String,             // signing key stored in the secret store
-  signingMode: "hmac_sha256" | "none",
+  secretId: String,              // signing key stored in the secret store (required for kind = "webhook")
+  signingMode: "hmac_sha256",    // the only accepted mode — an unsigned webhook is refused at creation
   replayWindowSec: u32           // reject requests older than this; default 300
 }
 ```
 
-Webhook validation:
+Webhook validation (every step fail-closed; a rejected request never reaches triage):
 
-1. Extract `X-Cronus-Signature` header (HMAC-SHA256 of the raw body using `secretId`).
-2. Reject if timestamp in body is older than `replayWindowSec` seconds (replay protection).
-3. If valid, dispatch the routine as a one-shot run with `idempotencyKey = sha256(raw_body)`.
+1. Recompute HMAC-SHA256 over the raw body with the key named by `secretId` and compare it with the `X-Cronus-Signature` header in constant time; a missing or mismatched signature is rejected.
+2. Read the timestamp from the signed body and reject it if it is older than `replayWindowSec` seconds or in the future beyond the same tolerance — the signature covers the timestamp, so it cannot be refreshed by a replayer.
+3. Dispatch the routine as a one-shot run whose `idempotencyKey = sha256(schedule_id ‖ raw_body)`: a replay of the same signed body inside the window is a no-op, while the time-based key of §4.7 continues to govern cron fires.
 
-The signing key is stored in the OS keychain under the same mechanism as `l2-security.md §4.1`; it is never logged or exported. Webhook triggers share the same concurrency and catch-up policies as cron triggers.
+A webhook trigger opens a new ingress path, which is part of the reachability half of the authority plane (`l1-security` SEC-10): creating or enabling one is a human-authored act, an agent may only request it, and a job running under the scheduler cannot create one (the anti-recursion guard of §4.6 already withholds the `cronjob` toolset). An unsigned mode is not offered: without a signature, anyone able to reach the endpoint could start the routine, and the replay window would bound nothing. The signing key is stored in the OS keychain under the same mechanism as `l2-security.md §4.1`; it is never logged or exported. Webhook triggers share the same concurrency and catch-up policies as cron triggers.
 
 ### 4.8 Event-driven task triggers
 
@@ -212,7 +229,7 @@ EventTrigger {
 }
 ```
 
-The `trigger_count` pattern lets an event accumulate before firing. For example, a task with `trigger_count = 5` on `event_kind = "tool_call_blocked"` fires once every five consecutive blocks — useful for rate-anomaly detection without firing on every isolated incident.
+The `trigger_count` pattern lets an event accumulate before firing. For example, a task with `trigger_count = 5` on `event_kind = "tool_call_blocked"` fires once per five matching blocks — useful for rate-anomaly detection without firing on every isolated incident. The count is cumulative, not consecutive: a non-matching event neither increments nor resets it.
 
 #### Counter increment
 
@@ -318,8 +335,8 @@ Each line (JSON):
 
 ```text
 [REFERENCE]
-{ run_id, session_key, started_at_ms, ended_at_ms?, status: "running"|"ok"|"error"|"timed_out"|"blocked",
-  model, fire_at_ms, idempotency_key, error_summary? }
+{ run_id, session_key, started_at_ms, ended_at_ms?, status: "running"|"ok"|"error"|"timed_out"|"blocked"|"interrupted",
+  model, fire_at_ms, fired_late: bool, idempotency_key, error_summary? }
 ```
 
 The run log is pruned to the last `N` entries (default 100) when the scheduler reloads on startup, preventing unbounded growth.
@@ -331,7 +348,7 @@ On successful completion, the session's final reply is dispatched to the job's c
 ```text
 [REFERENCE]
 CronDeliveryTarget:
-  | { kind: "announce" }                       // no delivery; result is silently discarded
+  | { kind: "announce" }                       // no result delivery: the run's outcome is recorded in the run log only
   | { kind: "local" }                          // surface result in the user's active UI session
   | { kind: "session", session_key: String }   // inject result into a named session via the Inbox
 ```
@@ -356,7 +373,7 @@ When a run ends in a failure state matching `notify_on`, a `CronRunFailedAlert` 
 
 - **Two recurrence representations (friendly + cron):** a small translation/validation cost; justified by serving both audiences (SCH-2).
 - **File-per-schedule:** simple and inspectable; if schedules grow large, an index or SQLite-backed store can be introduced later (consistent with STO-8).
-- **Coalescing deferred:** accepted risk of duplicate routine cards until tuned in real use (§4.4).
+- **Card-level de-duplication deferred:** run overlap is settled by `concurrencyPolicy` (§4.7), but a new fire while an earlier run's card is still open can still add a second card — an accepted risk until tuned in real use (§4.4, `l1-scheduler-model` §5).
 - **Always-disabled toolsets (cronjob/messaging/clarify):** not configurable by design — the non-interactive execution context makes these toolsets structurally unsafe in cron.
 
 ## Canonical References
@@ -366,3 +383,10 @@ When a run ends in a failure state matching `notify_on`, a `CronRunFailedAlert` 
 | `[MODEL]` | `.design/main/specifications/l1-scheduler-model.md` | Invariants this scheduler satisfies |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | `schedules/` location in a workspace |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.5 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): SCH-8 compliance row added and the stale §4.3 missed-fire TBD resolved — `catch_up_window` bounds lateness and `catchUpPolicy` only chooses replay breadth among still-eligible occurrences, so `run_once`/`run_all` can no longer fire stale; catch-up runs are recorded `fired_late`. §4.4/§5 no longer claim the concurrency policy settles card de-duplication (run overlap vs card overlap). §4.6 no longer calls cron an auto-approved context (AG-9 refusal rows of `l2-agent-autonomy`). Webhooks: unsigned mode removed, constant-time HMAC verification and signed-timestamp replay window made explicit, webhook creation is a SEC-10 ingress write; idempotency is an atomic insert-if-absent giving at-most-once dispatch (the exactly-once claim is withdrawn); event counter is cumulative, not consecutive. |
+| 1.0.4 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

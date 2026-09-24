@@ -1,6 +1,6 @@
 # Tool-Call Transport
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -284,16 +284,16 @@ The workflow library reaches models exclusively through its `ModelProvider` exte
 `tool_use` / model-call effect (LP-11) is an *effectful step* the host executes. The disposition is
 therefore **Reuse, no new nodus invariant**:
 
-- **Transport lives host-side behind LP-2.** Whether a host's `ModelProvider` drives tools over a
+- **Transport lives host-side behind nodus LP-2.** Whether a host's `ModelProvider` drives tools over a
   native API or an encoded text protocol is exactly the kind of concrete, backend-specific detail
-  LP-2 keeps in the host adaptor, never in nodus core. A workflow declares a model/tool capability
+  nodus LP-2 keeps in the host adaptor, never in nodus core. A workflow declares a model/tool capability
   in its LP-8 manifest; *how* the host satisfies it (which transport) is the host's business.
 - **No vocabulary leak.** Adding a transport invariant to nodus core would name a wire concern the
-  library is contractually forbidden to know (LP-1/LP-4). The two-transport contract is a property
+  library is contractually forbidden to know (nodus LP-1/LP-4). The two-transport contract is a property
   a *host's* `ModelProvider` implementation should satisfy, recorded here at concept level.
 - **Portability already covered.** A workflow that runs against a native-tool-calling host and a
   text-only host is portable across both precisely because the transport is behind the seam — this
-  is LP-3 (two-host generalization) already doing its job, not a gap needing a new LP-n.
+  is nodus LP-3 (two-host generalization) already doing its job, not a gap needing a new LP-n.
 
 This is an adoption *note* for the nodus workspace, recorded at concept level; if a future host
 observation shows a transport concern that genuinely must surface in the portable contract (LP-7
@@ -342,4 +342,5 @@ feedback lifecycle), it graduates via a spec amendment then — not speculativel
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-09 | Initial model: transport-neutral tool-call contract — logical/wire separation (TCT-1), deterministic bidirectional encode/decode round-trip (TCT-2), capability-detected transport selection with encoded universal fallback and recorded override (TCT-3), single schema source rendered per transport (TCT-4), reasoning isolation (TCT-5), multi-call fidelity (TCT-6), streaming-safe incremental decode (TCT-7), typed recoverable malformed-call containment (TCT-8), result re-injection symmetry across transports (TCT-9), provenance-gated decode closing the text-protocol injection hole (TCT-10); ideas-to-adopt mapping (mined from studied open-source agent frameworks' native-vs-prompted tool-calling) + nodus-relevance disposition (Reuse behind the ModelProvider LP-2 seam, no new nodus invariant). |

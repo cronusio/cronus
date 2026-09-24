@@ -1,6 +1,6 @@
 # Developer (Self-Hosting) Office
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -91,7 +91,11 @@ Rules every Layer 2 implementation MUST NOT violate:
   matches the canonical project. An environment that is not this repository (no
   version-control marker, or an upstream bound elsewhere) MUST NOT activate it. The
   office's working scope is that local repository and nothing else; it operates on
-  Cronus's own source, never on a user's project data.
+  Cronus's own source, never on a user's project data. The remote-identity match is a
+  heuristic in the SEC-12 sense — any tree can declare any remote in its own
+  version-control configuration — so it scopes *where* the office may run; the
+  boundary that keeps the office from the wrong hands is admission (DVO-3) plus
+  containment (DVO-7), and binding the *content* of the checkout takes an attestation.
 
 - **DVO-3 (Identity-gated, human-admitted elevated access):** the dev office's
   capabilities act on the product's own source and engine and are therefore elevated;
@@ -243,3 +247,4 @@ gate (DVO-3) then governs *who*, among people who do have the source, may act.
 | --- | --- | --- | --- |
 | 0.1.0 | 2026-07-07 | Core Team | Initial RFC — the developer (self-hosting) office: a conditional system floor beside home/project (DVO-1); repository-authenticity binding to a genuine canonical-repo checkout, local + network-free (DVO-2); identity-gated, human-admitted elevated access never self-granted (DVO-3, SEC-10); hidden-by-default, trigger-loaded module (DVO-4); tiered admission with a feedback-only ceiling for non-developers (DVO-5, with the feedback-exposure default left as an open TBD); purpose-confined to Cronus self-maintenance (DVO-6, QLY-6 dogfooding); contained & audited elevated authority isolated from user offices (DVO-7, INV-8); runs the standard dev workflow with no exception lane (DVO-8, DW). Status RFC pending resolution of the DVO-5 exposure policy. |
 | 1.0.0 | 2026-07-19 | Core Team | RFC→Stable — resolved the sole open policy question (DVO-5) to **feedback tier off by default** (developer-credential-only; a normal install ships no dev-office surface at all). Tiebreaker: the security-minimization principle the whole contract rests on (DVO-2/DVO-4 — remove the surface where it does not belong), and the decision is non-lossy because ordinary-user feedback is already fully served by the shipped `l1-issue-reporting` consent-gated pipeline independent of the dev office, so a default-exposed dev-office feedback surface would be redundant attack surface, not additive signal. The feedback tier stays defined as an opt-in ceiling a deployment MAY enable. DVO-1…DVO-8 otherwise unchanged; §1/§2/§4.2/§4.3/§5 reconciled to the resolved default; the L2-realization caution note updated to "resolved". No new invariants. |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): DVO-2 called a remote-identity match a verification that the checkout is genuine; any tree can declare any remote — the match is stated as a heuristic that scopes where the office runs (SEC-12), with admission and containment as the boundary and attestation binding content. |

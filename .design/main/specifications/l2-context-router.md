@@ -1,6 +1,6 @@
 # Context Router
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-routing.md
@@ -38,6 +38,9 @@ Memory, rules, and sessions all need "pick the right scope/target for this conte
 | RTG-6 Privacy | Routers operate on local state; no client data leaves the device. |
 | RTG-7 Bounded & traceable | Recall is token-budgeted; routing choices are recorded. |
 | RTG-8 Lifecycle | Session routing decides continue/new and retires stale sessions (MEM-5). |
+| RTG-9 Function-scoped model roles | Context routing makes no model call on the hot path; where a routing step is ever model-assisted (e.g. a topic match beyond embeddings), it resolves through its auxiliary role, never the user-facing route. |
+| RTG-10 Credential-lane routing | Not applicable: context routers select scopes and sessions over local state and reach no provider, so they hold no credential lane. |
+| RTG-11 User-adjustable effort | Not applicable: context routing has no reasoning-effort dimension; the effort envelope applies to the model calls the routed context later feeds. |
 
 ## 4. Detailed Design
 
@@ -47,7 +50,7 @@ Refines the memory store: on **recall**, fuse semantic + lexical + tags across s
 
 ### 4.2 Rules routing
 
-Given a context (which office, which role, which task), select the applicable rules by scope, most-specific-first: role rules override workspace rules override global rules. Conflicts resolve by specificity; equal-scope conflicts are surfaced, not guessed. <!-- TBD: tie-break policy for equal-scope rule conflicts -->
+Given a context (which office, which role, which task), select the applicable rules by scope, most-specific-first: role rules override workspace rules override global rules. Conflicts resolve by specificity; equal-scope conflicts are surfaced, not guessed — there is deliberately no automatic tie-break (a silent pick is a guess). Until the conflict is resolved neither rule is applied as settled, except that where one of the two is a restriction (a *never*/*must not*), the more restrictive holds in the meantime, so an unresolved conflict can only make the office more careful, never less.
 
 ### 4.3 Session routing
 
@@ -60,7 +63,7 @@ graph TD
     STALE -->|yes| RETIRE[retire/prune session]
 ```
 
-Continue a session when it is recent and on-topic; otherwise start fresh; retire stale sessions (consistent with MEM-5 prune and OFF "удаление ненужных сессий").
+Continue a session when it is recent and on-topic; otherwise start fresh; retire stale sessions (consistent with MEM-5 prune and the office model's removal of sessions that are no longer needed).
 
 ### 4.4 Command surface
 
@@ -69,7 +72,7 @@ Context routing is mostly automatic (no dedicated client commands); its behavior
 ## 5. Drawbacks & Alternatives
 
 - **Wrong session continuation:** a bad topic match resumes the wrong thread; mitigated by a conservative match threshold (favor new on doubt).
-- **Rule conflict ambiguity:** equal-scope conflicts need a tie-break (see §4.2 TBD).
+- **Rule conflict ambiguity:** equal-scope conflicts are surfaced rather than tie-broken (§4.2); the cost is an occasional question, the benefit is that no rule is ever overridden by an arbitrary pick.
 - **Alternative — separate specs per router:** rejected for v0.1.0 to avoid fragmentation; can be split later if any router grows large.
 
 ## Canonical References
@@ -79,3 +82,10 @@ Context routing is mostly automatic (no dedicated client commands); its behavior
 | `[ROUTING]` | `.design/main/specifications/l1-routing.md` | Invariants this implements |
 | `[MEMORY]` | `.design/main/specifications/l2-memory-store.md` | Memory store mechanics this routes over |
 | `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | Scope levels resolved |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): RTG-9…RTG-11 rows added (RTG-9 via auxiliary roles if ever model-assisted; RTG-10/11 not applicable to scope and session selection). §4.2 TBD resolved: equal-scope rule conflicts are surfaced with no automatic tie-break, and while unresolved the more restrictive rule holds. §4.3 carried a non-English phrase; restated in English (language policy for technical content). |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

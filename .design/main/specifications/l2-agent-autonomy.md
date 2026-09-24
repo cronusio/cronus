@@ -1,6 +1,6 @@
 # Agent Autonomy
 
-**Version:** 1.2.0
+**Version:** 1.2.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md, l1-orchestration.md
@@ -14,7 +14,7 @@ The concrete autonomy ladder and its enforcement machinery: a three-tier `Autono
 - [l1-security.md](l1-security.md) - SEC-6 sandbox, SEC-7 audit.
 - [l1-orchestration.md](l1-orchestration.md) - ORC-9 approval gate.
 - [l2-tool-security.md](l2-tool-security.md) - Tool guard that produces `SuspendedPermission` escalated into this gate.
-- [l2-scheduler.md](l2-scheduler.md) - Cron context bypasses the interactive approval path.
+- [l2-scheduler.md](l2-scheduler.md) - Cron context has no answering surface: every `Prompt` resolves to a visible refusal, nothing is auto-allowed (AG-9, §4.3).
 - [l2-security.md](l2-security.md) - Secret handling; audit log destination.
 - [l2-orchestration.md](l2-orchestration.md) - Orchestrator triggers approvals for sub-manager promotions and agent hires.
 - [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.2.0] AG-9 (a gate is only a gate where the answer can be given) governs the unattended rows in §4.3/§4.6; AG-10 decides when "Allow always" is not offered; AG-11's refusal-loop bounds are §4.5.
@@ -47,6 +47,8 @@ An autonomous agent can issue shell commands, write files, and call external API
 | AG-10 What steered an act (privileged sinks) | A request carrying `untrusted_spans` is answered per call: "Allow always" is not offered, because the rule would freeze an outside-chosen argument (§4.6 step 3). |
 | AG-11 Reviewer guard rails (refusal loops bounded) | `RefusalTracker` caps consecutive refusals, consecutive unavailable results and total refusals per session, and routes the next call to a human at a cap (§4.5). |
 | CB-1 / CB-3 Consent binds the resolved invocation | An `AllowRule` for a shell-class tool keys on the resolved invocation and lapses on any change (§4.6). |
+
+Scope: the table lists the `l1-security` invariants this spec realizes for autonomous execution. SEC-2, SEC-3, SEC-4, SEC-5, SEC-8 and SEC-11 are realized by `l2-security`, which carries the full SEC-1…SEC-12 table; the `l1-orchestration` rows cover only the invariants autonomy changes, the rest living in `l2-orchestration`.
 
 ## 4. Detailed Design
 
@@ -149,8 +151,10 @@ ActionTracker {
 
 impl ActionTracker {
   record(class: CommandRiskLevel) -> Result<(), ActionCapError>
-  // Pushes a timestamp; evicts entries older than 60 min.
-  // If count after push >= max_actions_per_hour: Err(ActionCapError).
+  // Evicts entries older than 60 min, then checks the cap BEFORE recording:
+  // if the window already holds max_actions_per_hour entries: Err(ActionCapError), nothing pushed;
+  // otherwise pushes the timestamp. A refused attempt consumes no capacity, so an agent
+  // retrying against the cap cannot keep the window full and extend its own block.
 
   session_total() -> u32
   hourly_count()  -> u32
@@ -289,10 +293,12 @@ ApprovalManager {
 
   // Async: register record and return a future that resolves with the decision.
   // Idempotent: if the same id is already pending, returns the SAME future.
-  // Error: if the id is already resolved, panics (caller bug).
+  // Already resolved and still inside RESOLVED_ENTRY_GRACE_MS: returns the resolved decision at once.
+  // Unknown or already evicted id: returns an error value — never a panic.
   register(record: ApprovalRecord, timeout_ms: u64) -> Future<ApprovalDecision?>
 
-  // Accept a decision (from the UI or background bypass).
+  // Accept a decision from the approval UI. Unattended contexts never park a request
+  // (§4.6 step 5), so there is no background path that resolves one.
   resolve(id: String, decision: ApprovalDecision, resolved_by: Option<String>) -> bool
 
   // Called internally after TTL elapses.
@@ -320,7 +326,7 @@ The `consumed_decision` field is set when the tool call reads the decision, prev
 | `[SECURITY]` | `.design/main/specifications/l1-security.md` | SEC-6/SEC-7 invariants; SEC-9 learnable promotion realized in §4.6 |
 | `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-9 approval gate |
 | `[TOOLSEC]` | `.design/main/specifications/l2-tool-security.md` | Tool guard escalation |
-| `[SCHED]` | `.design/main/specifications/l2-scheduler.md` | Cron context — bypass rules |
+| `[SCHED]` | `.design/main/specifications/l2-scheduler.md` | Cron context — unattended refusal rows (AG-9) |
 | `[POLICY-GOV]` | `.design/main/specifications/l1-policy-governance.md` | Clamps promotion max scope / persistence (SEC-9e) |
 | `[GATING]` | `.design/main/specifications/l1-action-gating.md` | AG-4 unknown→friction, AG-9 unattended, AG-10 steered arguments, AG-11 refusal bounds |
 | `[CONSENT]` | `.design/main/specifications/l1-consent-binding.md` | CB-1/CB-3 — the rule binds the resolved invocation |
@@ -329,6 +335,8 @@ The `consumed_decision` field is set when the tool call reads the decision, prev
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.2.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): The compliance table covered six of the twelve `l1-security` invariants with no statement of scope, reading as unrealized obligations; a scope note now names `l2-security` as the carrier of SEC-2, SEC-3, SEC-4, SEC-5, SEC-8 and SEC-11. |
+| 1.2.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Related/Canonical rows no longer describe cron as a gate bypass (AG-9). `ActionTracker.record` checks the cap before recording, so refused attempts consume no capacity (matches the shipped tracker). `ApprovalManager.register` on an already-resolved id returns the decision inside the grace window and an error otherwise — the panic is gone (no-panic rule; matches the shipped manager); `resolve` has no background-bypass caller. |
 | 1.2.0 | 2026-09-19 | Core Team | Reconciled with `l1-action-gating` (AG-4, AG-9, AG-10, AG-11), `l1-consent-binding` and `l1-security` SEC-9(g). **Unattended contexts no longer bypass the gate:** the earlier text auto-allowed every non-destructive class — including `network` and `install` — in background and cron contexts, which contradicts AG-4 (boundary-crossing and value-bearing acts are never auto) and AG-9 (never downgrade to a mechanism that skips the question to keep moving); every `Prompt` cell now resolves to a visible refusal naming what could not be asked, `Allow` cells stay `Allow`, and a background agent that needs those classes runs at `autonomous` by the operator's explicit choice. **Classification is by declared effect and resolved parameters, never by words inside a command line**; an unparseable command is `write` at minimum. **Allow-rule identity:** for a shell-class tool the key is the resolved invocation (CB-1) and lapses on change (CB-3); interpreters, shells, launchers and evaluators are promotable only at `action` scope (SEC-9g); a call carrying `untrusted_spans` is never promotable (AG-10). TTL expiry is phrased to the agent as *not answered in time, not a refusal*. New `RefusalTracker` (caps 3/2/20, cap → human approval; AG-11f). Compliance rows added for SEC-9(g), AG-4, AG-9, AG-10, AG-11, CB-1/CB-3. The dormant reference implementation of the classifier and gate differed from this spec on exactly these points (keyword classification with four coarse levels, no execution context); that is recorded as pending realization, not as a change to the design. |
 | 1.1.0 | 2026-07-02 | Core Team | Realized SEC-9: approval gate step 3 gains "Allow always (scope)" (offered only for promotable calls); new §4.6 durable `AllowRule` store (scope ladder action/action_class/office/global, stable-signature key, revocable, governance-clamped, fail-closed, destructive/always-forbidden non-promotable); `gate_decision` consults the rule store before Prompt and audits auto-allowed calls; §4.7 `rules list` / `rules revoke <id>` command surface; SEC-9 Invariant-Compliance row. |
 | 1.0.1 | 2026-06-26 | Core Team | ApprovalRecord manager: create/register separation, RESOLVED_ENTRY_GRACE_MS=15s, idempotent register, caller-binding replay guard. |

@@ -1,6 +1,6 @@
 # Agent Tool Ergonomics
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Status:** Stable
 **Layer:** concept
 
@@ -133,7 +133,7 @@ Nodus exposes a library + CLI/TUI surface and an error taxonomy (the `NODUS:*` c
 - **Sufficiency ↔ ATE-1.** `validate` and `run` output should carry enough (the failing step, the rule hit, the expected vs actual) that an agent fixes the workflow without re-reading the whole `.nodus` file.
 - **Absence ↔ ATE-3.** A nodus host with no workflow loaded should present nothing runnable rather than commands that all error.
 - **Floor-model validation ↔ ATE-9.** Nodus-as-harness evaluation (its testing contract) should A/B on the floor model so a workflow affordance that helps a weak model is what ships.
-- **Overflow guard ↔ ATE-12.** A nodus step's tool/model result that exceeds the host bound is offloaded and bound to a reference *host-side*, before the value reaches the workflow — so a nodus step receives an ordinary bounded value (NL-7's closed type system is untouched) and the language needs no new primitive; navigating the offloaded artifact rides the existing bounded-recursion primitives. The offload is a host concern (LP-1/LP-2), not a language one.
+- **Overflow guard ↔ ATE-12.** A nodus step's tool/model result that exceeds the host bound is offloaded and bound to a reference *host-side*, before the value reaches the workflow — so a nodus step receives an ordinary bounded value (NL-7's closed type system is untouched) and the language needs no new primitive; navigating the offloaded artifact rides the existing bounded-recursion primitives. The offload is a host concern (nodus LP-1/LP-2), not a language one.
 
 The nodus workspace owns any realization; this records the relevance.
 
@@ -148,6 +148,7 @@ The nodus workspace owns any realization; this records the relevance.
 
 | Version | Change |
 | --- | --- |
+| 1.4.1 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.4.0 | Added ATE-14 — a diagnostic carries its subject, its measurement, and its admissible repairs; a supplied corrective value is used, not re-derived. ATE-13 covers the *unresolvable call*; ATE-14 covers every finding a tool emits about content the agent authored: a stable code recognizable across runs and phrasings, the exact subject (the element, not the file), the measured evidence (observed value and missed bound), and an enumerated admissible-fix set — because an agent handed only a description invents a fix, applies several at once, and cannot tell which one moved the number. Two rules: where the diagnostic already **computed** a corrective value (a position, a size, a name) the agent uses it verbatim rather than estimating its own, since the diagnostic measured and the agent did not — the ATE-11 copy-verbatim discipline applied to a computed correction; and repairs go **one diagnosed change per round** with re-measurement between, because a batch against a shared measurement leaves the round unattributable exactly when the loop must decide whether it is converging (LG-12). From an external artifact-generation tool whose validator emits `code` / `subject` / `evidence` / `supportedFixes` and instructs the author to use its supplied coordinate instead of estimating another offset. |
 | 1.0.0 | Initial spec — ATE-1…ATE-9: agent-facing tool-surface ergonomics (sufficiency-to-stop, recoverable-as-success, absence-as-signal, adapt-tool-to-agent, monotonic budget, staleness signaling, no-manual-fallback steering, lean surface by pick-rate, A/B ablation on the floor model); ideas-to-adopt + nodus-relevance mapping |
 | 1.3.0 | Amendment — ATE-13: unresolved address and wrong invocation form are different rejections, with opposite corrective actions (find a different capability vs correct the call to one already found); collapsing them into "unknown tool" makes an agent abandon a reachable capability — the ATE-1 manual-fallback failure one step earlier. The wrong-form rejection enumerates the forms the target does offer (one corrected call, not a search); both are success-shaped per ATE-2 and neither steers to a manual fallback per ATE-7. Also a coverage signal feeding ATE-8 pick-rate: a target never invoked in an offered form is misadvertised, not misunderstood. Related Specifications extended with `l1-input-binding` (the immediately-downstream failure class) and `l1-interception-model` INT-10 (phase placement that keeps the distinction honest). |

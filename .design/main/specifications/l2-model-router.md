@@ -1,6 +1,6 @@
 # Model Router
 
-**Version:** 1.0.4
+**Version:** 1.0.5
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-routing.md
@@ -12,7 +12,8 @@ The concrete model router: how Cronus chooses which model answers a prompt — l
 ## Related Specifications
 
 - [l1-routing.md](l1-routing.md) - The router pattern this implements.
-- [l2-technology-stack.md](l2-technology-stack.md) - Local execution (llama.cpp via FFI) and cloud providers.
+- [l2-technology-stack.md](l2-technology-stack.md) - Local execution options and cloud providers (llama.cpp through FFI is the mobile, foreground-only path).
+- [l2-model-runtime.md](l2-model-runtime.md) - The loopback REST providers that serve local inference on a desktop or server host, and MR-1's rule that a failed local call never re-routes off-device on its own.
 - [l1-architecture.md](l1-architecture.md) - Hub-and-spoke (local on capable host) and security (INV-7).
 - [l2-cli.md](l2-cli.md) - Command grammar standard for routing commands.
 - [l2-model-error-recovery.md](l2-model-error-recovery.md) - Error taxonomy and credential pool (multi-key rotation) that interacts with the fallback cascade.
@@ -23,7 +24,7 @@ The router pattern needs concrete signals and tools for model selection: estimat
 
 ## 2. Constraints & Assumptions
 
-- Local models run via the on-device runtime (llama.cpp through FFI); cloud via provider APIs.
+- Local models run via the on-device runtime — the loopback REST providers of `l2-model-runtime` on a desktop or server host, llama.cpp through FFI on mobile (foreground only); cloud via provider APIs, reached only under authorized egress (SEC-3).
 - Policy is read from `<state>/routing.json`; the catalog from `<state>/models.json`.
 - Decisions run on the hot path and must be fast; a semantic cache fronts the router.
 - Default policy is local-first (chosen product stance).
@@ -40,6 +41,9 @@ The router pattern needs concrete signals and tools for model selection: estimat
 | RTG-6 Privacy-preserving | Local-first: prefer an on-device model when hardware-fit says it can handle the task; else cloud. |
 | RTG-7 Bounded & traceable | Each decision logs chosen model + reason; bounded by run budget (orchestration). |
 | RTG-8 Lifecycle | N/A (session lifecycle handled by the context router). |
+| RTG-9 Function-scoped model roles | **Pending.** Housekeeping functions (titling, triage, decomposition, summarization, curation, vision, approval checks) resolve through per-role bindings in `routing.json` (`aux_roles{}`), each with an economical default and an ordered fallback, honoring privacy routing; a housekeeping call never takes the premium user-facing route by default. |
+| RTG-10 Credential-lane routing | **Pending.** The §4.2 cascade orders lanes (subscription before metered key); the cache-warmth rule — a continuing session stays on the lane it used — and the scope-safety rule are not yet realized. |
+| RTG-11 User-adjustable effort | **Partial.** Requests carry an optional reasoning-effort field where the provider supports it (§4.12); the office-autonomous default and the human-set effort envelope are pending. |
 
 ## 4. Detailed Design
 
@@ -53,7 +57,9 @@ graph TD
     DIFF --> FIT{local model fits? hardware-fit}
     FIT -->|yes + capable| LOCAL[route to on-device model]
     FIT -->|no| TIER[cloud: difficulty-threshold + cost]
-    LOCAL --> FB[on failure -> fallback cascade]
+    LOCAL --> FBL{on failure: cloud_fallback enabled?}
+    FBL -->|yes| FB[fallback cascade over eligible providers]
+    FBL -->|no| ERR[surface through error recovery]
     TIER --> FB
 ```
 
@@ -61,20 +67,29 @@ graph TD
 - **Hardware-fit:** estimates whether an on-device model of sufficient capability fits memory/perf (llmfit-style) before choosing local.
 - **Cost/quality dial:** a single `cost_quality_tradeoff` knob biases the choice when multiple candidates qualify (OpenRouter-style).
 
+**Selection pipeline — how the mechanisms of this spec compose.** They are stages of one decision, applied in this order, each narrowing the set the next one sees:
+
+1. **Eligibility.** Privacy routing and egress authorization (RTG-6, SEC-3) and hardware fit (§4.9) decide which candidates may serve the request at all; a cloud candidate is eligible only where the policy authorizes cloud for this office.
+2. **Tier.** The difficulty estimate (§4.1) or, where configured, the semantic router pool (§4.6) picks the capability tier.
+3. **Ranking within the tier.** Cloud candidates by the multi-factor score (§4.8, with the active mode pack); on-device candidates by the per-use-case score (§4.10); `cost_quality_tradeoff` biases both.
+4. **Stickiness and exploration.** LKGP and the exploration draw (§4.8) choose only among the candidates stages 1–3 left.
+5. **Failure.** The fallback cascade (§4.2) advances only through candidates that were eligible in stage 1.
+
 ### 4.2 Fallback cascade
 
-`subscription -> api-key -> cheap -> free`, switching on quota exhaustion, error, or unavailability (OmniRoute-style). Local sits ahead of the cascade when local-first applies.
+`subscription -> api-key -> cheap -> free`, switching on quota exhaustion, error, or unavailability (OmniRoute-style), and only through providers the user configured and authorized for this office. Local sits ahead of the cascade when local-first applies; a **local failure continues into the cloud part of the cascade only where the routing policy explicitly enables cloud fallback** (`local_first.cloud_fallback`, off unless the user turns it on). Otherwise the failure surfaces through error recovery instead of re-routing the request off-device on its own (`l2-model-runtime` MR-1, SEC-3).
 
 ### 4.3 Semantic cache
 
-Before routing, the request is matched against a semantic cache; a sufficiently-similar prior answer short-circuits the call (GPTCache-style), with a configurable similarity threshold and eviction. <!-- TBD: cache similarity threshold + TTL/eviction defaults -->
+Before routing, the request is matched against a semantic cache; a sufficiently-similar prior answer short-circuits the call (GPTCache-style), with a configurable similarity threshold and eviction. The cache is scoped to the office and the requesting user: an entry never answers a request from another office or user (`l1-office-model` OFF-1), since a hit returns stored content verbatim. <!-- TBD: cache similarity threshold + TTL/eviction defaults -->
 
 ### 4.4 Policy & catalog files
 
 ```text
 [REFERENCE]
-routing.json: { strategy, cost_quality_tradeoff, fallback[], semantic_cache{}, local_first{ enabled, max_local_params_b } }
-models.json:  [ { id, name, provider, model, baseUrl } ]
+routing.json: { strategy, cost_quality_tradeoff, fallback[], semantic_cache{}, aux_roles{},
+                local_first{ enabled, max_local_params_b, cloud_fallback /* default false */ } }
+models.json:  [ { id, name, provider, model, baseUrl, context_window? } ]   // absent window = unknown
 ```
 
 ### 4.5 Command surface
@@ -317,7 +332,7 @@ reset_boost(candidate):
 
 #### Exploration (bandit)
 
-5% of requests (configurable `exploration_rate`) route to random candidates. Exploration is disabled in incident mode.
+5% of requests (configurable `exploration_rate`) route to a random candidate **among those already eligible** (selection-pipeline stage 1, §4.1): exploration never moves a request off-device that privacy routing would keep local, never reaches a provider the office has not authorized, and never exceeds the run budget. Exploration is disabled in incident mode.
 
 ### 4.9 Hardware-Fit Layer
 
@@ -596,3 +611,10 @@ ChatCompletionRequest:
 | `[ROUTING]` | `.design/main/specifications/l1-routing.md` | Invariants this implements |
 | `[STACK]` | `.design/main/specifications/l2-technology-stack.md` | Local/cloud execution options |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.5 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): A local failure entered the cloud part of the cascade unconditionally, re-routing a request off-device that privacy routing kept local (contradicting l2-model-runtime MR-1 and SEC-3) — cloud fallback after a local failure is now an explicit `local_first.cloud_fallback` opt-in (default off), otherwise the failure surfaces through error recovery. The composition of eligibility, tier, ranking, stickiness/exploration and cascade was unstated, letting exploration and the cascade pick candidates privacy or egress had excluded — a selection pipeline now orders them, with exploration and fallback confined to eligible candidates. The semantic cache is scoped per office and user (OFF-1). Local execution restated to match l2-model-runtime (loopback REST providers on desktop/server, FFI only on mobile). Compliance gains RTG-9 (Pending, `aux_roles{}`), RTG-10 (Pending) and RTG-11 (Partial); `models.json` gains an optional declared `context_window`. |
+| 1.0.4 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

@@ -1,6 +1,6 @@
 # Model Runtime (Transport & Provider Connectivity)
 
-**Version:** 1.0.1
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-model-runtime.md
@@ -22,15 +22,15 @@ the routing-metadata facet, and a host-side adapter that satisfies the nodus gen
 trait by collapsing the stream to a `String` — all over the six federated local REST
 providers from the technology-stack catalog and explicitly egress-gated remote APIs.
 
-Model *selection* (router, credential lanes, hardware fit) is fully specified and
-implemented, while no component can actually reach a model — the workspace deliberately
-contains no HTTP transport today. This L2 defines that transport: synchronous-first,
-thread-scoped, streaming-capable, and cancellable, without introducing an async runtime into
-the core.
+Model *selection* (router scoring, hardware fit) is specified and implemented and
+credential-lane routing is specified (`l2-model-router` RTG-10), while no component can
+actually reach a model — the workspace deliberately contains no HTTP transport today.
+This L2 defines that transport: synchronous-first, thread-scoped, streaming-capable, and
+cancellable, without introducing an async runtime into the core.
 
 ## Related Specifications
 
-- [l1-model-runtime.md](l1-model-runtime.md) - The L1 parent (MR-1…MR-14) this spec realizes.
+- [l1-model-runtime.md](l1-model-runtime.md) - The L1 parent (MR-1…MR-16) this spec realizes.
 - [l2-technology-stack.md](l2-technology-stack.md) - §4.4 local provider catalog (six REST providers, probe discipline, endpoints) this transport federates to.
 - [l2-model-router.md](l2-model-router.md) - Selection, scoring, and hardware-fit that sit *above* this transport; the router picks, this spec calls.
 - [l2-model-error-recovery.md](l2-model-error-recovery.md) - Error taxonomy and retry/rotate/fallback applied to transport failures.
@@ -67,7 +67,7 @@ An HTTP+TLS client is such a necessity; an async runtime is not.
   spec-gated extension.
 - **nodus stays dependency-free.** The bridge adapter that implements the workflow runtime's
   provider trait lives host-side (facade tier), delegating to the contract provider. nodus
-  itself gains no dependency (LP-1 preserved).
+  itself gains no dependency (nodus LP-1 preserved).
 - **Remote backends are opt-in.** Any non-loopback endpoint requires the security egress
   gate and a credential from the secret store; loopback providers require neither.
 
@@ -89,6 +89,8 @@ An HTTP+TLS client is such a necessity; an async runtime is not.
 | MR-12 Versioned, reproducible references | Every completed call records the serving provider, model name, and digest (when the provider reports one) into the operational record, making "which weights answered" a stored fact. |
 | MR-13 Multi-device placement | Delegated to the router's hardware-fit scoring; the transport passes through per-device residency reported by the provider where available and never fabricates placement data. |
 | MR-14 Calibrated, honest estimates | The transport reports only measured facts (latency, tokens/s observed per call) tagged as measurements; estimates remain the router's output; the two are never merged in one field. |
+| MR-15 Degrade before refusing | **Pending.** The router's hardware-fit layer already names placements below the fastest (`CpuOffload`, `CpuOnly`, `l2-model-router` §4.9); considering them before an MR-7 refusal, stating the tier's cost as a calibrated estimate before the run, and recording the tier used on the run's record (MR-12) are to be realized. A placement never changes outputs; one that would is a different configuration, not a tier. |
+| MR-16 Feasibility is a running property | **Pending.** The feasibility estimate is to be driven by declared resource characteristics (resident footprint, active fraction, per-token state growth, load-transient peak) carried with the model definition — an absent one lowers confidence, never counts as zero — and crossing the boundary mid-run is to re-enter the managed response (reduce the working set, move to a named tier, or stop cleanly), never a crash or silent truncation. The router's §4.9 memory estimate is the current, single-scalar input. |
 
 > This table must be complete before the spec can reach RFC status.
 
@@ -117,8 +119,9 @@ rules as `store-local`/`auth-local`) and by the corresponding CI boundary-guard 
 the guard's failure path is part of this spec's acceptance, mirroring how the topology
 was landed. The nodus bridge adapter lives in the facade and
 implements the workflow runtime's provider trait by delegating to the wired
-`contract::ModelProvider` — nodus keeps zero dependencies, and workflow `gen` steps run
-against real models the moment the facade is wired.
+`contract::InferenceBackend` (the call surface — `contract::ModelProvider` is routing
+metadata with no generate method) — nodus keeps zero dependencies, and workflow `gen`
+steps run against real models the moment the facade is wired.
 
 ### 4.2 Synchronous streaming contract
 
@@ -139,6 +142,15 @@ The nodus bridge consumes this **same** stream and concatenates its `Token` even
 `String` that `nodus::ModelProvider::generate` returns — streaming internally, blocking at
 the nodus boundary. This is why the nodus trait needs no streaming variant: the blocking
 `String` return is a projection of the stream, not a second call path.
+
+An `Error` event — a dropped connection, a provider failure, a cancellation — is never folded
+into text. Text that arrived before the error is a fragment, and handing it back as the
+model's answer would let a workflow continue on a truncated plan or an empty result as though
+the call had succeeded. The call fails, and the step fails into its declared error handler
+(`l1-workflow-language` WFL-8). **Pending:** `nodus::ModelProvider::generate` returns a bare
+`String` and so has no failure channel; the trait gains a fallible return (nodus stays
+dependency-free, nodus LP-1), and until it does the shipped bridge returns the partial text on an
+error — a known gap, not the intended behaviour.
 
 ### 4.3 Provider endpoint profiles
 
@@ -224,5 +236,7 @@ Per the shipped-surface honesty rule, these verbs appear on a frontend only once
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.3 | 2026-09-24 | Consistency pass (2026-09-24): §4.2 said nothing about `Error` events in the nodus bridge, and the shipped bridge returns the text received before an error as a successful generation — an error is never folded into text; the call fails into the workflow's error handler (WFL-8). The fallible nodus `generate` this needs is recorded as pending. Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
+| 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): The nodus bridge was said to delegate to `contract::ModelProvider`, which is routing metadata with no generate method — it delegates to the inference trait this spec defines. The Overview called credential lanes implemented (they are specified, RTG-10). Compliance gains MR-15 and MR-16 (Pending) and the parent range reads MR-1…MR-16. |
 | 1.0.1 | 2026-07-16 | Post-Update Review correction (Stable): the initial draft wrongly claimed the transport "implements `contract::ModelProvider`" with generate/embed/describe — but that trait is **routing metadata** (no call method), and the only real generate surface is nodus's synchronous `generate`/`analyze` → `String`. Corrected the seam model: the transport defines a NEW `InferenceBackend` trait in the contract crate; a concrete provider implements it *plus* the routing-metadata facet; the nodus trait is satisfied by a stream-collapsing bridge. Also clarified two seams against Stable neighbors — endpoint profile consumes the router's `api_base` (not a parallel address registry), and credential rotation stays in router/error-recovery (transport only attaches the selected credential). Promoted RFC→Stable. |
 | 1.0.0 | 2026-07-16 | Initial RFC — closes the audit-identified transport gap: synchronous streaming REST transport crate (`model-local`) over the federated §4.4 provider catalog; host-side nodus bridge adapter; endpoint profiles; credential-lane + egress-gated remote path; MR-1…MR-14 compliance table (MR-3/4/5 delegated-with-disclosure in v1). |

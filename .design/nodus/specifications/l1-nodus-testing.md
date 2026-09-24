@@ -1,6 +1,6 @@
 # Nodus DSL Testing Contract
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ The testing facility is language-level: it is syntax that any conforming impleme
 - [l1-nodus-authoring.md](l1-nodus-authoring.md) — [ADDED v1.1.1] the other subject. NT asserts a *workflow's* outputs under fixed inputs; NA exercises *nodus itself* under an author who has not been told what to write, and is the only instrument that can see an intent the language cannot express or a diagnostic that names no recovery. NT-5's provider stubbing is the precedent NA-5 extends; NT-10's route coverage is per-workflow where NA-4's is over the diagnostic taxonomy.
 - [l1-nodus-language.md](l1-nodus-language.md) — parent language spec; defines `@test:` block as a section declaration (§4.2)
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — Rust runtime; `Executor`, `RunResult`
-- [l2-nodus-testing.md](l2-nodus-testing.md) — Rust implementation of this spec; `TestBlock`, `test()`/`test_with_tags()`, assertion evaluator, NT-1…NT-10 compliance table
+- [l2-nodus-testing.md](l2-nodus-testing.md) — Rust implementation of this spec; `TestBlock`, `test()`/`test_with_tags()`, assertion evaluator, NT-1…NT-11 compliance table
 - [l1-nodus-observability.md](l1-nodus-observability.md) — observability contract; test runs emit execution events under the same protocol
 - [l1-nodus-portability.md](l1-nodus-portability.md) — LP-3 two-host generalisation; NT-11 differential parity is its executable form (one workflow, two conforming paths, equal results)
 
@@ -50,7 +50,7 @@ Rules that Layer 2 implementations MUST NOT violate:
 - **NT-7 Ordered reporting**: a `TestReport` contains one `TestResult` entry per `@test:` block, in their declaration order within the file; each `TestResult` carries the block name, a pass/fail flag, and a human-readable diagnostic message.
 - **NT-8 Schema inheritance**: test blocks run under the same vocabulary schema that governs the parent workflow (declared in `§runtime: { core: … }`); a test block cannot extend or replace the schema for its own run.
 - **NT-9 Parse-time validation**: a `@test:` block that references a variable that cannot exist in the parent workflow (e.g., a name not declared in `@in:`, `@out:`, or any `→ $name` step) must produce a validation error, not a silent assertion-miss at run time; the block fails before execution.
-- **NT-10 Route coverage advisory**: a workflow that declares one or more `ROUTE(wf:name)` steps SHOULD have at least one `@test:` block that exercises each routed target; absence of coverage emits a warning-severity diagnostic code `W001`; this is advisory and does not block execution.
+- **NT-10 Route coverage advisory**: a workflow that declares one or more `ROUTE(wf:name)` steps SHOULD have at least one `@test:` block that exercises each routed target; absence of coverage emits the warning-severity diagnostic `W006` (§4.6); this is advisory and does not block execution.
 
 - **NT-11 Differential parity across execution paths**: [ADDED v1.1.0] when a workflow can be executed through more than one conforming path — the reference interpreter and a transpiled realization, or two independent hosts that satisfy the same capability manifest — those paths MUST produce **equal observable results** on a recorded fixture corpus: the same `@out:`/`@err:` bindings and the same trace event *shape* (event types, order, per-step attribution), modulo values a fixture explicitly declares non-deterministic. Parity is verified by recording a fixture (input + config + observed output) from one path and replaying it against the other; the determinism this contract already guarantees (block isolation NT-1, side-effect-free provider NT-5, and the observability contract's deterministic ordering) makes exact-match a viable gate. A divergence is a defect in the diverging path — not a test-authoring problem — and is reported against that path, not the fixture. This is the executable form of the portability two-host generalisation rule (`l1-nodus-portability.md` LP-3): a path is a valid realization only if it is parity-equal to the reference on the corpus.
 
@@ -79,10 +79,10 @@ Multiple `@test:` blocks with the same `name` are a validation error (code `E015
 
 ### 4.2 Execution protocol
 
-1. **Parse**: the workflow file is parsed once; all `@test:` blocks are collected from `WorkflowFile.tests`.
+1. **Parse and validate**: the workflow file is parsed once and validated exactly as for an ordinary run; an error-severity diagnostic — a duplicate block name (`E015`) or a block naming something that cannot exist (NT-9) — fails the file before any block executes. A test run never executes a workflow that could not run in production. All `@test:` blocks are then collected from `WorkflowFile.tests`.
 2. **For each block** (declaration order):
    1. Build a fresh execution context: empty variable environment, no carry-over from prior blocks.
-   2. Apply `input:` overrides: merge block `input:` values over the workflow's declared `@in:` defaults; `input:` keys that are not declared in `@in:` are ignored silently (they have no corresponding schema slot to bind to).
+   2. Apply `input:` overrides: merge block `input:` values over the workflow's declared `@in:` defaults, each value read as its field's declared type (NT-2 keeps `@in:` as the type contract — a value's spelling never decides its type). An `input:` key not declared in `@in:` has no schema slot to bind to; it is the NT-9 case, rejected in step 1, so it never reaches the merge — dropping it here instead would run the block on the field's default while the author believes the override applied.
    3. Execute the full `@steps:` body against the overridden inputs using a side-effect-free provider (NT-5).
    4. Evaluate each `expected:` assertion against the final execution context (NT-3).
    5. If all assertions pass and `Status::Ok`, mark the block passed. If any assertion fails or `Status` ≠ `Ok`, mark the block failed with a diagnostic message naming the first failing assertion.
@@ -184,6 +184,7 @@ between realizations of an already-correct workflow.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.1.2 | 2026-09-24 | Consistency pass (2026-09-24): NT-10 still named `W001` — the code §4.6 already corrected to `W006` in 1.0.1 (`W001` is the error-handler warning). §4.2 step 2 let an undeclared `input:` key be ignored silently, contradicting NT-9 (a name not declared in `@in:` is a validation error, never a silent miss) — such a key is now rejected at validation, and each value is read as its field's declared type (NT-2). §4.2 step 1 now validates before any block runs, so a test run never executes a workflow that could not run in production. Related Specifications counted NT-1…NT-10. |
 | 1.1.1 | 2026-09-11 | Patch — cross-reference to `l1-nodus-authoring`, the free-route instrument whose subject is nodus rather than a workflow: NT tests what an author wrote, NA tests whether it could be written and whether the diagnostics taught. Documentation linkage only; no invariant added or changed. |
 | 1.1.0 | 2026-07-02 | Added NT-11 (differential parity across execution paths — interpreter↔transpiler or two conforming hosts must produce equal observable results, output + trace shape, on a recorded fixture corpus; the executable form of portability LP-3) and §4.7 differential-parity harness (content-addressed fixtures, per-path comparators, declared-non-determinism exclusion, shared normative corpus). Parity asserts equivalence between realizations, complementary to `@test:` correctness assertions. Related Specifications extended with l1-nodus-portability. |
 | 1.0.1 | 2026-06-24 | §4.6: corrected diagnostic codes — W006 (pre-existing ROUTE coverage) replaces spec-proposed W001; W009 (new no-expected advisory) replaces spec-proposed W002 to avoid conflict with existing validator codes |

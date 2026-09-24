@@ -1,6 +1,6 @@
 # Agent Migration
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md, l1-extensions.md
@@ -14,7 +14,8 @@ A source-neutral migration manifest that lets an agent receive memories, skills,
 - [l1-memory-model.md](l1-memory-model.md) - Memory service that receives reviewed candidates.
 - [l1-extensions.md](l1-extensions.md) - Skills imported via migration go through the same lifecycle as any skill.
 - [l2-memory-store.md](l2-memory-store.md) - Concrete store that receives migrated memory entries.
-- [l2-extension-registry.md](l2-extension-registry.md) - Migrated skills enter as `source: imported`, status `discovered`.
+- [l2-extension-registry.md](l2-extension-registry.md) - Migrated skills enter as `source: custom`, status `discovered`.
+- [l2-skill-system.md](l2-skill-system.md) - The conversion pipeline every imported skill passes, witness check first (EXT-11).
 - [l2-backup.md](l2-backup.md) - Apply protocol requires a backup before writing.
 - [l2-tool-security.md](l2-tool-security.md) - Imported skill content goes through the skill scanner at activation.
 
@@ -33,8 +34,10 @@ Users accumulate memories, skills, and conversation history in other agent syste
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| MEM-1 Dual-store | Imported content is assigned to the correct store tier: archive documents go to document store, memory candidates to the review queue, not directly to vector store. |
+| MEM-7 Ownership split | Imported content reaches memory only through the core write path, after review: archive documents go to the document store, memory candidates to the review queue — never directly into the memory store's tables. |
+| MEM-9 Provenance | Every item carries a `source` back-reference to the origin system, kept on the memory item it becomes. |
 | EXT-3 Default-deny | Imported skills start as `discovered` (inactive); activation requires an explicit grant. |
+| EXT-11 Verifiable import attestation | A migrated skill is an artifact crossing the trust boundary: it passes the conversion pipeline's witness check before anything else, and a missing or invalid witness refuses it (`l2-skill-system` §4.4). |
 | SEC-2 Safe defaults | Secrets skipped by default; explicit consent required. |
 
 ## 4. Detailed Design
@@ -48,7 +51,7 @@ AgentMigrationManifest {
   generated_at: DateTime<Utc>,
   source: {
     name: String,
-    kind: "generic" | "hermes" | "chatgpt" | "claude" | String
+    kind: "generic" | "chatgpt" | String   // further sources come from extension-provided adapters
   },
   summary: {
     item_count: u32,
@@ -70,7 +73,7 @@ ItemKind: "memory" | "skill" | "conversation_thread" | "archive_document"
 | Kind | Contents | Destination |
 | --- | --- | --- |
 | `memory` | `{text, category?, source?, provenance}` — a short fact or preference | Memory review queue (not auto-saved) |
-| `skill` | `{content, frontmatter_meta}` — a `SKILL.md` file with parsed metadata | Extension registry as `source: imported`, status `discovered` |
+| `skill` | `{content, frontmatter_meta}` — a `SKILL.md` file with parsed metadata | Conversion pipeline (`l2-skill-system` §4.4), then the extension registry as `source: custom`, status `discovered`; a skill without a verifiable witness is refused and listed in the apply report (EXT-11) |
 | `conversation_thread` | `{id, title, messages[]?, timestamp, message_count?, hash?}` — normalized transcript | Searchable archive; not imported as memory |
 | `archive_document` | `{path?, hash?, size?, content?}` — long-form source material | Document store; content is optional |
 
@@ -96,7 +99,8 @@ apply_stages:
   2. backup            — snapshot current state/ before any write
   3. import_archives   — archive_document and conversation_thread items → document store
   4. review_memories   — present memory candidates one by one for user review before saving
-  5. import_skills     — after name/category conflict check; go to discovered/inactive
+  5. import_skills     — after name/category conflict check; through the skill conversion pipeline
+                         (witness first, EXT-11); converted skills go to discovered/inactive
   6. skip_secrets      — credentials items always skipped; flag for manual review
 ```
 
@@ -112,7 +116,7 @@ An adapter translates a source-specific format into `agent-migration.v1`. Adapte
 
 Adapter responsibilities:
 
-- Read source files (e.g. `~/.hermes/config.yaml`, ChatGPT `conversations.json`, a Markdown notes folder).
+- Read source files (e.g. another agent's configuration directory, ChatGPT `conversations.json`, a Markdown notes folder).
 - Normalize to `agent-migration.v1` items.
 - Never write to `data/` or call an LLM.
 
@@ -120,7 +124,7 @@ Adapter responsibilities:
 
 | Action | CLI | TUI | Library (no code) |
 | --- | --- | --- | --- |
-| generate manifest | `cronus migrate export --from <path> [--kind chatgpt\|generic\|hermes]` | `/migrate export …` | `migration.export(source, kind) -> Manifest` |
+| generate manifest | `cronus migrate export --from <path> [--kind chatgpt\|generic\|<adapter>]` | `/migrate export …` | `migration.export(source, kind) -> Manifest` |
 | preview manifest | `cronus migrate preview <manifest.json>` | `/migrate preview …` | `migration.preview(manifest) -> PreviewReport` |
 | apply manifest | `cronus migrate apply <manifest.json> [--dry-run]` | `/migrate apply …` | `migration.apply(manifest, dryRun?) -> ApplyResult` |
 | list imports | `cronus migrate list` | `/migrate list` | `migration.listImports() -> ImportRecord[]` |
@@ -140,3 +144,10 @@ Adapter responsibilities:
 | `[EXT]` | `.design/main/specifications/l1-extensions.md` | Skill lifecycle |
 | `[BACKUP]` | `.design/main/specifications/l2-backup.md` | Backup before apply |
 | `[CLI]` | `.design/main/specifications/l2-cli.md` | Command grammar standard |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited MEM-1 (four scopes) as "dual-store" — now MEM-7 and MEM-9. Migrated skills used a `source: imported` value the registry does not define and skipped the conversion pipeline — they now pass it, witness first (EXT-11 row added), as `source: custom`. A mined reference's product name and config path were removed from the adapter examples. |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

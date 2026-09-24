@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Version:** 1.2.2
+**Version:** 1.2.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -37,7 +37,7 @@ A cross-platform autonomous product must pick technologies that (a) let one core
 | INV-4 Hub-and-spoke autonomy | Always-on engine runs as a desktop OS-supervised process (systemd/launchd/**Windows S4U scheduled task**) or headless server/remote node; **Tauri v2 mobile is a thin client**, woken by APNs/FCM push. The Windows mechanism is an S4U (Service-For-User) scheduled task, **not** a Windows Service — a Service's only unattended accounts (`LocalSystem` or a stored-credential user) cannot reach the per-user state root without violating least privilege; see l2-service-activation.md §4.2. |
 | INV-5 Durable, restartable state | **SQLite** (file-based) with **sqlite-vec** for vectors; state is a copyable file; optional **libSQL/PostgreSQL** for remote sync. |
 | INV-6 Graceful capability scaling | Mobile frontend exposes a subset (foreground + sync, optional 1–3B local model); never divergent behavior. |
-| INV-7 Security of client data | Secrets in `.env`/OS keychain, excluded via `.gitignore`; only anonymized operational telemetry leaves the device, never user data. |
+| INV-7 Security of client data | Secrets in `.env`/OS keychain, excluded via `.gitignore`. Nothing leaves the device by default: anonymized operational telemetry is sent only when the user opts in (TEL-1), and never user data. |
 | INV-8 Single-deployable modular monolith | The stack realizes one deployable: a single Rust binary (with the React app embedded via Tauri on desktop) over a file-based SQLite state — no container orchestrator, service mesh, or message broker required to run. The choices are deliberately anti-microservice (SQLite over a networked DB by default, in-process crates over services) so a non-technical operator installs one artifact; optional libSQL/PostgreSQL is a provider swap behind the user-data seam, not a service decomposition. |
 | INV-9 Shipped-surface honesty | The stack gives the frontends a single binding target — the core's C-ABI/FFI contract surface — so a frontend has exactly one referent to bind a verb to, and a capability the contract does not expose has nothing to be bound to. INV-9's enforcement is on the frontends; the stack's contribution is making the contract the one authoritative source they bind to. |
 | INV-10 Representation isolation at the inward seam | At the technology level the seam types are the contract-crate types that cross the trait boundary; the concrete `rusqlite`/`sqlite-vec` row, the keychain record, and any libSQL/PostgreSQL wire form stay inside their adapter and are mapped to/from contract types, the domain naming none of them. This is what keeps the "same code, different providers" property (DN-3) buildable — a remote backend is a new adapter, not an edit to the domain. |
@@ -50,7 +50,7 @@ A cross-platform autonomous product must pick technologies that (a) let one core
 | --- | --- | --- |
 | Hub (always-on) | Autonomy core: orchestrator, heartbeat, Kanban, cron, memory, model router | Rust headless core + OS-supervised process (systemd/launchd/Windows S4U scheduled task) or remote/self-hosted/SSH |
 | Spoke — Desktop | Full GUI over the core | Tauri v2 (Windows/macOS/Linux) |
-| Spoke — Mobile | **Thin client**, not a server: foreground + push-driven sync | Tauri v2 (iOS/Android) + APNs/FCM |
+| Spoke — Mobile | **Thin client**, not a server: foreground + push-driven sync | Tauri v2 (iOS/Android) + APNs/FCM; a push carries only a wake signal — the data itself syncs over the user's own hub connection, never through the platform's push service (SEC-3) |
 
 ### 4.2 Stack by layer
 
@@ -64,9 +64,10 @@ A cross-platform autonomous product must pick technologies that (a) let one core
 | Rich-text | Lexical | 0.45.x | caveat (pre-1.0) | Pin version + adapter wrapper |
 | Local DB | SQLite + sqlite-vec | sqlite-vec 0.1.x | solid (alpha caveat) | **Replaces libSQL-vector**; pure C, prebuilt iOS/Android |
 | Remote / sync DB | libSQL / PostgreSQL | — | optional | Sync only, not the vector engine |
-| Local LLM | llama.cpp via Rust FFI | — | caveat | **Replaces candle/mistral.rs** on mobile; 1–3B Q4; iOS Metal, Android CPU |
-| Cloud LLM | OpenAI/Anthropic/OpenRouter + in-house router | — | solid | Difficulty-threshold + fallback cascade + semantic cache |
-| Monorepo | moon **or** Nx + @monodon/rust | moon 2.x | change | **Replaces Turborepo** (JS-only, RFC #683). Fallback: Turbo(JS) + Cargo/sccache(Rust) |
+| Local LLM — desktop / server | The six loopback REST providers of §4.4, federated (`l2-model-runtime`) | — | solid | Cronus calls installed local servers; it does not embed an engine on these hosts |
+| Local LLM — mobile | llama.cpp via Rust FFI | — | caveat | **Replaces candle/mistral.rs** on mobile; foreground only; 1–3B Q4; iOS Metal, Android CPU |
+| Cloud LLM | OpenAI/Anthropic/OpenRouter + in-house router | — | solid | Difficulty-threshold + fallback cascade + semantic cache; reached only under authorized egress |
+| Monorepo | moon **or** Nx + @monodon/rust | moon 2.x | change | **Replaces Turborepo** (JS-only, RFC #683). Fallback: Turbo(JS) + Cargo/sccache(Rust). Not adopted yet: until the spike decides, the repository runs Cargo and pnpm directly |
 | JS package manager | pnpm | — | solid | — |
 | Frontend build | Vite | 8.0.x | solid | Node 20.19+/22.12+ |
 
@@ -98,6 +99,8 @@ Docker Model Runner| REST /engines/* | http://localhost:12434  | Container-based
 ```
 
 `OllamaProvider` preferentially tries `localhost`; falls back to `127.0.0.1` for hosts where `localhost` resolves to `::1` while Ollama listens on IPv4 only.
+
+An endpoint override (such as `OLLAMA_HOST`) that resolves to a non-loopback address makes the provider a **remote** endpoint, whatever its name: it goes through the egress gate and needs the user's explicit grant like any remote backend (`l2-model-runtime` MR-1). An environment variable must not be able to send prompts off the device under a local provider's name.
 
 #### GpuBackend taxonomy
 
@@ -269,6 +272,8 @@ macOS   → osascript: "set volume output muted true"
           Silent on failure
 ```
 
+The mute is a change to the user's whole system, so it is undone: the prior mute state is read before muting and restored when recording stops — on the error path too — and output that was already muted stays muted. A mute that cannot be read back first is not applied.
+
 #### Stream lifecycle
 
 ```text
@@ -309,7 +314,7 @@ Config and small structured state serialize as **JSON by default**. JSON is the 
 Discipline:
 
 - **JSON is the fallback, not a defect.** A file that does not clearly meet the RON criterion stays JSON. Two formats are a real cost (tooling, cognitive load); RON must earn its place *per file*, never by default.
-- **No big-bang migration.** Existing shipped JSON config (e.g. the Phase-4 model/router state) moves to RON only when a file is next substantially refactored *and* clears the criterion — never as a sweep. Changing a file's extension is a code migration, not a spec edit.
+- **No big-bang migration.** Existing shipped JSON config (e.g. the model/router state) moves to RON only when a file is next substantially refactored *and* clears the criterion — never as a sweep. Changing a file's extension is a code migration, not a spec edit.
 - **Serde-uniform.** Both formats deserialize through the same `serde` derives; the format is a call-site choice (`serde_json` vs `ron`), so a config type is format-agnostic and a file can move between formats with no model change.
 - **nodus is exempt and stays format-neutral.** `crates/nodus` holds a zero-external-dependency contract (`l1-nodus-portability` LP-1) and MUST NOT take the `ron` crate. nodus core stores no config of its own — durable state is host-supplied through the `StorageProvider` seam (LP-15), and the host picks the format. RON is a `crates/core` (host) decision, never a nodus-core one.
 
@@ -333,6 +338,7 @@ Discipline:
 | Version | Date | Notes |
 | --- | --- | --- |
 | 1.1.0 | 2026-07-04 | Added §4.7 SQLite Concurrency Policy — uniform cross-subsystem discipline: WAL everywhere, single owning writer task per database file (write-behind queue), bounded read pool, busy_timeout instead of spin-retries, short hot-path transactions with heavy work on the background tier. History table added with this entry. |
-| 1.2.1 | 2026-07-17 | Reconciled the Windows always-on mechanism to match its authoritative L2 realization: "Windows service" → "Windows S4U scheduled task" in the INV-4 compliance row and the Hub tier table (§3). A Windows Service's only unattended accounts (`LocalSystem` or a stored-credential named user) cannot reach the per-user state root without violating BA-6 least privilege, so `l2-service-activation` §4.2 selects an S4U task instead; this patch removes the now-superseded mechanism name. Terminology correction to an existing platform choice — no new requirement, stays Stable. |
 | 1.2.0 | 2026-07-10 | Added §4.8 Configuration Serialization Format — JSON is the default and the only boundary format (external-convention files, Rust↔TS/IPC files the UI reads, machine-generated data); RON is a narrow opt-in for Rust-owned, hand-edited, enum/variant-heavy internal config where tagged-enum fidelity + comments beat error-prone JSON (the justified-dependency bar for the `ron` crate); TOML stays for build manifests only; serde-uniform so format is a call-site choice and no big-bang migration; nodus exempt and format-neutral (LP-1 zero-dep forbids the `ron` crate, its durable state is host-supplied via the StorageProvider seam). §5 gains the two-format-overhead drawback + rejected alternatives (JSON-everywhere, JSON5/JSONC, TOML-for-all). Additive policy section — stays Stable (Trust Mode, no contradiction with §1–4). |
+| 1.2.1 | 2026-07-17 | Reconciled the Windows always-on mechanism to match its authoritative L2 realization: "Windows service" → "Windows S4U scheduled task" in the INV-4 compliance row and the Hub tier table (§3). A Windows Service's only unattended accounts (`LocalSystem` or a stored-credential named user) cannot reach the per-user state root without violating BA-6 least privilege, so `l2-service-activation` §4.2 selects an S4U task instead; this patch removes the now-superseded mechanism name. Terminology correction to an existing platform choice — no new requirement, stays Stable. |
 | 1.2.2 | 2026-07-29 | Completeness fix: extended the §3 Invariant-Compliance table to INV-8/INV-9/INV-10, which entered `l1-architecture` after this table (INV-1…INV-7) was written, restoring the L1 all-invariants-addressed gate. INV-8 — the stack realizes one deployable (single Rust/Tauri binary over file-based SQLite; no orchestrator/mesh/broker; anti-microservice by choice). INV-9 — the C-ABI/FFI contract is the single binding target, surface tooling derived from it. INV-10 — contract-crate seam types cross the trait boundary while `rusqlite`/`sqlite-vec`/keychain/remote-DB representations stay adapter-private and mapped, keeping DN-3's "same code, different providers" buildable. No new requirement; stays Stable. |
+| 1.2.3 | 2026-09-23 | Consistency pass (2026-09-23): The Local LLM row named llama.cpp FFI generally while §4.4 federates six loopback REST providers on desktop — split into desktop/server (REST, `l2-model-runtime`) and mobile (FFI). INV-7 said telemetry leaves the device, contradicting opt-in TEL-1. An endpoint override such as `OLLAMA_HOST` pointing off the machine is a remote, egress-gated endpoint, never a local one (MR-1); mobile push carries only a wake signal (SEC-3). The recording mute now restores the user's prior system mute state. The monorepo tool is recorded as not yet adopted; a build-plan phase reference removed; history reordered ascending. |

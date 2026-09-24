@@ -1,6 +1,6 @@
 # Extension Registry
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-extensions.md
@@ -19,6 +19,9 @@ The concrete extension system: the manifest format, where extensions live (progr
 - [l2-skill-system.md](l2-skill-system.md) - Canonical skill stores (`<program>/skills/`, `<state>/skills/`), execution stack, and conversion pipeline.
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.3.0] the backend that confines a tool-server subprocess and a hook command; its coverage table says which extension paths are confined and which are not.
 - [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.3.0] AG-10: text a dynamic token interpolates from outside is an untrusted-derived operative argument at an exec sink (§4.11).
+- [l2-tool-security.md](l2-tool-security.md) - The skill scanner at admission, the protected untrusted-context preamble and the request guardrails that payload-changing handlers must run before (§4.16).
+- [l1-security.md](l1-security.md) - SEC-10: channel configuration and project trust are authority-plane decisions an extension cannot make.
+- [l1-messaging-gateway.md](l1-messaging-gateway.md) - The reachability model channel plugins realize (§4.13).
 
 ## 1. Motivation
 
@@ -44,7 +47,7 @@ The model needs a concrete registry with a uniform manifest so all three kinds c
 | EXT-8 Provenance & audit | Each entry records `source`; activations and tool calls append to the audit log. |
 | EXT-9 Manifest contract | `extension.json` validated against a schema before activation. |
 | EXT-10 Service connector kind | **Pending.** No connector kind (authentication taxonomy, trigger/create/search operations, polling or subscription delivery) is defined at this layer yet; it lands with the automation pipeline's connector work. *(Row added in v1.3.0; EXT-10 and EXT-11 had gone unmapped since they were added to the L1.)* |
-| EXT-11 Attested provenance | **Pending.** Activation verifies the pinned content hash and the install-time scan (`l2-tool-security` §4.1); verifying a signed witness (`l1-attestation`) before activation is not yet specified here. |
+| EXT-11 Attested provenance | **Skills: realized** by the conversion pipeline (`l2-skill-system` §4.4) — an imported package's signed witness is verified before conversion, and a missing or invalid witness denies it. **Plugins, MCP servers, connectors: pending** — activation verifies the pinned content hash and the install-time scan (`l2-tool-security` §4.1); a signed-witness check (`l1-attestation`) is not yet specified for them. |
 
 ## 4. Detailed Design
 
@@ -89,7 +92,7 @@ Skills root at the top level of each tier (`<program>/skills/`, `<state>/skills/
 
 ### 4.4 Skill generation
 
-The curator/archivist role detects recurring successful patterns and distills a candidate `SKILL` into `<state>/skills/`, marked `source: generated`, status `discovered` (inactive) pending review. <!-- TBD: distillation trigger threshold + whether generated skills auto-activate after N successful reuses -->
+The curator/archivist role detects recurring successful patterns and distills a candidate `SKILL` into `<state>/skills/`, marked `source: generated`, status `discovered` (inactive) pending review. A generated skill is activated only by an explicit human grant (EXT-3): no count of successful reuses activates one by itself, because the office would then be granting capability to its own output (`l1-security` SEC-10). Any relief from per-skill review is a standing rule the human authors on the authority plane, never a threshold the system applies to itself. <!-- TBD: distillation trigger threshold (how many recurrences make a candidate) -->
 
 ### 4.5 Plugin manifest extended schema
 
@@ -213,9 +216,11 @@ CatalogSkill {
 | --- | --- | --- |
 | `markdown_only` | Pure text instructions, no executable content. | No sandbox needed; loaded as instruction text only. |
 | `assets` | Instruction text + static data files (images, templates). | Sandboxed file access to the assets path; no code execution. |
-| `scripts_executables` | Any executable code (scripts, binaries, WASM). | Full execution sandbox; same constraints as plugins (EXT-4). |
+| `scripts_executables` | Any executable code (scripts, binaries, WASM). | The code never runs as shipped: the conversion pipeline (`l2-skill-system` §4.4) maps each script onto the built-in command surface or degrades the skill to instruction-only. |
 
-`markdown_only` skills are the safest — they carry no attack surface beyond prompt injection (caught by the skill scanner at §4.4). `scripts_executables` skills receive the most restrictive sandbox; they require an explicit user grant, not just an activation.
+`markdown_only` skills are the safest — they carry no attack surface beyond prompt injection, which the skill scanner screens heuristically (`l2-tool-security` §4.1) and the untrusted-content wrapping bounds (§4.6 there); neither is described as catching it. A `scripts_executables` package is the one that needs the most review at the grant, but its level never buys it an interpreter: skills execute only on the canonical stack (nodus workflows over built-in commands), and a genuinely code-shaped extension is a plugin, not a skill.
+
+**The trust level is derived, not declared.** `trustLevel` in a catalog entry is the publisher's claim; the level that governs sandboxing is the one the scanner derives from the downloaded archive (executable or loadable content → `scripts_executables`, static data files → `assets`, text only → `markdown_only`). When the claim is lower than the derived level, the derived level governs and the mismatch is a finding shown at the grant — otherwise an entry declaring `markdown_only` while shipping scripts would be loaded with no sandbox at all.
 
 #### Catalog operations
 
@@ -225,8 +230,8 @@ Install flow:
 
 1. Resolve `source.ref` to a commit SHA (immutable pin recorded in `source.commit`).
 2. Download archive.
-3. Verify `sha256(archive) == contentHash` — reject if mismatch.
-4. Run skill scanner (static analysis, `trustLevel`-appropriate checks).
+3. Verify `sha256(archive) == contentHash` — reject if mismatch. (The hash proves the archive matches the index entry, not who published it; authorship is the witness check of step 4.)
+4. Convert through the pipeline of `l2-skill-system` §4.4 — witness verification first (EXT-11), then classification, transpilation or degradation — and run the skill scanner (static analysis, checks appropriate to the **derived** trust level).
 5. Register as `discovered`; activate only after explicit grant.
 
 <!-- [ADDED] v1.1.0 -->
@@ -314,6 +319,8 @@ Frequency: "on-demand"            // user-triggered only
          | "on-demand-or-cron"    // supports both paths; scheduled-run context available via env
 ```
 
+A declared cadence is a **proposal**, like `allowed-tools` (§4.11): it is shown at activation, and a schedule exists only once the person accepts it (`l2-scheduler`). Installing or activating a skill never starts unattended runs on its author's say-so.
+
 #### MCP permission declarations and activation scan
 
 Skills that declare `permissions` or `parameters` trigger additional least-privilege and tool-poisoning checks during the skill-scanner pass at activation (see `l2-tool-security.md §4.9`):
@@ -396,7 +403,9 @@ agents/<name>.md frontmatter:
   model:       inherit | sonnet | opus | haiku   // default: inherit
   color:       blue | cyan | green | yellow | magenta | red | "<hex>"
     // Named colors map to the theme palette; hex strings (e.g. "#E67E22") are also accepted
-  tools?:      Record<String, bool>   // tool-level allow/deny map; default: all tools enabled
+  tools?:      Record<String, bool>   // tool-level allow/deny map; default: the agent tier's allowed set
+                                      //   (l2-orchestration §4.6) intersected with the owning extension's
+                                      //   grant — an extension's agent never exceeds its extension (EXT-3, EXT-6)
     // To deny all and allow specific tools:
     //   tools: { "*": false, "github-search": true, "read": true }
     // To allow all and deny specific tools:
@@ -603,7 +612,7 @@ extension.json {
 }
 ```
 
-Channel instances are configured in the workspace settings (not tracked files):
+Channel configuration is the **reachability half of the authority plane** — who may reach the agent, through which ingress (`l1-security` SEC-10, `l1-messaging-gateway`). It is honored only from the user or managed tier: a project settings file can neither open a channel nor loosen `sender_policy`, `allowed_users`, `group_policy` or `groups` (a loosening value is ignored and reported, as for the other trust-sensitive keys of `l2-security` §4.8), and the agent can only request a change. Channel instances are configured in the user-tier workspace settings (not tracked files):
 
 ```text
 [REFERENCE]
@@ -695,7 +704,9 @@ AgentTarget {
 }
 
 Location:  "global" | "local"
-InstallOptions { auto_allow: bool }  // whether to write agent permission grants (if any)
+InstallOptions { auto_allow: bool }  // whether to write agent permission grants (if any); default false —
+                                     //   writing grants into another agent host's configuration is an explicit
+                                     //   choice of the person running the installer, never a default
 ```
 
 #### DetectionResult and WriteResult
@@ -738,7 +749,9 @@ get_target(id: &str) -> Option<&AgentTarget>
 detect_all(loc: Location) -> Vec<(AgentTarget, DetectionResult)>
 
 resolve_target_flag(value: &str, loc: Location) -> Vec<AgentTarget>:
-  "auto" → detect_all, return those with installed=true; fallback to first target if none
+  "auto" → detect_all, return those with installed=true; none detected → [] and a note naming the
+           --target=<id> flag (never a guess: writing configuration for an agent host that is not
+           installed creates files nobody asked for)
   "all"  → ALL_TARGETS
   "none" → []
   csv    → split on ',', look up each id; error on unknown ids with the known list
@@ -873,14 +886,20 @@ session lifecycle, agent lifecycle, model changes, user interactions, and per-to
 | `tool_result` | After a named tool executes (typed per built-in tool) | `{ content?, details?, isError? }` — field-by-field override |
 | `model_select` | User or extension selects a model | None |
 | `thinking_level_select` | User or extension selects a thinking level | None |
-| `user_bash` | User executes `!cmd` or `!!cmd` prefix | May supply custom `operations` or a full `BashResult` replacement |
+| `user_bash` | User executes `!cmd` or `!!cmd` prefix | May supply custom `operations` or a full `BashResult` replacement; a replaced result is labeled as extension-provided wherever it is shown, so the person never mistakes it for their own command's output |
 | `input` | User input received, before agent processing | `{ action: "continue" \| "transform" \| "handled" }` |
-| `project_trust` | Project-trust check for this working directory | `{ trusted: "yes" \| "no" \| "undecided", remember? }` |
+| `project_trust` | Project-trust check for this working directory | `{ trusted: "no" \| "undecided" }` — an extension may only tighten; a `"yes"` or `remember` is ignored and audited |
+
+**Ordering and limits of payload-changing handlers.** Handlers that replace content — `before_agent_start` (system prompt), `context` (messages), `before_provider_request` (payload), `tool_call` (arguments), `tool_result`, `message_end` — run **before** the security layers, never after them: argument patches precede risk classification and the autonomy gate (consent binds the patched call, CB-1), and payload or context replacements precede the request guardrail pipeline (`l2-tool-security` §4.7), which therefore always acts on the final payload — an extension cannot undo a PII redaction or reinstate a blocked request. A replacement also cannot remove protected system content: the untrusted-context preamble and the operator/system preset (`l2-tool-security` §4.6) are re-asserted after every `before_agent_start` and `context` handler. A `tool_result` override changes what the model sees, never the audit record or receipt.
+
+**Trust is the human's decision.** The trust decision for a project directory is made only through the trust dialog of `l2-security` §4.8 (or its process-environment CI setting); an extension is a party whose own trust is in question and cannot vouch for a project (SEC-10).
 
 #### Project trust requiring local config
 
 The following project-local configuration resources require an explicit trust decision
-before they are loaded. Untrusted projects have access to built-in skills and global
+before they are loaded — the same decision, recorded in the same per-user registry, as the
+workspace trust model of `l2-security` §4.8, whose safe-mode list this extends (there is one
+trust registry, not two). Untrusted projects have access to built-in skills and global
 extensions only:
 
 ```text
@@ -896,9 +915,9 @@ TRUST_REQUIRING_RESOURCES = [
 ]
 ```
 
-Trust decisions are stored in a per-user trust file (outside the project directory).
-Write operations on the trust file are protected by a file-system lock (10 retry attempts,
-20 ms delay) to prevent corruption from concurrent processes.
+Trust decisions are stored in that per-user registry (`<state>/trusted_workspaces.json`,
+outside the project directory). Write operations on it are protected by a file-system lock
+(10 retry attempts, 20 ms delay) to prevent corruption from concurrent processes.
 
 #### ExtensionContext (context passed to all handlers)
 
@@ -975,3 +994,4 @@ of the default system prompt; the LLM learns about them only from the tool schem
 | 1.1.0 | 2026-07-04 | Bounded-concurrent bulk install/verify (§Catalog operations): resolve/download/hash-verify/scan run concurrently per item under a cap; registration stays serialized through the registry's single writer; per-item failure isolation. History table added with this entry. |
 | 1.2.0 | 2026-07-08 | `[MODIFIED]` Skill store paths re-rooted to tier top level per the skill system spec: `<state>/extensions/skills/` → `<state>/skills/`, `<program>/extensions/skills/` → `<program>/skills/` (§4.2 Locations, §4.4 Skill generation, §4.9.1 override resolution, EXT-5/EXT-7 compliance rows); non-skill kinds remain under `extensions/`. Related Specifications link to the skill system spec added. Path alignment — status remains Stable. |
 | 1.3.0 | 2026-09-19 | Reconciled with a cross-check of eight external agent command-line tools. `allowed-tools` in a command definition is now a **request shown for approval, never a grant** (an extension's author is not the human principal, SEC-10) and is honored only after activation and only in a trusted source; dynamic `` !`command` `` expansion is an **execution at a privileged sink** under the same guard, tier and confinement as a tool call, with externally-sourced interpolated text lifting it to approval (AG-10), and `@path` inclusion is contained and wrapped as untrusted; MCP **server-initiated sampling** is a per-server `deny \| ask \| allow` policy defaulting to ask, `allow` only from the user or managed tier, the request treated as untrusted, tool-less and budget-scoped; stdio servers launch through the sandbox backend by default with `env` as declared pass-throughs (PI-8) and per-server hash-bound approval; compliance rows added for EXT-10 and EXT-11 as **Pending** (they had gone unmapped since they were added to the L1). |
+| 1.3.1 | 2026-09-23 | Consistency pass (2026-09-23): §4.16: an extension could answer the `project_trust` event with `trusted: yes` — it may now only tighten (the trust decision is the human's, `l2-security` §4.8, SEC-10); payload-, context- and argument-replacing handlers run before the security layers (guardrails act on the final payload, consent binds patched arguments) and cannot strip the protected preamble; one trust registry, not two. §4.7: sandboxing followed the catalog's self-declared `trustLevel` — the level is now derived from the archive; `scripts_executables` no longer promises script execution in a sandbox, since skills never run scripts as shipped (`l2-skill-system` §4.4); install runs the conversion pipeline incl. the witness check. EXT-11 row updated: realized for skills, pending for other kinds. §4.10: an extension's agent defaulted to all tools — now tier ∩ extension grant. §4.13: channel configuration is reachability-plane authority, user/managed tier only. §4.14: `auto_allow` defaults to false; `--target=auto` with nothing detected writes nothing. §4.9: a declared cron frequency is a proposal. §4.4: auto-activation of generated skills resolved (never by a reuse count, EXT-3/SEC-10). |

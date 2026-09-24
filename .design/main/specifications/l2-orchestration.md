@@ -1,9 +1,9 @@
 # Orchestration
 
-**Version:** 1.1.0
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
-**Implements:** l1-orchestration.md
+**Implements:** l1-orchestration.md, l1-office-model.md
 
 ## Overview
 
@@ -18,6 +18,9 @@ The concrete coordination mechanics: how the orchestrator delegates via assigned
 - [l2-cli.md](l2-cli.md) - `/goal`, `plan`, `task`, `run`, `status` entry points.
 - [l2-agent-autonomy.md](l2-agent-autonomy.md) - Approval gate that governs high-impact orchestrator decisions and agent hires.
 - [l2-trigger-triage.md](l2-trigger-triage.md) - Triage hands `SpawnOrchestrator` decisions to this layer's goal-execution loop.
+- [l2-execution-workspace.md](l2-execution-workspace.md) - Worktree isolation, the finalize write-back gate, and the no-remote-git contract §4.12 and §4.19 rely on.
+- [l2-scheduler.md](l2-scheduler.md) - Tier-2 scheduled work and its `run_timeout_secs` (§4.20).
+- [l1-consent-binding.md](l1-consent-binding.md) - CB-1/CB-11: consent binds the patched arguments; a contributed ruleset can narrow, never widen (§4.7, §4.10).
 
 ## 1. Motivation
 
@@ -44,6 +47,19 @@ The protocol needs concrete, local, resumable mechanics: a delegation channel (t
 | ORC-8 Synchronization | Scheduled briefing routines reconcile agent state into shared office state. |
 | ORC-9 Approval gate | High-impact actions require a recorded approval (sub-manager or client) before execution. |
 | ORC-10 Resumable | Goal/plan/delegation state persists (board + office state) and reloads on restart. |
+| ORC-11 Error containment | Each delegation boundary applies the `l1-orchestration` §4.4 filter — classify (`retryable` → re-dispatch; `fatal_isolated` → card Blocked, other delegations continue; `escalation` → ORC-9 gate), scope-check against the critical path, log — so a raw executor error reaches the plan only through its classification. Pending realization. |
+| ORC-12 Transparent, intervenable coordination | Delegations, mailbox messages and briefings are emitted to the office event stream (EM-8) and projected in the office view; a live-steering redirect (ACP-10) can interject into any in-flight delegated turn. §4.8 `all`-mode observers read that same stream — there is no agent-to-agent channel outside it. |
+| ORC-13 Declared dispatch disposition | Ending a dispatch records `redelegated` (the card returns to the pool) or `handoff_released` (tracking ends, the delegate's process is left running and recorded as unsupervised) — never an unlabeled "released". Pending realization. |
+| ORC-14 Minted, generation-bound dispatch authority | A delegate's right to report back is a token bound to (dispatch id, delegate instance id, execution generation), verified on all three and revoked once, first-write-wins, at the first terminal transition; a late signal after revocation is ignored. Pending realization. |
+| OFF-2 Single orchestrator, delegation-only | Realized by ORC-1/ORC-4 above: the office `manager` is the sole coordinator and never self-assigns implementation work. |
+| OFF-3 Role specialization | Delegations target hired roles from the role catalog (`l2-role-catalog`); intermediate managers are introduced per ORC-2. |
+| OFF-4 Adaptive staffing | A delegation that needs a role the office lacks triggers a hire through the role catalog — a custom role only past the ROL-9 gate — under the approval gate for hires (`l2-agent-autonomy`); roles are released when no longer needed. |
+| OFF-5 Client-as-client | The client supplies intent; plans, delegation, and execution run without the client's participation, which is sought only at ORC-9 approval gates. |
+| OFF-6 Clarify only on genuine ambiguity | The orchestrator asks the client only through the inbox's clarify channel (`l2-inbox`), and only for an ambiguity, contradiction, or missing requirement that blocks correct work; technical questions are resolved inside the office. |
+| OFF-7 Managed work lifecycle | Intent → plan → cards on the board of record (ORC-3), moving through the canonical states of `l2-kanban-board`. |
+| OFF-8 Autonomous, location-flexible operation | The goal loop runs unattended on whichever host carries the engine — local, remote, or reached over SSH (`l2-service-activation`, the `cronus serve` daemon of `l2-agent-session` §4.10) — and resumes from persisted state (ORC-10). |
+| OFF-1 Office-per-project isolation | Delegation, messaging and the board are scoped to one office: a delegation never addresses another office's roles, board or context. Keeping each office's state apart on disk is `l2-workspace-management`'s; deliberate cross-office work goes through `l2-global-orchestration`, never through a delegation. |
+| OFF-9 Persistent, compounding capability | Not realized here. What the office learns persists through `l2-memory-store` and `l2-self-improvement`; this spec contributes only the goal-loop state that survives a restart (ORC-10). |
 
 ## 4. Detailed Design
 
@@ -160,6 +176,21 @@ Rulesets are ordered lists of rules; **the last matching rule wins** (not the fi
 This allows coarse-grained allow/deny earlier in the list to be overridden by fine-grained
 rules appended by the current context.
 
+The evaluator is the policy lookup that **feeds** the single autonomy gate
+(`l2-agent-autonomy` §4.3 `gate_decision`); it is not a second gate beside it. Two
+constraints keep "last match wins" from becoming a widening path:
+
+- **Only human-authored layers may relax.** A ruleset contributed by agent-controlled
+  content — an agent or skill definition, an extension manifest, a generated agent
+  (§4.8) — may add `deny` or `ask` rules and is merged after the human-authored layers,
+  but its `allow` rules are ignored: a later layer can narrow what a human allowed,
+  never widen what a human denied or left to ask (`l1-security` SEC-10,
+  `l1-consent-binding` CB-11). Pending realization — the shipped evaluator merges
+  layers without this provenance check.
+- **`ask` resolves through the approval lifecycle of `l2-agent-autonomy` §4.6**: it
+  carries that TTL, and in an unattended context it becomes a visible refusal at once
+  (AG-9) instead of a deferred approval nobody can answer.
+
 ```text
 [REFERENCE]
 PermissionRule {
@@ -256,7 +287,10 @@ generate_agent(description: String, model?: ModelRef) -> AgentDefinition:
 ```
 
 Generated agents receive a `source: "generated"` tag; the quality pipeline scans them
-before the orchestrator uses them for the first time.
+before the orchestrator uses them for the first time. A generated definition's tool
+access is clamped to the intersection of what the requesting agent itself holds and
+what its tier allows (static loader validation, §4.6): a model can describe an agent,
+but it cannot mint one with more authority than its author has (`l1-security` SEC-10).
 
 ### 4.9 Tool terminate batch semantics
 
@@ -305,14 +339,17 @@ AgentLoopConfig {
   beforeToolCall(tool_name, args, signal) -> BeforeToolCallResult?
     // Run before every tool execution. Return { block: true, reason: string }
     // to prevent the tool from running and return an error result to the model.
-    // Mutation of args in place is the mechanism for argument patching.
+    // Mutation of args in place is the mechanism for argument patching. It runs BEFORE
+    // risk classification and the autonomy gate, so the gate and any consent bind the
+    // patched arguments (CB-1); nothing mutates arguments after the gate has decided.
 
   afterToolCall(tool_name, args, result) -> AfterToolCallResult?
     // Run after every tool execution. Return a partial override object:
     //   { content?, details?, isError?, terminate? }
     // Fields are applied field-by-field (no deep merge). Omit a field to keep the
     // tool's original value. Use to inject structured details, mask errors, or force
-    // terminate semantics.
+    // terminate semantics. An override changes what the MODEL sees, never what is
+    // recorded: the tool's original result stays in the audit trail and receipt.
 
   // Stop control
   shouldStopAfterTurn(assistant_message) -> bool
@@ -397,13 +434,15 @@ lock before touching the filesystem:
 [REFERENCE]
 withFileMutationQueue(filePath, fn):
   // Resolve real path to handle symlinks (two paths → same file)
-  key = realpath(filePath)    // or resolved path if file not yet created
-  queue = fileMutationQueues.get(key) ?? Promise.resolve()
-  // Chain fn after the current queue head — operations for different files run in parallel
-  fileMutationQueues.set(key, queue.then(fn))
-  await current_queue_head   // blocks until previous operation on this file completes
-  return fn()                // exclusive access window
-  // After fn: release the slot; remove key if no further waiters
+  key  = realpath(filePath)                 // or resolved path if file not yet created
+  prev = fileMutationQueues.get(key) ?? resolved()
+  // Chain fn ONCE after the current tail — operations for different files run in parallel
+  next = prev.then(() => fn())              // runs after prev settles, success or failure
+  tail = next.catch(ignore)                 // a failed write never wedges the queue
+  fileMutationQueues.set(key, tail)
+  result = await next                       // exclusive access window for this file
+  if fileMutationQueues.get(key) is tail: fileMutationQueues.delete(key)   // no later waiter
+  return result                             // fn's own error, if any, propagates to its caller
 ```
 
 The queue is process-global (shared across all concurrent tool invocations) and uses
@@ -509,6 +548,9 @@ Plans share a wave when ALL of the following hold:
 
 Tie-breaking: when a plan has any depends_on, its wave is max(wave of dependencies) + 1.
 A plan with no depends_on and no conflicts gets wave 1.
+A plan whose files_modified[] or submodule footprint conflicts with a plan already placed
+in wave w moves to wave w + 1 (plans are placed in plan-number order, so the result is
+deterministic).
 ```
 
 Plans in the same wave are fully parallel-safe: they can run as independent worktree-isolated executors with no coordination between them beyond the shared git base.
@@ -532,7 +574,7 @@ Worktree guard:
     plan to the next wave rather than risk a merge conflict.
 ```
 
-Plans that must run sequentially (different waves) do not use worktrees — they commit directly.
+Plans that must run sequentially (different waves) do not need a parallel worktree — they run in the office's single execution workspace and reach the main state through the same finalize write-back gate (`l2-execution-workspace` §4.5); no plan commits to the user's checkout directly.
 
 #### PLAN.md frontmatter schema
 
@@ -567,7 +609,9 @@ Before spawning an executor for a plan, the orchestrator runs a safe-resume chec
 [REFERENCE]
 Safe resume gate (runs before every executor spawn):
 
-1. Run: git log --oneline --grep="plan-{NN}" --grep="phase-{XX}" for this plan's commits.
+1. Run: git log --oneline --all-match --grep="phase-{XX}" --grep="plan-{NN}" for this plan's commits.
+   (--all-match makes the two patterns a conjunction; without it git ORs them and a commit of any
+   other plan in the same phase, or of the same plan number in another phase, would count.)
 2. If no commits found:
    → Clean slate. Spawn executor normally.
 3. If commits found AND SUMMARY.md exists:
@@ -921,9 +965,9 @@ context_sha: {git-sha-at-checkpoint-time}
 
 **Recovery:** `cronus mission restore [--from cp-{timestamp}]` reads the latest (or named) checkpoint, reconstructs session state, and resumes the `remaining_steps` list. When `context_sha` differs from HEAD, a drift notice is emitted before recovery proceeds (see §4.18 drift check gate).
 
-**WIP commit strategy (opt-in):** When `mission.checkpoint_push: true`, the executor also creates a local git commit with a `WIP: [cronus-cp]` prefix and the checkpoint YAML as the commit body. Before finalization, `cronus mission squash` collapses all `WIP: [cronus-cp]` commits into a single clean commit; non-WIP commits are preserved.
+**WIP commit strategy (opt-in):** When `mission.checkpoint_commit: true`, the executor also creates a local git commit with a `WIP: [cronus-cp]` prefix and the checkpoint YAML as the commit body. Before finalization, `cronus mission squash` collapses all `WIP: [cronus-cp]` commits into a single clean commit; non-WIP commits are preserved.
 
-**Push behavior:** WIP commits are local-only by default (`checkpoint_push: false`). Set `checkpoint_push: true` to push the WIP branch to the remote — useful for CI-monitored or pair sessions.
+**No push:** WIP commits are always local. The executor never pushes them — execution workspaces never write to a git remote (`l2-execution-workspace` §4.4, the no-remote-git contract); a user who wants the WIP branch on a remote pushes it themselves, as an explicit export.
 
 ### 4.20 Three-tier durability model
 
@@ -948,7 +992,7 @@ Different orchestration tasks have different time horizons, fault-tolerance requ
 **Tier 2 — Scheduled:**
 
 - Persisted schedule definition (cron expression, duration interval, or ISO timestamp).
-- Hard interrupt: maximum run time enforced to prevent runaway jobs (default: 3 minutes).
+- Hard interrupt: maximum run time enforced to prevent runaway jobs — the scheduler's per-job `run_timeout_secs` (`l2-scheduler` §4.9, default 3600 s).
 - Delivery target: session context, external channel (notifications), or file drop.
 - Per-job overrides: model, skill set, pre-run script, additional context injection.
 
@@ -1000,7 +1044,7 @@ When an eval run completes — successfully or with failure — a standalone LLM
 **Inputs assembled in parallel:**
 
 - Skill document content (`SKILL.md`)
-- Eval framework file (`wazaEval.yaml` or equivalent)
+- The eval definition file
 - Up to 8 task files from the eval directory (max 80 KB each, skipping the eval definition file)
 - Eval results JSON, or error context when the run failed
 
@@ -1026,10 +1070,10 @@ LLM-powered analysis passes (semantic quality analysis in §4.31 of `l2-quality-
 **Fingerprint computation:**
 
 ```text
-fingerprint = SHA-256(document_text || NUL || json_serialize(custom_checks)) → hex
+fingerprint = SHA-256(len(document_text) || document_text || json_serialize(custom_checks)) → hex
 ```
 
-The NUL separator byte ensures a document ending with `[` cannot collide with a `custom_checks` array beginning with `]` — otherwise two distinct inputs would produce the same hash.
+The length prefix makes the concatenation injective: without it, the same bytes could split differently between the document and the checks (a document that ends with the text the checks begin with), and two distinct inputs would share a fingerprint. A bare separator byte is not enough, because the document may itself contain that byte.
 
 **Cache entry format:**
 
@@ -1068,4 +1112,6 @@ The NUL separator byte ensures a document ending with `[` cannot collide with a 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.2 | 2026-09-24 | Consistency pass (2026-09-24): The spec realizes the office model's delegation surface but mapped only l1-orchestration — OFF-2…OFF-8 (role catalog, hiring through the catalog under the approval gate, client contact only at ORC-9 gates, the clarification channel for blocking ambiguity, intent → plan → board states, unattended operation resuming ORC-10) had no compliance rows. `Implements` now names l1-office-model and the rows are added. OFF-1 (office isolation: delegation, messaging and the board never cross an office boundary) and OFF-9 (compounding capability, carried by the memory specifications — not realized here) complete the office-model rows. |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): ORC-11…ORC-14 compliance rows added (ORC-11/13/14 pending realization). §4.7 ruleset evaluation feeds the single autonomy gate: agent-controlled rulesets may narrow but their `allow` rules are ignored (SEC-10, CB-11; pending realization), and `ask` follows the approval lifecycle incl. AG-9. Generated agents are clamped to their author's grants. Argument patching runs before the gate; overrides never alter the recorded result. File-mutation queue pseudo-code no longer runs `fn` twice or wedges on failure. Safe-resume grep uses `--all-match`; wave placement for conflicting plans is deterministic; sequential plans go through the write-back gate. WIP checkpoints are never pushed (no-remote-git contract; `checkpoint_push` → `checkpoint_commit`). Tier-2 timeout defers to `l2-scheduler` (was 3 min vs 3600 s). Fingerprint uses a length prefix; a reference product file name removed. |
 | 1.1.0 | 2026-07-04 | Read-only ⇒ parallel tool policy (§4.10): built-in read-only tools declare `executionMode: "parallel"`; effectful tools keep the sequential default; file-mutation queue remains the write-safety guarantee. History table added with this entry. |

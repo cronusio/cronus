@@ -1,6 +1,6 @@
 # Code Graph
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-code-intelligence.md
@@ -12,7 +12,8 @@ An in-workspace code intelligence index: language-aware entity extraction builds
 ## Related Specifications
 
 - [l1-code-intelligence.md](l1-code-intelligence.md) - **L1 parent.** This spec realizes the code-intelligence concept (CI-1…CI-13): the graph index, extraction pipeline, hybrid retrieval, and graph analysis.
-- [l1-storage-model.md](l1-storage-model.md) - STO-8 (SQLite as the durable local store); `codegraph.db` follows the same placement rules.
+- [l1-storage-model.md](l1-storage-model.md) - STO-1 (state tier over the read-only program tier) and STO-8 (a machine index derived from source, never the source of truth); `codegraph.db` follows the same placement rules.
+- [l1-office-model.md](l1-office-model.md) - OFF-1: the global graph (§4.15) joins an office's graph only on an explicit add.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `codegraph.db` lives in the workspace state tier.
 - [l2-memory-store.md](l2-memory-store.md) - Memory store uses the same `sqlite-vec` extension for dense embeddings; shared pattern.
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Codegraph indexes an execution workspace's source tree during active tasks.
@@ -24,7 +25,7 @@ Agents working on code tasks need to find where a function is defined, which mod
 
 ## 2. Constraints & Assumptions
 
-- The index lives entirely on-device in `<ws>/codegraph.db`; no remote calls for indexing or search.
+- The index lives entirely on-device in `<ws>/codegraph.db`. Code extraction (Pass 1, §4.8), media transcription (Pass 2) and search make no remote calls. Pass 3 sends documents and images to a model, so it runs only through the office's authorized routing — a local model by default, a cloud model only where egress is authorized (`l1-security` SEC-3) — and is skipped otherwise; the skip is reported, not silent.
 - Embeddings are computed lazily on first search (not at index time) to keep initial indexing fast.
 - The index is best-effort: it may be stale by up to one file-save cycle. Agents treat it as a fast cache, not an authoritative source, and must validate symbol locations before acting on them.
 - Only files under the workspace's source root are indexed; generated files and vendored dependencies are excluded by default via `.codegraphignore` (same syntax as `.gitignore`).
@@ -225,8 +226,7 @@ Code files never go to the LLM semantic extractor; only documents, papers, and i
 #### Pass 1 — Code structure (local, no API calls)
 
 Grammar-based parsers extract AST nodes (functions, classes, imports, call-graph edges) locally.
-Workers run in parallel processes to bypass single-threaded execution limits and achieve genuine
-concurrency. SQL files receive deterministic extraction: tables, views, foreign keys, and JOIN
+Files are parsed in parallel across worker threads. SQL files receive deterministic extraction: tables, views, foreign keys, and JOIN
 relationships are extracted without heuristic inference.
 
 #### Pass 2 — Audio and video (local, no API calls)
@@ -330,7 +330,7 @@ similarity edges already in the graph provide the similarity signal directly.
 ```text
 [REFERENCE]
 Algorithm:  Leiden (preferred) → Louvain fallback if Leiden unavailable.
-            PYTHONHASHSEED = 0 pinned for deterministic partition results across runs.
+            A fixed random seed is pinned so the partition is deterministic across runs.
 
 resolution: float, default 1.0
             > 1.0 → more, smaller communities
@@ -509,14 +509,16 @@ Seed resolution (first match wins, ambiguous multi-match → null):
 
 ### 4.15 Global multi-project graph
 
-When operating across multiple workspaces, individual project graphs are merged into a global
-graph stored in the user home directory for cross-project queries.
+For cross-project queries, individual project graphs may be merged into a global graph in the
+user's state tier. A project graph joins it only through an explicit `global_add` — never
+implicitly because several workspaces are open — since reading one office's graph from another
+is exactly the cross-office access OFF-1 requires to be explicit.
 
 ```text
 [REFERENCE]
-Locations:
-  ~/.cronus/global-graph.json     — merged graph (NetworkX node-link format)
-  ~/.cronus/global-manifest.json  — per-repo metadata
+Locations (state tier, l2-filesystem-layout):
+  <state>/global-graph/graph.json      — merged graph (node-link JSON: a nodes array and a links array)
+  <state>/global-graph/manifest.json   — per-repo metadata
 
 Node prefixing: all nodes from project P receive ID "{repo_tag}:{original_id}"
 to prevent cross-project ID collisions.
@@ -544,6 +546,7 @@ Operations:
 
 | Version | Change |
 | --- | --- |
+| 1.4.1 | Consistency pass (2026-09-23): §2 claimed no remote calls for indexing while Pass 3 sends documents and images to LLM subagents — Pass 3 now runs only under authorized routing (SEC-3) and reports when skipped. Implementation details of a Python reference removed (hash-seed variable, process workaround, a graph library's file format); the global graph moves from a home-directory path to the state tier and joins an office's graph only on explicit `global_add` (OFF-1). Storage citations corrected (STO-1/STO-8); canonical range CI-1…CI-20. |
 | 1.4.0 | Mapped new parent invariants CI-18 (disposable local cache / shared wiring — partial), CI-19 (read-triggered freshness against working-tree bytes; read-only drift report — partial), CI-20 (context delivery mode push vs. pull — roadmap) in §3; added the "graph as a folder of linked plain files, no store" alternative to §5 with the reason Cronus keeps the SQLite index |
 | 1.3.0 | Mapped new parent invariants CI-16 (resolution & indirect-edge synthesis w/ provenance — partial) and CI-17 (measured resolution coverage — roadmap) in §3 |
 | 1.2.0 | Mapped new parent invariants CI-14 (node summaries) and CI-15 (vocabulary-grounded query) as roadmap rows in §3 |
@@ -563,7 +566,7 @@ Operations:
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[CONCEPT]` | `.design/main/specifications/l1-code-intelligence.md` | L1 parent — CI-1…CI-13 invariant contract |
-| `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | STO-8 SQLite invariant |
+| `[CONCEPT]` | `.design/main/specifications/l1-code-intelligence.md` | L1 parent — CI-1…CI-20 invariant contract |
+| `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | STO-1 placement, STO-8 derived machine index |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | `codegraph.db` placement |
 | `[MEM]` | `.design/main/specifications/l2-memory-store.md` | sqlite-vec pattern (shared) |

@@ -1,6 +1,6 @@
 # Surface Conformance Corpus
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -20,6 +20,7 @@ Its sibling [l2-invocable-registry.md](l2-invocable-registry.md) removes the dup
 - [l1-acceptance-oracle.md](l1-acceptance-oracle.md) — The failure mode this spec is built against: a check that cannot fail. The present hand-copied verb mirror is exactly that.
 - [l2-cli.md](l2-cli.md) · [l2-tui.md](l2-tui.md) · [l2-application-shell.md](l2-application-shell.md) — The three registering consumers.
 - [l1-architecture.md](l1-architecture.md) — INV-3 parity is what the corpus measures; INV-9 honesty is what the surface-listing fixtures assert.
+- [l1-capability-reachability.md](l1-capability-reachability.md) — REA-1: agent-facing projections omit human-only invocables, which the surface-set family asserts.
 
 ## 1. Motivation
 
@@ -56,7 +57,9 @@ Its sibling [l2-invocable-registry.md](l2-invocable-registry.md) removes the dup
 | SP-8 Legitimate difference is named, with its reason | §4.6 holds the do-not-unify record: what is genuinely surface-specific and why. Terminal row measurement against browser layout, and the host-owned settings facility, are its first entries. |
 | SP-9 Extract before the second implementation exists | The inventory carries a *preemptive* class, and an inventory with no preemptive entries is one that has given up on SP-9. §4.2 seeds two, ahead of the surfaces that would otherwise create them. |
 | SP-10 Converge first, correct second | §4.7. Four known-wrong behaviors are recorded as residuals **at the invocable that owns them**, not in a tracker, so the next reader sees the known-wrong behavior where they are already looking. Each ships as a separate disclosed change. |
-| SP-11 Shared vocabulary, declared exposure | The corpus asserts the catalog property directly: for every surface, the set of exposed invocables equals the registry's shipped set minus that surface's **declared** exclusions. An undeclared omission fails the corpus rather than passing unnoticed. |
+| SP-11 Shared vocabulary, declared exposure | The corpus asserts the catalog property directly: for every surface, the set of exposed invocables equals the registry's shipped set minus that surface's **declared** exclusions — the loci it does not take (`l2-invocable-registry` §4.7) count as declared, and an agent-facing projection additionally omits every `HumanOnly` invocable (REA-1). An undeclared omission fails the corpus rather than passing unnoticed. |
+| SP-12 Projectable and executable faces | The surface-set family builds every projected entry from descriptors alone, and a fixture round-trips the desktop's serialized catalog as data: no handler or host handle is reachable from any payload a surface receives. Pending realization. |
+| SP-13 Unrecognized and unavailable are different answers | The outcome family carries an `Unknown` fixture — an invocation naming nothing registered — and asserts each surface's declared reaction (terminal UI: passes the line on as input; command line: usage error with the near-miss suggestion; desktop: catalog refresh), never an `Outcome`; a separate fixture asserts `Unavailable` for a resolved invocation whose backend cannot answer. Pending realization. |
 
 ## 4. Detailed Design
 
@@ -111,7 +114,7 @@ Each surface's test target calls the harness with its own projection function. T
 
 Three assertion families:
 
-- **Surface set** — exposed invocables equal the registry's shipped set minus declared exclusions (SP-11, INV-9).
+- **Surface set** — exposed invocables equal the registry's shipped set for the loci the surface takes, minus declared exclusions, and minus `HumanOnly` invocables on any agent-facing projection (SP-11, INV-9, REA-1).
 - **Schema** — each invocable's advertised argument schema on this surface matches its declared binders (IB-1).
 - **Outcome** — for each fixture invocation, the semantic outcome agrees across surfaces, including the rejection mode and location, and including the distinction between an empty result and an unavailable one.
 
@@ -182,5 +185,6 @@ The first and third are correctness defects, not stylistic ones: the first misre
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): SP-12 and SP-13 compliance rows added (pending realization): descriptor-only projections and an `Unknown` fixture per surface. The surface-set assertion predated locus filtering and reachability — it now counts the loci a surface does not take as declared exclusions and omits HumanOnly invocables from agent-facing projections (REA-1). |
 | 1.0.1 | 2026-09-06 | Patch. The unavailability-as-emptiness residual's correction column said 'a rejection carries its mode', which named the wrong mechanism: a rejection is strictly binder-scoped and always carries a real location within a bound argument (IB-4), and an unreachable backend has none. Corrected to a **distinct `Outcome` variant naming why** — the shape the registry actually implements. Wording only; the residual, its owner, and its SP-10 staging are unchanged. |
 | 1.0.0 | 2026-09-05 | Initial spec. Realizes SP-3…SP-8 and SP-10 as a **finding inventory**, two one-way **ledgers**, and a **conformance corpus** shaped as a shared fixture library plus a harness each surface runs in its own test target — the shape forced by the desktop shell's detached build workspace, and the shape SP-7 asks for independently. Seeds the inventory with eight audited findings (§4.2), including the live check-that-cannot-fail: parity asserted against a hand-copied verb list, green while the surfaces differ by eight verbs. Defines repayment as all four SP-4 conditions with no partial credit; pins deletions in an append-only tombstone ledger against a shrink-only debt ledger, so a reversal of either is legible. The corpus drives each surface's **real** projection across three assertion families — surface set (declared exclusions only, INV-9), advertised schema against declared binders (IB-1), and semantic outcome including rejection mode and the empty-versus-unavailable distinction — with fixtures written from the divergence rather than the feature. Records four residuals at their owning invocables (unavailability reported as emptiness, ignored output format, unescaped hand-built structured output, inert empty secret list), two of them correctness defects, all preserved through convergence and corrected separately per SP-10. Names the legitimate per-surface differences (§4.6) so an unstated exception cannot be read as either oversight or licence. |

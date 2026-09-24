@@ -1,6 +1,6 @@
 # Automation Canvas
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-automation-canvas.md
@@ -37,7 +37,7 @@ The model requires a legible, faithful projection that adds no runtime. Building
 | AC-3 No runtime divergence | The canvas has no node-execution code; every run is delegated to the engine and observed via the trace stream. |
 | AC-4 Data safety | Rendered traces show descriptors only (field names/types/counts), never verbatim payload content — the canvas reads only what the AuditProvider exposes. |
 | AC-5 Local persistence | Layout + explicit defs persist to the office local state store; the backup mechanism covers them; nothing is transmitted externally. |
-| AC-6 Graceful degradation | If the engine is unreachable, the canvas shows last-known state + a staleness badge and still allows viewing/editing defs; edits queue for sync on reconnect. |
+| AC-6 Graceful degradation | If the engine is unreachable, the canvas shows last-known state + a staleness badge and still allows viewing/editing defs; edits queue for sync on reconnect. Each queued edit carries the definition version it was made against, and a definition that changed meanwhile is never overwritten on reconnect — the user resolves the conflict (base fingerprint, `l1-change-merge`). |
 | AC-7 Pinned partial re-run requested | Pinning a node marks it; the canvas requests an engine dev run (AP-13) from a chosen node and renders the result from the trace — it never executes; runs are labelled development, actions dry-run unless opted live. |
 | AC-8 Observer scope visible | An `observer` node renders a kind badge (error/status/completion) and a dashed scope overlay on selection; scoped vs catch-all (*unhandled*) are visually distinct; selecting any node surfaces which observer catches its failure. |
 
@@ -72,7 +72,7 @@ Run list + per-node run trace + replay (re-display history, no execution) + live
 
 ### 4.5 Implicit surfaces
 
-`@ON:` pipelines render as collapsed read-only per-role groups; "Convert to explicit" extracts the blocks into a standalone definition, marks the source superseded (user confirms removal), and registers the new explicit pipeline with identical semantics — no behavior change.
+`@ON:` pipelines render as collapsed read-only per-role groups; "Convert to explicit" extracts the blocks into a standalone definition and registers it with identical semantics. The canvas never writes the workflow file (AC-2): the user removes the `@ON:` block through the workflow's own editing path, and the converted pipeline is created **disabled** until that block is gone — otherwise the same reaction would fire twice, once from each definition.
 
 ## 5. Implementation Notes
 
@@ -94,10 +94,11 @@ Run list + per-node run trace + replay (re-display history, no execution) + live
 | `[MODEL]` | `.design/main/specifications/l1-automation-canvas.md` | Invariants AC-1…AC-8 |
 | `[ENGINE]` | `.design/main/specifications/l2-automation-pipeline.md` | Pipeline engine this projects |
 | `[APP-UI]` | `.design/main/specifications/l2-app-ui.md` | Desktop UI host |
-| `[OFFICE-VIEW]` | `.design/main/specifications/l2-office-view.md` | Spatial view embed target |
+| `[OFFICE-VIEW]` | `.design/main/specifications/l2-office-view.md` | Office surface host (the core's interaction graph; no spatial view in core, OVZ-9) |
 
 ## Document History
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): "Convert to explicit" removed the `@ON:` source after confirmation although AC-2 says the canvas has no write path to workflow files, and the converted pipeline fired alongside the original — the user removes the block through the workflow's own path and the converted pipeline stays disabled until then. Queued offline edits could overwrite a definition changed meanwhile — they carry their base version and conflicts are resolved, not overwritten. A canonical reference to a spatial view no longer in core corrected. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — three-panel flow-graph projection, node rendering with live state, explicit editing + validation, read-only implicit surfaces, dev-run requests (AC-7), observer scope view (AC-8), local persistence + graceful degradation; maps AC-1…AC-8. |

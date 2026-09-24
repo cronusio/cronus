@@ -1,6 +1,6 @@
 # Filesystem Layout (OS-native)
 
-**Version:** 1.2.0
+**Version:** 1.2.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-storage-model.md
@@ -36,8 +36,9 @@ The model demands two separated tiers and scoped memory; this spec pins exactly 
 | STO-4 Multi-level memory | Paths per level: global `<state>/memory/`; workspace `<state>/workspaces/<ws>/memory/`+`graph/`; employee `<state>/employees/<role>/memory/`; session `<state>/workspaces/<ws>/sessions/`. |
 | STO-5 Scope-bound lifecycle | Deleting an office/role directory removes its memory; sessions pruned in place; global persists. |
 | STO-6 Secret isolation | Secrets in `<state>/.env` (template `.env.example`); excluded from backups and version control. |
-| STO-7 Restore-by-copy | Copying `<state>/` minus `.env` and cache restores the system. |
+| STO-7 Restore-by-copy | Copying `<state>/` minus `.env` and cache restores the system. **Partial** for project-local state roots (§4.3): until they are registered with the state tier, a copy of `<state>/` does not include them. |
 | STO-8 Human-inspectable state | Config as JSON, rules/notes/STATE as Markdown; `*.db` are derived indices alongside `notes/`. |
+| STO-9 Versioned state with forward migration | **Partial.** Session files carry a version and migrate forward on load (`l2-agent-session` §4.15). The SQLite stores create their schema idempotently but carry no schema version yet, and the JSON config files carry none — a version marker on each, the refuse-unknown-shape load, and the backup before a destructive rewrite are pending. |
 
 ## 4. Detailed Design
 
@@ -56,7 +57,7 @@ A single path resolver in the core maps the abstract roots (`<program>`, `<state
 
 ```plaintext
 <program>/
-├── bin/            # cronus (CLI), cronus-tui (TUI), cronusd (always-on service)
+├── bin/            # cronus — the one executable: CLI, terminal UI (bare `cronus`), always-on engine (`cronus serve`)
 ├── app/            # core engine library + desktop application shell
 ├── templates/      # employee/ , workspace/ (blueprints copied on init)
 ├── employees/      # read-only role catalog (CATALOG.md + role blueprints)
@@ -82,14 +83,40 @@ A single path resolver in the core maps the abstract roots (`<program>`, `<state
     ├── wiki/             #   wiki.db — client-facing projection CACHE (rebuildable, not source of truth)
     ├── sessions/         #   SESSION (episodic, pruned)
     ├── kanban/  office/  schedules/  hooks/  sandboxes/  snapshots/  dashboard/
+    └── missions/  planning/  constitution/  extensions/  skills/
 ```
+
+#### Path conventions used by other specifications
+
+`<ws>/…` in any specification denotes the office's **state root**, and a bare `.planning/…`
+denotes `<ws>/planning/…`. The state root is `<state>/workspaces/<ws>/` in the OS-native
+tier, or — for a project initialized in place with `cronus init` — the project's own
+`.cronus/` directory, found as the nearest ancestor of the working directory that holds
+one, falling back to the OS tier (as shipped). Wherever it lives, the office's planning and
+run state — missions, checkpoints, proposals, clarifications, training runs — stays inside
+the state root, never scattered among the project's tracked files. What an office
+deliberately delivers *into* a project (code, documents) is the project's; the records of
+how it got there are the office's. The one exception is an artifact a specification
+deliberately makes part of the project's version-controlled history and names as such —
+the development workflow's design documents and progress ledger (DW-5), committed to the
+feature branch.
+
+A project-local state root carries three obligations the OS-native tier meets by location
+alone. It is excluded from the project's version control, since office state is not project
+content and a checkout must not carry sessions or memory with it. It never holds a secret —
+those stay in the OS state tier's secret store (STO-6). And it is registered with the OS
+state tier, so a backup can enumerate it; otherwise copying `<state>/` would silently leave
+it behind (STO-7). **Partial:** `cronus init` creates the root, but writing the
+version-control exclusion and registering the root are pending. Project *configuration*
+committed on purpose (`.cronus/settings.json`, commands, skills) is a different thing, loaded
+only after the workspace trust decision (`l2-security` §4.8).
 
 ### 4.4 Database placement (SQLite + sqlite-vec)
 
 | Level | File | Engine |
 | --- | --- | --- |
 | Global | `<state>/memory/global.db`, `<state>/memory/graph.db` | SQLite + sqlite-vec |
-| Workspace | `<state>/workspaces/<ws>/memory/workspace.db`, `<ws>/graph/graph.db` | SQLite + sqlite-vec |
+| Workspace | `<state>/workspaces/<ws>/memory/workspace.db`, `<state>/workspaces/<ws>/graph/graph.db` | SQLite + sqlite-vec |
 | Workspace wiki | `<state>/workspaces/<ws>/wiki/wiki.db` | SQLite + FTS5 (projection cache; rebuildable, droppable — see l2-project-wiki) |
 | Employee | `<state>/employees/<role>/memory/employee.db` | SQLite + sqlite-vec |
 
@@ -126,3 +153,5 @@ Physical consolidation (one file with attached schemas vs separate files per lev
 | 1.0.0 | 2026-06-24 | Initial stable spec — OS-native tier locations, program/state trees, database placement, repository visualization stub. |
 | 1.1.0 | 2026-07-08 | `[ADDED]` `<program>/skills/` (read-only preset skill store) to the program tier tree; `[MODIFIED]` `<state>/skills/` comment to reflect the mutable skill store (user-added + generated canonical packages); Related Specifications link to the skill system spec. Additive — status remains Stable. |
 | 1.2.0 | 2026-07-15 | `[ADDED]` `<state>/workspaces/<ws>/wiki/wiki.db` — the per-office project-wiki projection cache (SQLite + FTS5; rebuildable/droppable, not source of truth) to the workspace tree and the §4.4 database-placement table. Additive — status remains Stable. Realized by the new l2-project-wiki. |
+| 1.2.1 | 2026-09-23 | Consistency pass (2026-09-23): STO-9 (versioned state with forward migration) was unmapped — Partial (session files versioned; SQLite and JSON state carry no schema version yet). Other specifications write `<ws>/…` and `.planning/…` for office state that this layout never placed — the convention is now defined (`<state>/workspaces/<ws>/`, planning tree in the state tier, never in the user's repository, per STO-7) and the workspace tree lists missions/, planning/, constitution/, extensions/, skills/. One graph path lacked its `<state>/workspaces/` prefix. The state-tier convention now names its one exception: an artifact a specification deliberately makes part of the project's version-controlled history — the development workflow's design documents and progress ledger (DW-5). |
+| 1.2.2 | 2026-09-24 | Consistency pass (2026-09-24): The state-root convention added yesterday placed office state only in the OS tier, but `cronus init` creates a project-local `.cronus/` state root that every verb resolves first (as shipped) — the convention now names both, with the obligations a project-local root carries (excluded from version control, no secrets, registered for backup — Partial), and the STO-7 row states the backup gap. The program tier listed three executables (`cronus`, `cronus-tui`, `cronusd`) although the product ships one binary — the terminal UI and the always-on engine are modes of `cronus` (`l2-cli` §4.2, `l2-service-activation` §2). |

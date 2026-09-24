@@ -1,6 +1,6 @@
 # Learning Loop
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-extensions.md, l1-memory-model.md
@@ -17,6 +17,7 @@ The concrete mechanism by which Cronus improves itself over time: a post-turn ba
 - [l2-memory-store.md](l2-memory-store.md) - Memory write targets for the review fork.
 - [l2-agent-session.md](l2-agent-session.md) - `should_review_memory` flag that gates the post-turn review.
 - [l2-skill-system.md](l2-skill-system.md) - The mutable skill store (`<state>/skills/`) and the canonical package/execution stack generated skills must conform to.
+- [l1-component-scanning.md](l1-component-scanning.md) - CS-10: a mutation of an admitted component re-opens its verdict — why revisions of active skills wait for review.
 
 ## 1. Motivation
 
@@ -29,17 +30,17 @@ Agents that run identical sessions have no institutional memory. The learning lo
 - Writes go only to memory and skill stores; the review fork cannot modify the main conversation.
 - The curator runs on inactivity detection, not a continuous cron schedule.
 - The curator never auto-deletes — only archives (archival is always reversible).
-- Only agent-created skills are subject to auto-transitions; preset and user-authored skills are exempt.
+- Only agent-generated skills (`source: generated`) are subject to auto-transitions; preset, user-added and imported skills are exempt.
 
 ## 3. Invariant Compliance (Layer 2 only)
 
 | L1 Invariant | Implementation |
 | --- | --- |
 | EXT-7 Skill generation | Post-turn fork distills patterns into candidate skills; curator promotes them after review gate. |
-| EXT-3 Default-deny | Generated skills enter as `discovered` (inactive) pending explicit review and activation. |
-| MEM-3 Curator ownership | The curator is the sole writer to skill lifecycle state; other components only read it. |
-| MEM-4 Decay | Curator applies `stale_after_days` / `archive_after_days` transitions; never deletes. |
-| SEC-3 Default-deny egress | Review fork operates within a tool whitelist; no external network access. |
+| EXT-3 Default-deny | Generated skills enter as `discovered` (inactive) pending explicit review and activation; a change the fork or curator makes to an **active** skill is a pending revision, reviewed before it replaces the running version (§4.1). |
+| MEM-7 Ownership split | The curator is the sole writer to skill lifecycle state; other components only read it. |
+| MEM-5 Scope-aware decay & prune | Curator applies `stale_after_days` / `archive_after_days` transitions; never deletes. |
+| SEC-3 Default-deny egress | Review fork operates within a tool whitelist with no network tools; its only egress is the model provider the parent session already uses under the same authorization. |
 | SEC-6 Sandboxed | Review fork's write permissions are limited to memory and skill stores. |
 
 ## 4. Detailed Design
@@ -88,6 +89,8 @@ Preference order (prefer earlier action):
 
 Target library shape: class-level skills with rich `SKILL.md` and `references/` directory — not a flat list of narrow one-session entries.
 
+**Edits to a skill in use are revisions, not rewrites.** A skill is a standing instruction: whatever it says, every later session that loads it obeys. So options 1–3 never change an active skill in place — the fork writes a **pending revision** beside it, the active version keeps running, and the revision replaces it only when reviewed and granted (EXT-3; a mutation re-opens an admitted component's verdict, `l1-component-scanning` CS-10). A preset skill is never patched at all: the revision is an override copy in the state store, pending like any other (STO-3). A user-authored skill is revised only the same way, for its author to accept. Without this, content the session merely read — a fetched page, a tool result — could be distilled straight into an instruction every future session follows.
+
 ### 4.2 Skill package format
 
 Each skill is a directory (package) in `<state>/skills/<name>/` (the mutable skill store — see the skill system spec):
@@ -126,12 +129,12 @@ CuratorConfig {
 Curator responsibilities (in order):
 
 1. **Auto-transitions (deterministic, no LLM):** active → stale when unused ≥ `stale_after_days`; stale → archived when unused ≥ `archive_after_days`. Pinned skills are exempt from all auto-transitions.
-2. **Background review fork (LLM):** reviews quality of agent-created skills; patches, archives, or consolidates via `skill_manage` tool.
+2. **Background review fork (LLM):** reviews quality of agent-created skills; archives, or proposes patches and consolidations via `skill_manage` — a patch or consolidation of an active skill is a pending revision (§4.1), never an in-place rewrite.
 3. **Persist curator state** (see §4.4).
 
 Hard invariants:
 
-- Only touches agent-created skills (`source: generated | custom`). Preset (`source: preset`) and user-authored skills are never auto-transitioned.
+- Only touches agent-generated skills (`source: generated`). Preset (`source: preset`) skills and user-added or imported skills (`source: custom`) are never auto-transitioned — `custom` is the user's and imports' source, not the agent's, and an agent patch never changes a skill's source.
 - Never auto-deletes — only archives. Archive is reversible.
 - Pinned skills bypass all auto-transitions.
 - Uses the auxiliary client — never touches the main session's prompt cache.
@@ -186,3 +189,4 @@ Generated skills enter at `discovered` (inactive) per EXT-3. User review and exp
 | --- | --- | --- |
 | 1.0.0 | 2026-06-25 | Initial stable spec — post-turn background review fork, skill package format, idle-triggered curator with lifecycle transitions. |
 | 1.1.0 | 2026-07-08 | `[MODIFIED]` Skill package path aligned to the mutable skill store (`<state>/extensions/skills/` → `<state>/skills/`); package tree aligned to the canonical execution stack (`scripts/` support directory replaced by optional `workflow.nd` — generated skills carry no interpreted scripts). Related Specifications + Canonical References link to the skill system spec. History table added with this entry. Path alignment — status remains Stable. |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Compliance rows cited MEM-3 (multi-signal recall) and MEM-4 (source of truth) for curator ownership and decay — now MEM-7 and MEM-5. The review fork and curator could rewrite active (incl. user-authored and preset) skills in place — edits to a skill in use are now pending revisions reviewed before they replace it (EXT-3, CS-10, STO-3), closing a path from read content to standing instructions. SEC-3 row corrected (the fork's egress is the parent's own provider). The curator's scope listed `source: generated \| custom` as "agent-created", but `custom` is the user-added and imported source, contradicting the same section's "user-authored skills are never auto-transitioned" — scope is now `source: generated` only, and an agent patch never changes a skill's source (§2 aligned). |

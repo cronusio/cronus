@@ -1,6 +1,6 @@
 # Workspace Management
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-workspace-lifecycle.md
@@ -37,7 +37,7 @@ The lifecycle model demands a one-gesture office creation, an always-present hom
 | WSL-5 Default manager bootstrap | On create, the core instantiates the office manager before returning the open office. |
 | WSL-6 Bidirectional staffing | The manager calls core hire/release operations against the role catalog as needs change. |
 | WSL-7 Editable metadata | A settings panel writes name/description/local path back to `<ws>/config.json` without recreating the office. |
-| WSL-8 Isolation & clean deletion | Each office is its own directory; deleting a project removes `<state>/workspaces/<id>/` only; home is exempt. |
+| WSL-8 Isolation & clean deletion | Each office is its own directory; deleting a project removes `<state>/workspaces/<id>/` only — never the project's own directory on disk; home is exempt. Deletion is a confirmed user act (§4.4). |
 
 ## 4. Detailed Design
 
@@ -70,11 +70,15 @@ normalize(name):
   lower-case
   replace runs of non [a-z0-9] with single "-"
   trim leading/trailing "-"
-  on collision with an existing workspace id -> append "-2", "-3", ...
+  truncate to 64 characters (at a "-" boundary where possible)
+  if empty -> "workspace"                   // a name with no Latin letters or digits
+  on collision with an existing workspace id, or with a name the OS reserves for a device
+  (con, prn, aux, nul, com1…com9, lpt1…lpt9) -> append "-2", "-3", ...
 # "My Game Dev!" -> "my-game-dev"
+# "Мой проект"   -> "workspace" (or "workspace-2", …); the name itself is kept as typed
 ```
 
-Only lowercase letters, digits, and `-` as separator (per WSL-4).
+Only lowercase letters, digits, and `-` as separator (per WSL-4). The identifier only names the directory: the human-readable name is stored as given in `config.json`, so a name in any script survives normalization intact even when little or nothing of it reaches the identifier.
 
 ### 4.4 Create / edit / delete flows
 
@@ -91,7 +95,7 @@ graph TD
 ```
 
 - **Close** a tab hides the office without destroying state; reopening relists it.
-- **Delete** removes the office directory entirely (WSL-8); the home office offers no delete.
+- **Delete** removes the office directory entirely (WSL-8); the home office offers no delete. It is destructive and irreversible, so it is the user's act only (WSL-3): the surfaces require confirmation (the id typed back, or `--yes` in scripts), and `workspace.delete` is in no agent's tool surface — an office can delete neither itself nor a sibling (OFF-1). An office with work in flight is paused first (drain and checkpoint, `l2-office-control`) so no step is cut off mid-write. Deletion removes the office's state only — never the project directory recorded as its local path.
 
 ### 4.5 Default manager bootstrap
 
@@ -129,3 +133,10 @@ Workspace operations across all three surfaces, conforming to the CLI grammar st
 | `[LIFECYCLE]` | `.design/main/specifications/l1-workspace-lifecycle.md` | Invariants this implements |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | Template source and state destination |
 | `[APP]` | `.design/main/specifications/l2-app-ui.md` | Application shell hosting the tab bar |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Name normalization produced an empty identifier for names with no Latin letters or digits (any Cyrillic name) and could produce device names Windows reserves (`con`, `nul`, …) — fallback id, reserved-name suffixing, and a length cap added; the human-readable name is kept as typed. Delete was unconfirmed and unscoped — it is a confirmed user-only act (WSL-3), absent from any agent's tool surface, pauses an office with work in flight first, and never touches the project directory at the recorded local path. |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

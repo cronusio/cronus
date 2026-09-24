@@ -1,6 +1,6 @@
 # Memory Encryption
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md, l1-memory-model.md
@@ -24,7 +24,7 @@ Memory entries contain summaries of past conversations, user preferences, and ta
 ## 2. Constraints & Assumptions
 
 - Encryption is per-chunk, not per-database. This allows partial decryption and deferred key unlock.
-- The content key is never written to disk; it lives in process memory for the lifetime of the session.
+- The content key is never written to disk in plaintext; it lives in process memory for the lifetime of the session, and its only persisted copy is the OS keychain entry (§4.2), protected by the OS session credentials.
 - Argon2id parameters are tuned for interactive use (≤ 500 ms KDF on 2024-era hardware).
 - Key rotation requires the current session's key (already in memory), not a re-entry of credentials.
 
@@ -32,9 +32,10 @@ Memory entries contain summaries of past conversations, user preferences, and ta
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| SEC-1 Secret isolation | The content key lives only in-process; it is never written to disk, logged, or included in exports. |
+| SEC-1 Secret isolation | The content key lives in process memory and, for session resume, in the OS keychain only (§4.2); it is never written to disk in plaintext, logged, or included in exports or backups. |
 | SEC-5 No leakage | Plaintext exists only during the decrypt-read-use-discard cycle; it is never persisted after the read completes. |
-| MEM-3 Lifecycle | Encrypted chunks follow the same creation/archival/deletion lifecycle as plaintext chunks; the encryption layer is transparent to the memory curator. |
+| MEM-5 Scope-aware decay & prune | Encrypted chunks follow the same decay, prune and deletion lifecycle as plaintext chunks. |
+| MEM-7 Ownership split | The encryption layer sits beneath the core read/write/recall contract and is transparent to the memory curator; no caller handles ciphertext. |
 
 ## 4. Detailed Design
 
@@ -56,7 +57,7 @@ key = Argon2id(
 
 The salt is derived from the workspace identifier so the same password produces different keys for different workspaces. It is not a secret and does not need to be stored separately.
 
-The derived key is **never stored on disk**. After derivation, it is placed in a zeroizing buffer in process memory and zeroed when the session ends.
+The derived key is **never stored on disk in plaintext** — its one persisted copy is the OS keychain entry of §4.2. After derivation, it is placed in a zeroizing buffer in process memory and zeroed when the session ends.
 
 ### 4.2 OS keychain integration
 
@@ -141,7 +142,7 @@ The transaction guarantees atomicity: if rotation fails mid-way (decrypt error, 
 | Session end / logout | Zero the in-process buffer; keychain entry persists |
 | Workspace delete | Zero buffer; delete keychain entry; wipe memory DB and `codegraph.db` |
 | Key rotation | Derive new key; re-encrypt (transactional); update keychain; zero both keys |
-| OS lock screen | Zero buffer; keychain entry persists (re-loaded on next OS unlock) |
+| OS lock screen | Zero buffer; keychain entry persists. The key is re-loaded from the keychain at its next use, so the always-on office keeps running unattended behind a locked screen (SCH-6, OFF-8); where the platform keychain is not readable while locked, a run that needs memory defers that step and reports it rather than failing silently. |
 
 ### 4.7 Command surface
 
@@ -167,3 +168,10 @@ The transaction guarantees atomicity: if rotation fails mid-way (decrypt error, 
 | `[MEMORY]` | `.design/main/specifications/l1-memory-model.md` | Memory lifecycle |
 | `[MEMSTORE]` | `.design/main/specifications/l2-memory-store.md` | Chunk storage this wraps |
 | `[SEC2]` | `.design/main/specifications/l2-security.md` | Keychain integration pattern |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Resolved the "key never written to disk" vs "key stored in the OS keychain" contradiction (never on disk in plaintext; the keychain entry is its only persisted copy). Compliance row cited MEM-3 (multi-signal recall) for lifecycle — now MEM-5 and MEM-7. OS-lock row no longer waits for unlock, which would have stopped the unattended always-on office (SCH-6, OFF-8). |
+| 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

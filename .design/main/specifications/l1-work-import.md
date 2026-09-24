@@ -1,6 +1,6 @@
 # Work Import
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -244,11 +244,11 @@ The disposition for the workflow library is **Reuse, no new nodus invariant**:
 - **Import is a host-side onboarding operation.** Reading an external source and reconciling it onto
   the office board is a host/office concern; a nodus workflow could *drive* an import (a step that
   invokes a host-provided import capability declared in its LP-8 manifest and gated per-effect by
-  LP-11), but the adapter/normalize/reconcile machinery is host-supplied (LP-2), never nodus core.
+  LP-11), but the adapter/normalize/reconcile machinery is host-supplied (nodus LP-2), never nodus core.
 - **The adapter→normalized-model→load shape is already the schema-provider pattern.** A source
   adapter emitting a normalized model is structurally the same seam as nodus's host-supplied
   providers — a concrete host implementation behind an abstract interface — so it needs no new
-  portable invariant; it is an instance of the pattern LP-2 already owns.
+  portable invariant; it is an instance of the pattern nodus LP-2 already owns.
 - **Live-pull egress is already a host concern.** Whether an import pulls from a live tracker (egress)
   or a local file is exactly the host egress decision LP-15's storage seam and the main security gate
   already govern; nodus neither performs nor assumes it.
@@ -299,4 +299,5 @@ amendment then — not speculatively now.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-09 | Initial model: work import — bounded one-directional migration of an existing external backlog into the canonical office model: source-adapter isolation (WI-1), source-agnostic normalized intermediate model (WI-2), reconciling load that dedups labels/resolves actors/reuses existing entities (WI-3), external-status-to-canonical-pipeline mapping with kind inference (WI-4), idempotent + resumable + rate-limit-aware load (WI-5), preserved provenance with imported-content-untrusted-by-default (WI-6), fidelity-honest lossy-declared mapping (WI-7), asset/reference rewriting (WI-8), interactive/headless parity (WI-9), and consent-gated local-first convergence as materialize cards (WI-10); ideas-to-adopt mapping (mined from studied open-source tracker-migration tooling) + nodus-relevance disposition (Reuse behind the host provider seams, no new nodus invariant). |

@@ -1,6 +1,6 @@
 # Optimization Integrity
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -204,7 +204,7 @@ Integrity verification is a *producer* of signals, not a repairer or an egress:
 A workflow step that invokes a model, reads a cached macro result, or dereferences a
 `StorageProvider` has the same silent-degradation exposure at the step grain — but it
 needs **no new language invariant**, because the seams already exist and integrity
-observation is a host concern (LP-1/LP-2):
+observation is a host concern (nodus LP-1/LP-2):
 
 | Element | nodus seam | Note |
 | --- | --- | --- |
@@ -242,4 +242,5 @@ host that verifies nothing behaves exactly as today).
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-15 | Core Team | Initial spec — optimization integrity as the cross-cutting verification discipline for silently-degradable optimizations: named silent-failure class with mandatory coverage (OI-1), runtime violation sensor for byte-exact/emergent contracts rather than a test alone (OI-2), measured-not-asserted correctness parity via fixture or held-out control (OI-3), honestly-measured per-stage efficacy with counterfactual estimate+range or holdout (OI-4), tail-aware distribution parity/regression gate rather than a central-statistic check (OI-5), bounded-cardinality code-closed observation dimensions with untrusted input never a label (OI-6), verify-don't-repair-or-hide measure-and-surface boundary (OI-7), fail-visible unverified-is-never-trusted coverage honesty (OI-8); §4.3 must-stay-zero passthrough sensor, §4.4 p50/p95/p99/mean parity gate, §4.5 closed-vocabulary label discipline; nodus-relevance mapping needing no new NL invariant (host-side over AuditProvider HO-8/HO-9 + `!!` + `RUN(@macro)` reuse gating). Distilled from an adoption pass over an external agent context-optimization reference whose *transform* mechanics (content-routed reversible compression, cache-aligned live-zone compression, output-side character/effort shaping, cross-agent memory, failure-mining) were already realized by l1-context-compression (CC-1…11 + §4.5 CCR), l1-cache-stable-context, l1-generation-shaping (GS-1…9), the memory cluster, and l2-learning-loop — OI captures the one remaining delta those transform-focused passes left open: the *verification layer* that proves a silently-degradable optimization stays correct-and-effective (runtime passthrough-integrity alarm, full-distribution parity gate, bounded-cardinality observation), generalizing the per-surface guards CSC-4/CSC-11, IC-7, RE-6, and GS-6 into one contract. |

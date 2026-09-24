@@ -1,6 +1,6 @@
 # Generation Shaping
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -132,7 +132,7 @@ The estimate is the default because it needs no sacrifice of savings; the holdou
 
 ## nodus-relevance mapping
 
-A workflow step that invokes a model (a `GEN`/`REFINE` step) has the same shaping opportunity at the step grain — but it needs **no new language invariant**, because the seams already exist and shaping is a host concern (LP-1/LP-2):
+A workflow step that invokes a model (a `GEN`/`REFINE` step) has the same shaping opportunity at the step grain — but it needs **no new language invariant**, because the seams already exist and shaping is a host concern (nodus LP-1/LP-2):
 
 | Element | nodus seam | Note |
 | --- | --- | --- |
@@ -157,4 +157,5 @@ The nodus workspace owns any realization; this records the mapping. The workflow
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-13 | Core Team | Initial spec — generation shaping as the third output-economy concern beside the length budget and the output contract: turn-classified modulation (GS-1), verbosity steering as request-instruction never post-trim (GS-2), floored effort/reasoning-depth modulation — down on routine, full on new/error/ambiguous (GS-3), correctness supremacy as the load-bearing floor (GS-4), cache-stable steering placement (GS-5), counterfactual measurement honesty — estimate+CI or held-out control group, never a fabricated exact figure (GS-6), opt-in/reversible/live-reconfigurable (GS-7), learned-and-overridable level from implicit behavioral signals (GS-8), accounted & observable as a distinct signal (GS-9); nodus-relevance mapping needing no new NL invariant (host-side over NL-15 + ModelProvider options + @err/!! + HO-8). Distilled from an adoption pass over an external agent context-optimization reference whose input-side mechanics (content-routed reversible compression, cache-aligned live-zone compression, cross-agent memory, failure-mining) were already realized by l1-context-compression (CC-1…11 + §4.5 CCR), l1-cache-stable-context, l1-inference-cache, the memory cluster, and l2-learning-loop — GS captures the one genuine delta, the output-side character/effort modulation none of those covered. |

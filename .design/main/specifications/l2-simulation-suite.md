@@ -1,6 +1,6 @@
 # Simulation Suite
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-usage-simulation.md
@@ -63,8 +63,9 @@ expensive and flaky or the runs get skipped — in practice both, in that order.
 exists so the valuable part of a free-route discovery survives into a lane that *is* cheap,
 deterministic, and safe to block on.
 
-**Real effects need a real, disposable place to land.** The product writes a `.cronus/` state
-directory into the working directory it is run from. That makes containment easy and makes
+**Real effects need a real, disposable place to land.** `cronus init` writes a `.cronus/` state
+root into the working directory it is run from, and every later verb resolves the nearest such
+root above its working directory (`l2-filesystem-layout` §4.3). That makes containment easy and makes
 getting it wrong easy too: a run that forgets to relocate its working directory writes into the
 repository, or into the developer's own workspace. The world builder exists to make the safe
 path the only path.
@@ -108,7 +109,7 @@ path the only path.
 | **USM-10** Companion artifact | A change that adds or alters user-observable behaviour lands its scenario in the same change. The check is mechanical where it can be: `cronus-sim coverage --changed` reports catalog entries whose descriptors changed without any scenario naming them, and that report is what the review reads. Where a behaviour genuinely has no scenario yet, it is recorded as quality debt rather than passing silently. |
 | **USM-11** Obligations must be falsifiable | The scenario validator refuses, at parse time: an obligation with no `evidence`; an activity-shaped `statement` (matched against a verb list — *exercise*, *check*, *improve*, *review*, *handle*); an `expect` whose only signal is a word failure output also produces; an absence claim with no declared positive control; and an empty or duplicate-identity obligation set. A refusal is an error, never a skip. The report states the judged-to-runnable ratio of every set it ran. |
 | **USM-12** Reports, does not repair | The agent contract forbids edits to tracked files during a run, and the harness records a repository dirtiness digest at world build and at teardown; a run that ends with the working tree changed is reported `contaminated` and its verdicts are discarded. Findings are written to the run directory as Markdown and are transcribed into the project's issue channel by a human decision, never by the harness. |
-| **USM-13** Discoveries may be classified and may propose | **Pending** — no realization yet. The wrapper's discovery-recording command accepts free text only today; it has no field for a class or a proposed remedy, and `finish`'s report has no place to render either. Reconciled at the next `/magic.task main` pass. |
+| **USM-13** Discoveries may be classified and may propose | **Pending** — no realization yet. The wrapper's discovery-recording command accepts free text only today; it has no field for a class or a proposed remedy, and `finish`'s report has no place to render either. |
 
 ## 4. Detailed Design
 
@@ -327,3 +328,4 @@ agent-driven lanes are invoked by a person or by an agent acting on a person's i
 | 1.0.0 | 2026-09-11 | Core Team | Initial spec — the realization of usage simulation in this stack: a root-level `simulations/` scenario corpus tiered by directory (short/broad/exhaustive); a ports-tier `cronus-simulation` harness crate providing disposable worlds under the platform temp root with a refusal guard against spawning inside the repository, an append-as-it-happens transcript, a scenario validator that refuses unfalsifiable obligation sets at parse time, and a catalog-complement coverage report; the `cronus-sim` wrapper every product invocation passes through, which is what makes the record evidence rather than agent testimony; and the two-runner split in which the expensive free-route agent runner discovers while pinned replays under `crates/simulation/tests/replays/` guard in the ordinary `cargo test` gate at no inference cost. Every scenario declares a `bound` (steps, wall seconds, spend) and `finish` emits `incomplete` as an exit status distinct from pass and fail; `roles` sits beside `covers` so the coverage complement becomes role-aware without a schema change when multi-user rights land. Attribution separates product, scenario, and environment defects; a run that leaves the working tree dirty is reported contaminated and its verdicts discarded. |
 | 1.0.1 | 2026-09-12 | Core Team | Registry sync — L1 parent `l1-usage-simulation` gained USM-13 (a discovery may be classified against the improvement loop's own taxonomy and may carry a proposed remedy) and reverted `Stable → RFC` for its own Post-Update Review; this L2 is quarantined to `RFC` in step (C12), since its own realization has not yet reconciled USM-13. New §3 row records the gap as **Pending**: today's discovery-recording command carries free text only, with no class field and no proposed-remedy field. No code changed; the gap is planned at the next `/magic.task main` pass. |
 | 1.0.2 | 2026-09-12 | Core Team | Un-quarantined (C12 upward reversal) — L1 parent `l1-usage-simulation` passed its second review and returned `RFC → Stable` (1.1.1). This L2 follows it back to `Stable`: the §3 USM-13 row stays **Pending** — a disclosed implementation gap, not a blocker, the same standing several already-Stable L2 tables in this project carry for a newly-added invariant (Stable records the design as settled, not every invariant as coded). No code changed; USM-13's realization is still reconciled at the next `/magic.task main` pass. |
+| 1.0.3 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): The Motivation said the product writes `.cronus/` wherever it runs; it is `cronus init` that creates the project-local state root and later verbs resolve the nearest one (`l2-filesystem-layout` §4.3). A build-process reference removed from the USM-13 row. |

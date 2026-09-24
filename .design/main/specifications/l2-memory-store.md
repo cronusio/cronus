@@ -1,6 +1,6 @@
 # Memory Store
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -15,6 +15,8 @@ The concrete realization of the memory model for v0.1.0: an embedded store using
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - On-disk locations of the per-scope databases.
 - [l2-technology-stack.md](l2-technology-stack.md) - SQLite + sqlite-vec; optional remote sync.
 - [l2-core-library.md](l2-core-library.md) - Hosts the memory service on the hot path.
+- [l2-agent-constitution.md](l2-agent-constitution.md) - §4.25 standing-instruction sink rule the quick-memory files share (§4.11).
+- [l1-action-gating.md](l1-action-gating.md) - AG-10: a write into text loaded as standing instruction is a privileged sink.
 
 ## 1. Motivation
 
@@ -93,6 +95,21 @@ graph TD
     MERGE --> BUD[Truncate to token budget]
 ```
 
+**The fusion score — one definition.** Every ranking signal this spec adds joins this single formula; the later sections name their signal and point here rather than restating a formula of their own:
+
+```text
+[REFERENCE]
+recall_score = ( w_vec  · vec_similarity                          // §4.1 vec0 KNN (or HRR similarity, §4.8, as its fallback)
+               + w_fts  · bm25_normalized                         // FTS5 leg (§4.2.1)
+               + w_trust· (trust_score · confidence)              // §4.6 trust × §4.15 write-time confidence
+               + w_util · (utility · verification_weight)         // §4.4 verification weights, §4.9 Bellman utility
+               + w_rec  · recency                                 // §4.2.2, off by default (w_rec = 0)
+               + w_graph· graph_score )                           // §4.16, 0 when no code node is active
+             / (sum of the active weights)
+filter: trust_score ≥ TRUST_MIN_SEARCH (§4.6); superseded_at IS NULL (§4.14); tag filter when given
+then:   MMR re-ordering when mmr_lambda < 1 (§4.2.2); merge across scopes; truncate to the token budget
+```
+
 <!-- [ADDED] v1.3.0 -->
 **Concurrent recall legs and scopes.** The recall legs are independent until the fuse: the FTS5 pass and the tag filter run while the query embedding is computed (the embedding call is the latency-dominant leg; lexical results never wait on it), and the vec0 KNN pass starts as soon as the embedding is ready. Because each scope (employee / workspace / global) is a separate database file, the per-scope leg sets execute concurrently on scope-local read connections and meet at the existing cross-scope merge step. The fuse remains a single deterministic reduction over the joined candidate sets — concurrency changes arrival order, never ranking (weights and the §4.2.2 refinements apply after the join).
 
@@ -120,7 +137,7 @@ The fallback keeps lexical recall functional for any script without bundling a l
 Two optional ranking refinements apply after the weighted fuse and before truncation to the token budget. Both are config-gated and default to behavior identical to the unrefined fuse, so they are non-breaking; their effect on recall quality is measurable via the retrieval-evaluation harness (see `l1-retrieval-evaluation.md`).
 
 - **MMR diversity** — when enabled, the fused candidate list is re-ordered by Maximal Marginal Relevance instead of pure score: each next pick maximizes `λ · score − (1−λ) · max_similarity_to_already_picked`. `mmr_lambda ∈ [0,1]` trades relevance (1.0 = pure score, the default) for diversity (lower = less redundant). This suppresses near-duplicate memories crowding the top-K when several items restate the same fact.
-- **Opt-in recency** — recency is a third ranking signal, **off by default** (`recency_weight = 0`). When enabled it joins the normalized fuse as `score = (sim_w·sim + util_w·util + rec_w·recency) / (sim_w + util_w + rec_w)`, where `recency` decays with a configurable half-life (`recency_halflife_days`, default 30). Useful for fast-moving projects where fresh memories should outrank stale-but-popular ones; left off, ranking is purely similarity + utility + verification weight as before.
+- **Opt-in recency** — recency is an additional ranking signal, **off by default** (`recency_weight = 0`). When enabled it joins the normalized fuse of §4.2 as its `w_rec · recency` term, where `recency` decays with a configurable half-life (`recency_halflife_days`, default 30). Useful for fast-moving projects where fresh memories should outrank stale-but-popular ones; left off, the fuse is unchanged.
 
 ```text
 [REFERENCE] recall ranking knobs (config-gated, defaults = no behavior change)
@@ -131,7 +148,7 @@ recency_halflife_days = 30.0
 
 ### 4.3 Write path
 
-Core service: classify scope/type/tags → embed → semantic dedup (cosine threshold) → upsert into the owning scope's DB and append/update the corresponding `notes/*.md`.
+Core service: classify scope/type/tags → embed → semantic dedup (cosine threshold) → upsert into the owning scope's DB. The `memory_item` row is the only write (MEM-4); there is no companion note file to keep in step.
 
 ### 4.4 The archivist role (curator)
 
@@ -209,11 +226,7 @@ record_feedback(id: &str, helpful: bool) -> TrustUpdate:
 -- Exclude low-trust facts from recall
 WHERE trust_score >= TRUST_MIN_SEARCH
 
--- Trust is an additive weight in the recall fusion score
-recall_score = vec_similarity * w_vec
-             + fts_bm25 * w_fts
-             + trust_score * w_trust
-             + utility * w_utility
+-- Trust enters the §4.2 fusion as its w_trust term (multiplied by the §4.15 write-time confidence)
 ```
 
 `retrieval_count` is incremented automatically on every recall hit and provides a popularity signal for the archivist's `prune` stage (frequently recalled = higher keep priority).
@@ -329,14 +342,15 @@ Unbinding with `ROLE_ENTITY` from a stored HRR vector recovers an approximate re
 
 ```text
 [REFERENCE]
-snr_estimate(dim: usize, n_items: usize) -> f64:
-  sqrt(dim as f64 / n_items as f64)
+snr_estimate(dim: usize, n_components: usize) -> f64:
+  sqrt(dim as f64 / n_components as f64)
 
-// Warn when SNR < 2.0 — retrieval accuracy degrades below this threshold
-// dim=1024: supports ~256 items before degradation (√1024/256 = 2.0)
+// n_components = the vectors bundled into ONE HRR vector (a fact's content binding plus its entity bindings)
+// Warn when SNR < 2.0 — unbinding accuracy degrades below this threshold
+// dim=1024: supports ~256 components per vector before degradation (√1024/256 = 2.0)
 ```
 
-When the archivist's `prune` stage runs, it checks `snr_estimate(HRR_DIM, n_items)`. If SNR < 2.0, low-trust + low-utility items are eligible for pruning ahead of schedule to restore capacity headroom.
+The limit belongs to a single bundled vector, not to the store: every fact carries its own `hrr_phases`, so the number of facts stored does not degrade any fact's vector. `encode_fact` therefore caps the entity bindings it bundles into one vector so the estimate stays ≥ 2.0 (the remaining entities stay linked through `memory_fact_entity`, §4.7). The guard never prunes items — deleting knowledge to relieve a fallback encoding would trade durable memory for a signal that is only used when no embedding model is configured (MEM-6).
 
 ### 4.9 Bellman propagation
 
@@ -468,6 +482,10 @@ set_user_context(content: &str, role: &str) -> Result<(), MemoryLimitError>
 
 Quick memory files are the **working memory** — small, always injected, human-inspectable. The vector/FTS store (§4.1–4.10) is the **deep archive** — indexed, queried on demand. The archivist's distill stage may promote stable quick-memory items into the structured store; the quick-memory files then slim down to the most immediately relevant facts.
 
+#### Quick memory is a standing-instruction sink
+
+Because `MEMORY.md` and `USER.md` are injected into every session, a sentence written into them outlives the conversation that produced it — the same persistence sink as the constitution files (`l2-agent-constitution` §4.25, `l1-action-gating` AG-10). The same rule applies: a machine write — the agent's own, or the §4.12 consolidation's — whose provenance is untrusted or unknown (an extraction that drew on a fragment the session read from outside, CP-4) is **staged** under `memories/.pending/` for a human to accept as that exact content, and applied only then; a clean-provenance write applies directly; nothing under `.pending/` is ever injected. Human-typed entries are written as the human typed them.
+
 ### 4.12 Two-phase memory consolidation pipeline
 
 A structured pipeline converts raw session transcripts into consolidated role memories through two bounded phases that run independently.
@@ -513,9 +531,12 @@ Procedure:
   2. Clamp: read at most MAX_RAW_MEMORIES_FOR_CONSOLIDATION entries from raw_memories.md.
   3. Capture git-baseline snapshot of the current MEMORY.md.
   4. Run diff-driven consolidation sub-agent:
-       reads baseline + raw memories → produces unified MEMORY.md;
-       eliminates duplicates, resolves contradictions, prunes entries
-       not referenced within MAX_UNUSED_DAYS.
+       reads baseline + raw memories → produces unified MEMORY.md (within memory_char_limit, §4.11);
+       eliminates duplicates, resolves contradictions, prunes machine-consolidated entries
+       not referenced within MAX_UNUSED_DAYS. An entry a human authored is never removed or
+       rewritten by this pass — a contradiction with one is surfaced for the human instead —
+       and every entry the pass removes is listed in phase2_workspace_diff.md (MEM-6: never
+       silently destroyed).
   5. Write phase2_workspace_diff.md (diff vs baseline, audit trail).
   6. Apply: update MEMORY.md and memory_summary.md.
   7. Release lock.
@@ -532,7 +553,9 @@ Phase 2 extends the quick-memory layout from §4.11:
 ├── raw_memories.md                    # Phase 1 accumulator (structured extracted facts)
 ├── rollout_summaries/<thread_id>.md   # per-session Phase 1 extraction results
 ├── phase2_workspace_diff.md           # last Phase 2 diff (audit trail)
-└── memory_summary.md                  # narrative summary updated by Phase 2
+├── memory_summary.md                  # narrative summary updated by Phase 2
+├── INDEX.md                           # topic index (§4.13) — not MEMORY.md
+└── topics/<topic>.md                  # topic files selected per turn (§4.13), §-delimited entries
 ```
 
 #### Relationship to the archivist role
@@ -542,10 +565,13 @@ The two-phase pipeline is the data-ingestion layer that keeps `MEMORY.md` curren
 ### 4.13 Quick memory recall lifecycle
 
 The §4.11 quick memory files (`MEMORY.md`, `USER.md`) are authoritative reference text
-injected at session start. This section specifies three complementary operations that
-complete the lifecycle: an extract cursor that prevents double-processing of transcript
-slices, a dual-path strategy for selecting relevant entries per turn, and a forget
-operation for targeted entry removal.
+injected at session start. Beyond them, a role may keep **topic files**
+(`memories/topics/<topic>.md`, §-delimited entries in the §4.11 format) listed in a topic
+index, `memories/INDEX.md` — a different file from `MEMORY.md`, which stays the small
+always-injected set under `memory_char_limit`. This section specifies three complementary
+operations that complete the lifecycle: an extract cursor that prevents double-processing
+of transcript slices, a dual-path strategy for selecting the relevant topic files per turn,
+and a forget operation for targeted entry removal.
 
 #### Extract cursor
 
@@ -584,8 +610,9 @@ Patch filtering before write (discard a candidate patch when):
 
 #### Recall dual-path
 
-Before each turn the quick memory files relevant to the user's query are injected into
-the system prompt. Two selection paths are tried in order:
+Before each turn the topic files relevant to the user's query are injected alongside the
+always-loaded `MEMORY.md` / `USER.md` (only accepted content — never `.pending/`, §4.11).
+Two selection paths are tried in order:
 
 ```text
 [REFERENCE]
@@ -647,20 +674,22 @@ Stable entry ID scheme:
   index is 0-based, determined at scan time, stable within one forget operation.
 
 Procedure:
-  1. Scan all memory files; enumerate entries; assign stable IDs.
+  1. Scan all memory files (MEMORY.md, USER.md, topic files); enumerate entries; assign stable IDs.
   2. Select target entry via model (side-query, temperature = 0) or heuristic.
-  3. Single-entry file → delete the file.
-  4. Multi-entry file → parse all entries, remove target, rewrite file.
-  5. Rebuild MEMORY.md index.
+  3. Show the selected entries and apply the removal only on the person's confirmation — the
+     selection is a guess about which entry "<query>" meant, and a wrong guess deletes the wrong memory.
+  4. Single-entry file → delete the file.
+  5. Multi-entry file → parse all entries, remove target, rewrite file.
+  6. Rebuild the topic index (INDEX.md).
 
 On teardown of a connection/session with an outstanding forget in progress,
 abort and do not apply partial writes.
 ```
 
-#### MEMORY.md index limits
+#### Topic index (INDEX.md) limits
 
-The `MEMORY.md` index summarizes all memory topics for fast scanning and injection.
-To keep it injectable at low token cost:
+`INDEX.md` summarizes the topic files for fast scanning and selection. To keep it
+injectable at low token cost:
 
 ```text
 [REFERENCE]
@@ -831,14 +860,7 @@ Distinct from `trust_score` (§4.6), which accumulates over feedback cycles:
 - `confidence` is set once at write time by the extracting agent or user.
 - `trust_score` starts at 0.5 and drifts based on outcome signals.
 
-Recall fusion weight:
-
-```text
-recall_score = vec_similarity * w_vec
-             + fts_bm25 * w_fts
-             + (trust_score * confidence) * w_trust   // product of both reliability signals
-             + utility * w_utility
-```
+Recall fusion weight: `confidence` multiplies `trust_score` inside the `w_trust` term of the §4.2 fusion — the product of both reliability signals.
 
 ### 4.16 Code node links and auto-invalidation
 
@@ -890,7 +912,7 @@ graph_score(memory, active_node_ids: &[String]) -> f32:
     .filter(|l| active_node_ids.contains(&l.node_id))
     .map(|l| l.relevance))
 
-recall_score += graph_score * w_graph   // w_graph = 0.2 (configurable)
+// joins the §4.2 fusion as its w_graph term; w_graph = 0.2 (configurable), 0 when no node is active
 ```
 
 #### Auto-invalidation on code change
@@ -928,6 +950,7 @@ The archivist's `reconcile` stage reads the pending review queue and either:
 
 | Version | Change |
 | --- | --- |
+| 1.4.2 | Consistency pass (2026-09-23): One recall fusion formula defined in §4.2 (it had four incompatible forms across §4.2.2, §4.6, §4.15, §4.16); the other sections now name their term. §4.3 no longer writes `notes/*.md` (the dual write v1.4.0 removed). The HRR capacity guard bounded the wrong quantity and deleted real memories to relieve a fallback encoding — the SNR limit applies to components bundled into one vector, and the guard never prunes (MEM-6). `MEMORY.md` had three incompatible definitions (§-delimited 2200-char file, consolidation output, 25 KB link index): the topic index is now `INDEX.md` with `topics/` files, `MEMORY.md` stays the small always-injected file. Quick-memory files are a standing-instruction sink like the constitution's (§4.25 there, AG-10): untrusted-provenance machine writes are staged under `.pending/`. Phase 2 no longer removes human-authored entries and lists every removal. `/forget` confirms the model-selected target before deleting. |
 | 1.4.1 | Disclosed simplification (FR-6) recorded in §5: the shipped HRR encoder is a zeroed-vector stub, so the HRR fallback recall leg is inert until a real encoding (or an embedding model) lands; no schema or contract change |
 | 1.4.0 | Reconciled to l1-memory-model MEM-4 v1.1 (source-of-truth by kind): the learned `memory_item` corpus is store-authoritative (`content` column is truth, `memory_fts`/`memory_vec` derived from it, no external `notes/*.md`); authored quick-memory (`MEMORY.md`/`USER.md`, §4.11) stays human-readable-authoritative. Removed the db+notes dual-write; a text export of the corpus is now a projection, not a second truth. Updated §2 constraint, Invariant Compliance MEM-4 row, and Drawbacks |
 | 1.3.0 | Concurrent recall legs and scopes (§4.2): FTS5 + tag legs run during query-embedding computation, KNN starts when the embedding is ready; per-scope database files queried concurrently on scope-local read connections; fuse unchanged — a deterministic reduction after the join |

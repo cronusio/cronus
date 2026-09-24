@@ -1,6 +1,6 @@
 # Telemetry
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** concept
 
@@ -13,6 +13,7 @@ The technology-agnostic model of improvement data: Cronus may collect anonymized
 - [l1-security.md](l1-security.md) - Data-vs-telemetry separation and egress authorization (SEC-3/4).
 - [l1-architecture.md](l1-architecture.md) - Security of client data (INV-7).
 - [l1-error-reporting.md](l1-error-reporting.md) - A separate, also consent-gated, diagnostic channel.
+- [l2-security.md](l2-security.md) - Realizes TEL-1…TEL-5: the telemetry data contract, its allowlist, and the opt-in default (§4.9).
 - [l1-artifact-derived-observation.md](l1-artifact-derived-observation.md) - [ADDED v1.0.1] The **uninstrumented-source** sibling and a deliberate boundary: telemetry is what the product emits about *itself* by design; artifact-derived observation is what is reconstructed about a *foreign* tool from the trail it wrote for its own purposes. Neither substitutes for the other, and anything derived from a foreign artifact crosses this same egress gate.
 
 ## 1. Motivation
@@ -46,7 +47,7 @@ graph TD
     ALLOW --> SEND[send via security egress gate]
 ```
 
-Examples of program metrics: operation latencies, error/repair counts, feature usage, routing outcomes — all aggregated and anonymized. User content, file contents, prompts, and project data are never included (TEL-2). <!-- TBD: default-on vs default-off prompt at first run; exact metric allowlist -->
+Examples of program metrics: operation latencies, error/repair counts, feature usage, routing outcomes — all aggregated and anonymized. User content, file contents, prompts, and project data are never included (TEL-2). The first-run choice is an explicit opt-in whose default is off (TEL-1 — an on-by-default prompt is the alternative §5 rejects), and the exact allowlist is the telemetry data contract of `l2-security` §4.9.
 
 ## 5. Drawbacks & Alternatives
 
@@ -64,5 +65,6 @@ Examples of program metrics: operation latencies, error/repair counts, feature u
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The open §4 TBD (default-on vs default-off first-run prompt; exact allowlist) contradicted TEL-1 and §5 and is resolved: the first-run choice is an explicit opt-in whose default is off, and the allowlist is `l2-security` §4.9, now linked as the realizing L2. |
 | 1.0.1 | 2026-08-05 | Core Team | Related Specifications extended with `l1-artifact-derived-observation` — the uninstrumented-source sibling, drawing the boundary explicitly: telemetry is what the product emits about itself by design; artifact-derived observation is what is reconstructed about a foreign tool from the trail it wrote for its own purposes, and its derived output crosses this same consent-gated egress. Link-only; no invariant changed. |
 | 1.0.0 | — | Core Team | Initial spec — consent-gated, opt-in, on-device-first telemetry with data-vs-telemetry separation. |

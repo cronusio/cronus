@@ -1,6 +1,6 @@
 # Developer (Self-Hosting) Office (Implementation)
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-dev-office.md
@@ -57,8 +57,11 @@ themselves are the existing subsystems, reached only once the gate opens.
   remote to activate.
 - The canonical repository identity is a compiled-in constant of the product
   build (the upstream URL/identity the genuine repo carries), not user
-  configuration — a user cannot point the dev office at an arbitrary tree by
-  editing config.
+  configuration — a user cannot change *which* upstream counts by editing Cronus
+  configuration. A tree can still *claim* that upstream in its own `.git/config`,
+  so the check is a heuristic that scopes where the office runs (SEC-12), not a
+  proof of authenticity: the boundary is admission (DVO-3) plus containment
+  (DVO-7), and the optional attestation witness (§4.3) is what binds content.
 - The dev office's working scope is the bound repository directory only; it holds
   no handle to any other workspace's data (DVO-6), enforced by the same
   workspace-isolation the project/home kinds already use.
@@ -160,7 +163,7 @@ pub fn repo_authenticity(cwd: &Path) -> RepoAuthenticity {
 }
 ```
 
-Local and network-free. An optional stronger binding composes `l1-attestation`:
+Local and network-free — and, because a tree's own `.git/config` can name any remote, a heuristic rather than a verification (SEC-12, §2). An optional stronger binding composes `l1-attestation`:
 a signed witness over the checkout (AT-2 content-set binding) can be verified
 offline to raise confidence, but the base gate needs only the local marker +
 upstream identity, so the office works in a fresh clone before any attestation
@@ -238,7 +241,8 @@ runs over and the admission required to reach it.
 
 1. `CANONICAL_UPSTREAM` is a build constant; a fork that wants its own dev office
    rebuilds with its own canonical identity rather than editing runtime config —
-   this keeps DVO-2 un-retargetable by an end user.
+   this keeps the canonical identity un-retargetable through Cronus configuration
+   (a checkout's own remote can still claim it, §2).
 2. `repo_authenticity` should treat an ambiguous/multi-remote `.git/config`
    conservatively: `Genuine` only when the bound upstream unambiguously matches the
    canonical identity; anything else is `NotCanonical` (fail-closed, matching AT-6).
@@ -250,7 +254,7 @@ runs over and the admission required to reach it.
    reporting path — it binds the existing `l1-issue-reporting` pipeline, so there
    is exactly one consent-gated egress for user feedback.
 
-## 7. Drawbacks & Alternatives
+## 6. Drawbacks & Alternatives
 
 - **Build-constant canonical identity vs. configurable.** A build constant means a
   fork must rebuild to get its own dev office. Accepted: runtime-configurable
@@ -280,4 +284,5 @@ runs over and the admission required to reach it.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The repository-authenticity check (remote identity in `.git/config`) was presented as un-retargetable verification, but any tree can declare the canonical remote — labeled a scoping heuristic (SEC-12), with admission (DVO-3) and containment (DVO-7) as the boundary and attestation as what binds content. Section numbering corrected (5 → 6). |
 | 1.0.0 | 2026-07-19 | Core Team | Initial Stable — the concrete developer-office realization implementing DVO-1…DVO-8 as an orchestration layer over shipped subsystems: a conditional `WorkspaceKind::Developer` (DVO-1), a local network-free `repo_authenticity` check against a compiled-in `CANONICAL_UPSTREAM` (DVO-2), admission on the human-write-only auth plane read through a read-only `AdmissionReader` port so escalation is unrepresentable on the agent surface (DVO-3, the BA-4/OA-4 structural-enforcement pattern), trigger-loaded module gated on `DevOfficeGate::resolve == Elevated` with clean unload (DVO-4), a three-state `AdmissionTier` (Absent/Feedback/Elevated) with the feedback tier a default-off deploy opt-in routing to the shipped `l1-issue-reporting` pipeline (DVO-5, resolved), repository-scoped workspace isolation (DVO-6), confinement + audit composing `l2-sandbox-policy`/`l2-tool-security`/`l1-tool-receipts`/DW-8 (DVO-7), and the unchanged `l2-development-workflow` engine (DVO-8). Domain/facade tier split: pure gate + tier logic in `crates/domain`, the git/fs authenticity read + module wiring in the `crates/core` facade. No new authority mechanism, no new domain logic beyond the gate — the frontend surfacing is a thin conditional-floor binding over the already-built `l2-navigation`. |

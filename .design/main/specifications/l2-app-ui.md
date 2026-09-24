@@ -1,6 +1,6 @@
 # Application UI/UX Frontend (Desktop / Web / Mobile)
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -43,7 +43,7 @@ Non-technical clients ("the client who brings ideas") need a graphical, low-fric
 | INV-4 Hub-and-spoke autonomy | Desktop build can run/host the always-on engine; **mobile build is a client**, woken by push, never a 24/7 server. |
 | INV-5 Durable, restartable state | UI is stateless beyond view; core persists state; app rehydrates on launch/reconnect. |
 | INV-6 Graceful capability scaling | Mobile exposes a capability subset (foreground + sync); behavior stays consistent with the core. |
-| INV-7 Security of client data | Secrets handled by the core via OS keychain; UI never persists credentials; only anonymized telemetry leaves the device. |
+| INV-7 Security of client data | Secrets handled by the core via OS keychain; UI never persists credentials. Nothing leaves the device by default — anonymized telemetry only when the user opts in (TEL-1). |
 | INV-8 Single-deployable modular monolith | The graphical app is the frontend over the frontend↔core boundary: the desktop build embeds one in-process core (the Tauri backend); the mobile build is a client of a hub. Neither decomposes the engine into services — IPC to the embedded core is the sanctioned boundary (INV-3), not an inter-service network call, and no orchestration platform is required. |
 | INV-9 Shipped-surface honesty | A button, menu item, or action is rendered only when bound to a shipped core capability; a not-yet-shipped capability yields no dead control — it is hidden or explicitly marked unavailable, never a control that fails with "not implemented". This is INV-9 for a graphical surface, and it aligns with the no-faked-agency rule (`l1-directability` DIR-9). |
 | INV-10 Representation isolation at the inward seam | INV-10's inward seam is inside the core; React sits outward and renders core contract types received over IPC (INV-2), never an adapter's representation (a store row, a keychain record). The IPC payload is the contract type, mapped at the core boundary — the UI cannot leak an adapter shape inward because it never holds one. |
@@ -58,8 +58,8 @@ The concrete subsystem catalog and its order are owned by [l2-navigation.md](l2-
 | --- | --- |
 | Overview | Dashboard (Agent Statistics, Token Usage) |
 | Conversation | Chat, Inbox (Messages, Poll/Clarify), Channels (gateway + per-channel detail) |
-| Work | Kanban (`triage → todo → ready → running → blocked → review → done` + custom boards), Automation (visual pipeline canvas) |
-| Office | Office (agent graph + floor projection), Employees (staffed roster), Sessions |
+| Work | Kanban (`triage → todo → ready → running → blocked → done`, with custom columns such as `review` anchored to a canonical state — KAN-8), Automation (visual pipeline canvas) |
+| Office | Office (interaction graph; other representations only as user-added extensions — OVZ-9), Employees (staffed roster), Sessions |
 | Operate | Schedule (Cron + Pulse/Heartbeat), Memory, Security, Providers/ACP |
 | Reference | Wiki, Editor (rich-text notes/plans, Lexical) |
 | Config | Settings (two-tier: in-place Local + full-screen Global overlay) |
@@ -73,7 +73,7 @@ graph TD
     UI[React 19 SPA - Vite] -- IPC secure bridge --> SHELL[Tauri v2 shell]
     SHELL -- native bindings --> CORE[Rust core engine]
     CORE --> DB[(SQLite + sqlite-vec)]
-    CORE --> AI[Local llama.cpp FFI + Cloud APIs]
+    CORE --> AI[Model runtime: loopback REST on desktop, FFI on mobile, cloud]
     SHELL -- desktop/mobile WebView --> OS[Win/macOS/Linux/iOS/Android]
 ```
 
@@ -114,7 +114,7 @@ The UI is localized via language packs from the program tier (`languages/`); the
 
 ### 4.7 Settings Persistence System
 
-Application settings are stored as a JSON file in the platform config directory. The persistence system uses a `load_or_create` pattern that merges new defaults without destroying existing user choices, followed by an additive migration step.
+Application settings are stored as `app.json` in the state tier (`l2-filesystem-layout` §4.3), carrying a schema version (STO-9). The persistence system uses a `load_or_create` pattern that merges new defaults without destroying existing user choices, followed by an additive migration step.
 
 #### load_or_create pattern
 
@@ -125,9 +125,9 @@ load_or_create_settings(path):
     settings = json.load(path)           // deserialize existing
     changed = false
     for each field with a default:
-      if settings.field is absent or zero-value:
-        settings.field = default()       // fill in new defaults
-        changed = true
+      if settings.field is absent:       // absent only — a present zero, false, or
+        settings.field = default()       // empty value is the user's choice, never
+        changed = true                   // overwritten by a default
     if changed:
       json.write(path, settings)         // persist merged defaults back
   else:
@@ -137,7 +137,7 @@ load_or_create_settings(path):
   return settings
 ```
 
-Every settings field MUST carry `#[serde(default = "fn_name")]` so that adding new fields never breaks existing settings files on deserialization.
+Every settings field MUST carry `#[serde(default = "fn_name")]` so that adding new fields never breaks existing settings files on deserialization. Filling a field only when it is absent matters: treating a stored `false` or `0` as missing would silently revert a user's deliberate choice — a switched-off option switched back on by an upgrade.
 
 #### Dual deserializer for backward compatibility
 
@@ -290,7 +290,7 @@ Only one process instance may run at a time. If the user launches a second insta
 2. It forwards its parsed CLI arguments to the running instance.
 3. It exits immediately.
 
-The running instance processes the received arguments as if they had been typed directly.
+The running instance processes the received arguments as if they had been typed directly. The forwarding channel is reachable only by the same OS user (a per-user named pipe or socket with user-only permissions), and it accepts only the runtime-only flags below — a forwarded argument can never change a persisted setting.
 
 #### Runtime-only CLI flags
 
@@ -336,6 +336,11 @@ Each variant encodes provider-specific quirks (token budget, persona framing, XM
 plain-text delimiters, tool-calling guidance). The variants live in separate prompt
 modules; the dispatch function is the single decision point. Model IDs within a provider
 family may further branch (e.g., reasoning-heavy `o*` models vs standard `gpt-*`).
+
+This section and §4.13–§4.14 describe **core** behaviour, recorded here for the surfaces
+that display it: the prompt builder, the environment block, and the MCP client run in the
+core's session prologue and tool layer (`l2-agent-session`), never in the frontend (INV-2).
+The app renders their results and status only.
 
 ### 4.13 XML structured environment context
 
@@ -384,7 +389,9 @@ tracks connection state per server.
 ```text
 [REFERENCE]
 StdioTransport:    subprocess communicates via stdin/stdout
-                   → for local executables; lowest latency, no auth needed
+                   → for local executables; lowest latency, no auth needed — and
+                     third-party code, so it runs under the extension sandbox with the
+                     permissions its installation granted (`l2-sandbox-policy`)
 SSETransport:      hosted endpoint using Server-Sent Events with OAuth
                    → for remote servers that use the OAuth-protected SSE variant
 StreamableHTTP:    hosted endpoint using streamable HTTP (MCP HTTP+SSE spec)
@@ -433,8 +440,10 @@ For servers that require OAuth (`SSETransport`, `StreamableHTTP`):
 1. The client starts the authorization flow and captures the pending transport in
    `pending_oauth_transports: Map<server_name, Transport>`.
 2. A browser window opens to the authorization URL.
-3. The OAuth callback (local HTTP server on a fixed callback path) completes the flow
-   and resumes the pending transport.
+3. The OAuth callback (a local HTTP listener on a fixed callback path, bound to loopback
+   only) completes the flow and resumes the pending transport. The flow uses PKCE and a
+   per-flow `state` value that must match on return; the resulting tokens are secrets,
+   kept in the keychain and never written to configuration (SEC-1).
 4. On success: status → `"connected"`; transport removed from pending map.
 5. On failure: status → `"needs_auth"` (retryable) or `"needs_client_registration"`.
 
@@ -460,3 +469,4 @@ For servers that require OAuth (`SSETransport`, `StreamableHTTP`):
 | --- | --- | --- |
 | 1.4.0 | 2026-09-02 | §4.5 Theming split into two orthogonal axes — **mode** (`system`/`light`/`dark`) × **colour scheme** (a named design-identity token package); one built-in scheme ships (`default`, dark-first), more added as data; the resolver + token contract move to the new `l2-design-system`. §4.1 Surfaces regrouped and deferred to `l2-navigation` §4.3 as the ordering authority; INV-9 placeholder rule restated. Related Specs + Canonical References extended with `l2-design-system` and `l2-navigation`. Document History section introduced with this entry (versions ≤1.3.1 summarised in the `INDEX.md` row). |
 | 1.4.1 | 2026-09-03 | Cross-link only: added `l2-ui-module-topology.md` to Related Specifications — the source-partition spec for `packages/ui`, whose surface tier is populated by the §4.1 surfaces and whose single-seam rule keeps the §4.2 shell-core bridge the sole site performing core calls. No design or requirement change; stays Stable. |
+| 1.4.2 | 2026-09-24 | Consistency pass (2026-09-24): Settings loading filled a field that was "absent or zero-value", so a user's stored `false` or `0` was reset to the default on every upgrade — only absent fields are filled; settings live in the state tier's `app.json` with a schema version (STO-9). INV-7 said telemetry leaves the device (opt-in, TEL-1). The Kanban surface listed `review` as a canonical state and the Office surface a floor projection (KAN-8, OVZ-9) — corrected; the bridge diagram shows the model runtime. §4.12–§4.14 are marked as core behaviour recorded for display (INV-2); the MCP OAuth callback binds loopback with PKCE and a checked `state`, tokens stay secrets; stdio MCP servers run sandboxed; the second-instance forwarding channel is per-user and carries only runtime flags. |

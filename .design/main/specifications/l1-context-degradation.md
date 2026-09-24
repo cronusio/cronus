@@ -1,6 +1,6 @@
 # Context Degradation & Health
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -142,7 +142,7 @@ on_poisoning_detected(context, poison_span):
 
 A workflow that composes a prompt for a `GEN`/`REFINE` step and threads intermediate
 results between steps has the same degradation exposure — but it needs **no new language
-invariant**, because the seams already exist (LP-1/LP-2):
+invariant**, because the seams already exist (nodus LP-1/LP-2):
 
 | Element | nodus seam | Note |
 | --- | --- | --- |
@@ -169,4 +169,5 @@ no new NL invariant.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-15 | Core Team | Initial spec — context degradation & health as the failure-model behind the context-economy family: degradation is a continuum managed on a risk signal not the token limit (CD-1), positional salience placing load-bearing content in the high-attention head/tail never the low-attention middle composing cache-stable frozen-prefix/live-zone (CD-2), non-adversarial poisoning (wrong/stale/hallucinated honest-path content contaminating downstream reasoning) as a distinct failure from adversarial injection (CD-3), poisoning recovery by excision-to-verified-state not correction-in-place (CD-4), behavioral not size-only detection feeding operational-health (CD-5), taxonomy-matched mitigation — write/select/compress/isolate/excise/reconcile — never one blunt reduction (CD-6), working-context clash surfaced and reconciled never silently averaged as the MI-4 counterpart (CD-7); §4.1 taxonomy→matched-mitigation table, §4.2 salience assembly, §4.3 excision-not-correction; nodus-relevance mapping needing no new NL invariant (host-side salience over NL-15 + re-run-from-verified-checkpoint over the execution-graph/pinned-partial seam). Owns the degradation phenomenology the mitigation specs (l1-context-compression, l2-context-management, l1-progressive-disclosure, l1-orchestration ORC-5) each answer without a unifying model; the content-side sibling of l1-optimization-integrity (silent degradation of optimizations) and the honest-error complement of l1-context-provenance (adversarial poisoning). Distilled from an adoption pass over an external context-engineering reference whose four-bucket mitigation (write/select/compress/isolate), progressive disclosure, caching, and memory architecture were already realized across the context-economy family — CD captures the unowned delta: the degradation taxonomy, positional salience, and non-adversarial poisoning recovery. |

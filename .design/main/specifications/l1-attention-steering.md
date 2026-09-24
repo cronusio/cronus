@@ -1,6 +1,6 @@
 # Attention Steering
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -126,7 +126,7 @@ The remedy is at the source, not at the reader: the answer states its own scope.
 **No new language invariant.** A steering act is an ordinary effectful host command bound at a step, and NL-9's typed I/O already carries its target address and its outcome. Two existing mechanisms carry the important parts:
 
 - **Effect class** ([l1-tool-composition.md](l1-tool-composition.md) TC-8): steering is an *attention* effect. An unattended run — a scheduled routine, a background loop, a graded environment run — declares `!!NEVER` over that class, so a workflow written for an attended walkthrough degrades to silence rather than steering a surface nobody is watching. This is exactly the kind of constraint NL-2 exists to make absolute.
-- **Capability-declared, fail-fast** ([l1-nodus-environment.md](l1-nodus-environment.md) NE-10): a workflow whose value depends on an attached surface declares that requirement and fails at validation rather than half-executing into AST-11.
+- **Capability-declared, fail-fast** ([l1-nodus-environment.md](../../nodus/specifications/l1-nodus-environment.md) NE-10): a workflow whose value depends on an attached surface declares that requirement and fails at validation rather than half-executing into AST-11.
 
 Adding a steering vocabulary to the language would name host-specific surface kinds the portable core must not know about.
 
@@ -161,4 +161,5 @@ Adding a steering vocabulary to the language would name host-specific surface ki
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): The NE-10 link pointed at `l1-nodus-environment.md` inside this workspace, where no such file exists; it now resolves to the nodus workspace. |
 | 1.0.0 | 2026-08-13 | Core Team | Initial concept: the **inverse of directability** — autonomous work moving a co-present human's live view. A live surface is an **addressable object with a declared scope**, so steering never requires simulating the user (AST-1); steering is **out-of-band**, and keystroke impersonation is prohibited because it races the human's input, carries no attribution, and cannot be refused (AST-2); targeting **auto-resolves only when unique** and refuses ambiguity by naming candidates, since steering the wrong window is invisible to the actor and instant to the human (AST-3); **read → move → annotate** as a contract, not advice (AST-4); **structure first, payload by request**, or the cheap orienting call becomes unaffordable and stops being made (AST-5); **focus is metered and requested per act**, never a side effect of annotating, because the interruption pathology is invisible in every metric the system already collects (AST-6); **replacement is a higher authority than movement and withdraws open decision requests**, since an answer about a swapped subject answers a question nobody asked (AST-7); **authorship asymmetry** — an agent may enumerate and, on instruction, remove human content, never author or re-attribute it (AST-8); a batch **lands whole or not at all** in front of a watching human (AST-9); the live view is a **projection, never the record**, and enumerations state their own scope (AST-10); **no attached surface is a first-class answer** — say so, never launch the human's windows or fall back to driving them (AST-11). §4.2 tabulates movement vs replacement; §4.3 states the attention economy; §4.5 records the nodus disposition — no new invariant, steering is an *attention* effect class an unattended run forbids with `!!NEVER`. |

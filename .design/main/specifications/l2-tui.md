@@ -1,6 +1,6 @@
 # TUI Frontend
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -32,7 +32,7 @@ The TUI gives an interactive, keyboard-driven view of the autonomous office with
 ## 2. Constraints & Assumptions
 
 - Implemented in **Rust**, linking the core crate; runs in any ANSI terminal.
-- Event-driven render loop reflecting core state changes; never blocks on long core operations (async).
+- Event-driven render loop reflecting core state changes; never blocks on long core operations — they run off the render thread (the core is synchronous, `l2-core-library` §2).
 - Slash-command input mirrors the CLI command set (INV-3 parity).
 - No domain logic in the TUI layer (INV-2).
 - **The slash catalog is generated, not written.** `[ADDED v1.1.0]` It is built from the registry's descriptors, as is the discovery listing. A hand-maintained catalog is forbidden as a source of truth, and a hand-copied restatement of another surface's verbs is forbidden as an oracle.
@@ -60,7 +60,7 @@ The TUI gives an interactive, keyboard-driven view of the autonomous office with
 
 | View | Content |
 | --- | --- |
-| Board | Kanban columns `triage → todo → ready → running → blocked → done → archive` with live task movement |
+| Board | Kanban columns `triage → todo → ready → running → blocked → done` with live task movement; archived cards leave the board (archival is automatic, not a column — KAN-3) |
 | Office | Graphical-in-text schema of agents and their current tasks |
 | Status | Current position, progress, blockers (mirrors `status` capability) |
 | Sessions/Log | Live agent activity, decisions, and tool output stream |
@@ -146,6 +146,7 @@ What remains checkable after derivation is behavioral agreement between two proj
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.3.1 | 2026-09-24 | Consistency pass (2026-09-24): The board listed `archive` as a column although archival is automatic and not a column (KAN-3); "(async)" contradicted the synchronous core — long calls run off the render thread. |
 | 1.3.0 | 2026-09-17 | Adds §4.5 Keyboard interaction model: the command bar's only prior entry point was `Tab`-cycling focus onto it, with no direct key, even though it renders as a live `/`-prefixed prompt on every frame regardless of focus — a real defect reported by manual use (every keystroke typed against the rendered prompt before reaching it via `Tab` was silently swallowed by the panel dispatch's catch-all). Names two disjoint key layers (global vs. command-bar-local) and adds a global `/` key that focuses the command bar directly from any panel, while `Tab`-cycling remains how a user moves between the read-only panels. No visual/rendering change — behavior only, per this amendment's own scope. |
 | 1.2.0 | 2026-09-06 | Surface-boundary amendment. §4.3 states that this frontend and the command line project **different locus sets** (`Semantic`+`ClientLocal` here, `Semantic`+`Installation` there) and that the difference is a declared one rather than a parity failure — the shared semantic set is where INV-3 binds, and the differing halves are named with their reason per SP-8. §4.3 also fixes the response to an unresolved slash line: resolution answers `Unknown` separately from any outcome (SP-13), and this surface treats it as **ordinary input**, where the command line treats the identical answer as a usage error — one resolution result, two correct opposite renderings, which a single merged failure outcome could not have produced. §4.4 adds that this is the **default composition** reached by a bare invocation and also addressable as `cronus tui` (LH-4), and that this frontend's own pane and panel actions register as `ClientLocal` invocables through the shared door rather than living in a private table — the smaller rebuild of exactly the catalog v1.1.0 deleted. |
 | 1.0.1 | 2026-07-29 | Extended §3 Invariant-Compliance to INV-8/9/10 (frontend boundary; honest slash-command surface; binds contract types only) — completeness fix. |

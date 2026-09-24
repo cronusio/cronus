@@ -1,6 +1,6 @@
 # Execution Workspace
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-storage-model.md
@@ -11,9 +11,10 @@ Isolated filesystem environments in which agents execute tasks. Each workspace i
 
 ## Related Specifications
 
-- [l1-orchestration.md](l1-orchestration.md) - ORC-2 state isolation that this spec concretizes.
-- [l1-storage-model.md](l1-storage-model.md) - Two-tier layout (program / mutable state) that workspaces live inside.
-- [l2-security.md](l2-security.md) - Sandbox backend and egress gate; workspace finalization obeys SEC-3.
+- [l1-orchestration.md](l1-orchestration.md) - ORC-5 context-isolated execution and ORC-11 error containment that this spec concretizes.
+- [l1-storage-model.md](l1-storage-model.md) - Two-tier layout (program / mutable state) that workspaces live inside (STO-1).
+- [l2-security.md](l2-security.md) - Egress gate; workspace finalization obeys SEC-3; the workspace trust model (§4.8) decides whether project start commands may run.
+- [l2-execution-sandbox.md](l2-execution-sandbox.md) - The confinement backend the `sandbox` provider delegates to, and the coverage statement it owes (SEC-12).
 - [l2-kanban-board.md](l2-kanban-board.md) - Issues reference `executionWorkspaceId`; `workspace_finalize=failed` blocks dependent wakes.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `<state>/execution/` tree where workspace metadata lives.
 
@@ -26,16 +27,16 @@ Agents that write files directly to the project root or a shared temp directory 
 - Workspaces never push to a git remote. All state stays on-device until an explicit user export or backup. This is the **no-remote-git contract**.
 - A workspace belongs to exactly one run at a time (via the run's ownership lock).
 - Forked workspaces inherit the parent's content at fork time but diverge independently thereafter.
-- Sandbox workspaces are the default when the security policy requires it; local-fs is available for trusted agents.
+- Sandbox workspaces are the default. `local_fs` is **unconfined** and is selected only by the human principal for an agent they have explicitly trusted — the choice is an authority-plane write (`l1-security` SEC-10), never made by an agent for itself, and it is labeled unconfined wherever it is shown (SEC-12).
 
 ## 3. Invariant Compliance (Layer 2 only)
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| ORC-2 State isolation | Each run gets a distinct workspace; concurrent runs cannot share a workspace. |
-| ORC-6 Reversible delegation | A run that fails before finalize does not write back; the workspace stays at the pre-run snapshot. |
-| SEC-6 Sandboxed execution | `sandbox` provider type delegates to the OS-native isolation backend from the stack spec. |
-| STORE-3 Two-tier boundary | Workspace content goes under `<state>/execution/`; it is never mixed with `<program>/`. |
+| ORC-5 Context-isolated execution | Each run gets a distinct workspace; concurrent runs cannot share a workspace. |
+| ORC-11 Error containment | A run that fails before finalize does not write back; the shared state stays at the pre-run snapshot and the failure stays inside the workspace. |
+| SEC-6 Sandboxed execution | `sandbox` provider type delegates to the confinement backend of `l2-execution-sandbox`; `local_fs` is declared unconfined (SEC-12(b)) and is a human-only choice. |
+| STO-1 Two-tier separation | Workspace content goes under `<state>/execution/`; it is never mixed with `<program>/`. |
 
 ## 4. Detailed Design
 
@@ -47,10 +48,10 @@ providerType: "local_fs" | "worktree" | "ssh" | "sandbox"
 
 | Provider | Description | Isolation | Use case |
 | --- | --- | --- | --- |
-| `local_fs` | Direct path on the host filesystem. | None (trusted agents only). | Fast, low-overhead tasks inside a trusted workspace. |
+| `local_fs` | Direct path on the host filesystem. | None — unconfined, labeled so (SEC-12(b)); selected only by the human principal. | Fast, low-overhead tasks inside a trusted workspace. |
 | `worktree` | A git worktree on a separate branch (`branchName`). | Branch boundary — diverges cleanly from main. | Parallel feature work that must not conflict. |
 | `ssh` | Remote host: bundle → transfer → run → sync back. | Network isolation. | Remote compute or air-gapped environments. |
-| `sandbox` | OS-native container/sandbox backend. | Full OS isolation; no network unless granted. | Untrusted code execution; default for unknown adapters. |
+| `sandbox` | OS-level confinement by the `l2-execution-sandbox` backend. | The coverage that backend enumerates (SEC-12(b)); no network unless granted. | Untrusted code execution; default for unknown adapters. |
 
 ### 4.2 Workspace lifecycle
 
@@ -71,7 +72,7 @@ State definitions:
 - **active** — a run is currently executing inside this workspace.
 - **idle** — run is paused (waiting for approval, budget, or a wake signal); workspace is held warm.
 - **finalized** — run completed, changes written back to the control-plane; workspace may be kept for inspection.
-- **abandoned** — run crashed; workspace content is stale. Cannot auto-recover; requires human review.
+- **abandoned** — run crashed; workspace content is stale. It is never written back automatically and is surfaced for human review; if nobody disposes of it within the stale grace period it becomes cleanup-eligible, but its branch is kept (see Removal in §4.9) so unreviewed work stays recoverable.
 - **cleanup_eligible** — `cleanupEligibleAt` timestamp has passed; garbage collector may remove `cwd/`.
 - **closed** — `cwd/` removed; metadata record is retained for audit.
 
@@ -202,8 +203,8 @@ createFromInfo(info: Info, start_command?: String):
   2. boot(info, start_command?):
        git reset --hard                          // populate from HEAD
        BootstrapRuntime.run(info.directory)      // init workspace state tier
-       runStartScripts(info.directory):
-         a. project.commands.start (from project config)
+       runStartScripts(info.directory):                // only in a trusted workspace (l2-security §4.8);
+         a. project.commands.start (from project config)  // in safe mode project commands are ignored
          b. start_command (per-worktree override, runs after project command)
        publish worktree.ready (name, branch) via GlobalBus
 ```
@@ -240,7 +241,8 @@ reset(directory: String):
        if result.code != 0:
          entries = parseFailedRemovePaths(result.stderr)
          if entries != []:
-           prune(root, entries)   // rm -rf each locked file individually
+           prune(root, entries)   // rm -rf each locked file individually — only entries whose canonical
+                                  //   path lies inside the worktree root; anything else is refused and reported
            git clean -ffdx        // retry once after pruning locked files
   4. git submodule update --init --recursive --force
   5. git submodule foreach --recursive git reset --hard
@@ -271,14 +273,18 @@ Case-insensitive comparison on Windows ensures that `C:\Users\X\worktrees\abc` a
 ```text
 [REFERENCE]
 remove(directory: String) -> bool:
+  0. canonical(directory) must lie inside <state>/worktrees/<project_id>/; otherwise refuse and return false.
   1. git worktree list --porcelain to find the entry.
-  2. If entry not found but directory exists: stopFsmonitor + rm -rf directory.
+  2. If entry not found but directory exists: stopFsmonitor + rm -rf directory (inside the root, per step 0).
   3. git fsmonitor--daemon stop (in worktree, if it exists).
   4. git worktree remove --force <path>.
   5. rm -rf <path>.
-  6. git branch -D <branch>.
+  6. finalized workspace (its changes were written back): git branch -D <branch>.
+     abandoned workspace: keep the branch — it holds the only copy of unreviewed work.
   7. return true.
 ```
+
+Every destructive step is confined to the canonical worktree root: a path that resolves anywhere else — through a symlink, a stale record, or a malformed name — is never removed.
 
 Events:
 
@@ -298,7 +304,15 @@ Events:
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-2 state isolation invariant |
-| `[STORE]` | `.design/main/specifications/l1-storage-model.md` | Two-tier layout |
-| `[SECURITY]` | `.design/main/specifications/l2-security.md` | Sandbox and egress |
+| `[ORC]` | `.design/main/specifications/l1-orchestration.md` | ORC-5 context isolation, ORC-11 error containment |
+| `[STORE]` | `.design/main/specifications/l1-storage-model.md` | Two-tier layout (STO-1) |
+| `[SECURITY]` | `.design/main/specifications/l2-security.md` | Egress gate, workspace trust model |
+| `[EXEC-SANDBOX]` | `.design/main/specifications/l2-execution-sandbox.md` | Confinement backend of the `sandbox` provider |
 | `[LAYOUT]` | `.design/main/specifications/l2-filesystem-layout.md` | `<state>/execution/` path |
+
+## Document History
+
+| Version | Date | Author | Notes |
+| --- | --- | --- | --- |
+| 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance table cited the wrong invariants (ORC-2 is adaptive topology, ORC-6 judged termination, `STORE-3` does not exist): now ORC-5, ORC-11, SEC-6, STO-1. `local_fs` is declared unconfined and human-selected only (SEC-10/SEC-12); `sandbox` points at `l2-execution-sandbox` instead of claiming full OS isolation. Project start commands run only in a trusted workspace (`l2-security` §4.8). Removal is confined to the canonical worktree root, and an abandoned workspace keeps its branch so unreviewed work is not destroyed by timed cleanup. Provider table row for `local_fs` aligned with §2 (unconfined, human-selected only). |
+| 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

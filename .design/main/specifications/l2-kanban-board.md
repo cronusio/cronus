@@ -1,6 +1,6 @@
 # Kanban Board
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-kanban-model.md
@@ -118,9 +118,9 @@ Card execution fields (added when state = running):
   executionWorkspaceId  // workspace allocated to this run (see l2-execution-workspace.md)
 ```
 
-`checkoutRunId` is set when a run picks up a card. It is cleared only by the stale-cleanup process (if the run is confirmed dead) — never by the run itself. `executionRunId` may change when a manager delegates a card to a sub-agent: the checkout owner remains unchanged while the active executor is updated.
+`checkoutRunId` is set when a run picks up a card. It is released when that run ends — with its outcome recorded in the run log (§4.6) — or by the stale-cleanup process when the run is confirmed dead; never by a *different* run. `executionRunId` may change when a manager delegates a card to a sub-agent: the checkout owner remains unchanged while the active executor is updated.
 
-This two-lock design ensures that a crash cannot leave a card permanently claimed: the cleanup process reads `executionLockedAt`, and if it is stale (no heartbeat seen since), it clears both fields and returns the card to `ready`.
+This two-lock design ensures that a crash cannot leave a card permanently claimed: the cleanup process reads `executionLockedAt`, and if it is stale (no heartbeat within the configured stale threshold, several heartbeat intervals), it clears both fields and returns the card to `ready`. A stale-cleanup return counts as a failed attempt against the card's `max_retries`; once they are spent the card goes to `blocked` with the reason instead of `ready`, so a card whose runs keep dying cannot cycle forever.
 
 #### Monitor scheduling for blocked cards
 
@@ -151,7 +151,7 @@ Card delegation field:
   requestDepth: u8   // 0 = top-level goal; incremented by 1 on each manager→sub-agent delegation
 ```
 
-A hard cap (default: 10) prevents infinite delegation chains. When `requestDepth` reaches the cap, the next delegation attempt fails with `DelegationDepthExceeded`; the card transitions to `blocked` with that reason. The cap is configurable in the workspace config.
+A hard cap prevents infinite delegation chains. It defaults to the runtime spawn cap (`MAX_SPAWN_DEPTH`, `l2-orchestration` §4.6) and is raised only together with it: a card cap above the spawn cap could never be reached, and one below it would refuse delegations the runtime allows. When `requestDepth` reaches the cap, the next delegation attempt fails with `DelegationDepthExceeded`; the card transitions to `blocked` with that reason. The cap is configurable in the workspace config.
 
 ### 4.6 Run log
 
@@ -215,13 +215,15 @@ Both logs are stored alongside the card and move with it on archival (`archive/e
 
 ### 4.8 Sprint tracking status file
 
-When a workspace is organized around sprint/epic/story planning, the board state is supplemented by a machine-readable sprint status file. This file is the single source of truth for story and epic completion status; the kanban board reflects running execution, while the sprint status file reflects planning and delivery state.
+When a workspace is organized around sprint/epic/story planning, the board state is supplemented by a machine-readable sprint status file. The file is a **projection of the board**, regenerated from it, never a second record: the board is the one board of record (KAN-1) and a story's status is read from its card, so the two cannot disagree about whether a story is done. Planning-only facts the board does not hold — the epic grouping, retrospectives, action items — live in the file itself.
+
+Story status is derived from the story card's state: no card yet → `backlog`; `triage`/`todo` → `backlog`; `ready` → `ready-for-dev`; `running` → `in-progress`, or `review` when the card sits in a `review` column anchored to `running` (KAN-8); `blocked` → `in-progress` with the block reason shown; `done` → `done`.
 
 #### File structure
 
 ```text
 [REFERENCE]
-sprint-status.yaml (stored at {planning_artifacts}/sprint-status.yaml):
+sprint-status.yaml (stored at <ws>/planning/sprint-status.yaml):
 
 generated:    {ISO date}
 last_updated: {ISO date}
@@ -311,15 +313,17 @@ Individual tasks within a plan file are declared using a structured XML format. 
     Must be precise enough that the executor does not need to guess.
     References D-NN decision IDs where applicable ("per D-02").
   </action>
-  <verify>Shell command that proves the task is done (e.g. grep, cargo test, tsc)</verify>
+  <verify>Shell command that proves the task is done (e.g. cargo test, tsc)</verify>
   <acceptance_criteria>
-    - Grep-verifiable condition
+    - Observable behavior a check can confirm (and would refute if absent)
     - File exists at expected path
     - Command exits 0
   </acceptance_criteria>
   <done>Measurable acceptance criteria (observable, not "code written")</done>
 </task>
 ```
+
+A task's `verify`, `acceptance_criteria`, and `done` elements are its criteria: the agent executing the task cannot edit them (LG-3) — a change goes back through planning. `verify` runs in the execution sandbox like any other command (SEC-6), and a check that could not fail — a `grep` for text the executor itself just wrote, say — is not accepted as proof (AO-4, AO-7).
 
 #### Test-driven task (type="tdd")
 
@@ -363,27 +367,27 @@ Identical to `type="auto"` but the executor writes the test first, confirms it f
 </task>
 ```
 
-`gate="blocking"` on a checkpoint triggers writing `.planning/.continue-here.md` (see `l2-orchestration.md` §4.14). Execution halts until the user provides the `resume-signal`. Non-blocking checkpoints (`gate="advisory"`) emit a notice but do not halt execution.
+`gate="blocking"` on a checkpoint triggers writing `.planning/.continue-here.md` (see `l2-orchestration.md` §4.14). Execution halts until the user provides the `resume-signal`, which is accepted only from the user through a human surface — an "approved" the agent writes is not a resume signal (XPL-4). Non-blocking checkpoints (`gate="advisory"`) emit a notice but do not halt execution.
 
-### 4.10 Priority-ordered story cards
+### 4.10 Tier-ordered story cards
 
-The board's phase-level grouping (§4.5) does not distinguish MVP work from nice-to-have work. Priority metadata on story cards enables the orchestrator to enforce cross-tier sequencing (see `l2-orchestration.md` §4.17) and gives the user a quick visual cue.
+The board's phase-level grouping (§4.5) does not distinguish MVP work from nice-to-have work. A delivery tier on story cards enables the orchestrator to enforce cross-tier sequencing (see `l2-orchestration.md` §4.17) and gives the user a quick visual cue. The tier is a separate field from the card's urgency `priority` (§4.1): one says *when in the delivery order* a story belongs, the other *how urgent* a card is, and a single field cannot carry both vocabularies.
 
-#### Priority field
+#### Tier field
 
 ```json
 {
   "id": "card-007",
   "type": "story",
   "title": "User can log in with email and password",
-  "priority": "P1",
+  "tier": "P1",
   "independent_test": "Run `cronus login test@example.com password` against a seeded workspace; confirm exit 0 and token file written.",
-  "depends_on": [],
-  "status": "todo"
+  "blockerIds": [],
+  "state": "todo"
 }
 ```
 
-Priority values:
+Tier values:
 
 | Value | Meaning | Execution rule |
 | --- | --- | --- |
@@ -393,21 +397,21 @@ Priority values:
 
 #### Board display
 
-The TUI groups story cards under their priority tier within the current phase column:
+The TUI groups story cards under their tier within the current phase column:
 
-```
+```text
 Phase: story-auth
-  🎯 P1  User can log in          [In Progress]
-  🎯 P1  User can log out         [Todo]
-       P2  Password reset email   [Todo]
-       P3  Remember me checkbox   [Backlog]
+  🎯 P1  User can log in          [running]
+  🎯 P1  User can log out         [todo]
+       P2  Password reset email   [todo]
+       P3  Remember me checkbox   [todo · deferred]
 ```
 
-`🎯` marks P1 cards. P3 cards move to Backlog automatically when the phase wave starts if capacity is below the P3 threshold in `config.json`.
+`🎯` marks P1 cards. When the phase wave starts with capacity below the P3 threshold in `config.json`, P3 cards are deferred: they stay in `todo` (or a custom `deferred` column anchored to `todo`, KAN-8) — there is no separate backlog state on the board of record.
 
 #### Story completion gate
 
-Before the orchestrator starts any P2 card, it confirms all P1 cards in the same phase are `Done`:
+Before the orchestrator starts any P2 card, it confirms all P1 cards in the same phase are `done`; while one is `blocked`, the gate names that card and its reason rather than holding the tier silently:
 
 ```text
 ✓ All P1 stories done — P2 stories may now begin.
@@ -435,3 +439,4 @@ Symmetrically for P2 → P3.
 | --- | --- | --- |
 | ≤1.0.5 | 2026-06-24…2026-07-02 | Initial stable spec and incremental extensions (storage, transitions, archival job, execution semantics, event/comment logs) |
 | 1.1.0 | 2026-07-03 | KAN-8 reconciliation — "no user-defined boards" constraint replaced with the mapped-extension model: custom columns carry a mandatory canonical `anchor` in `board.json`, custom boards are saved views over the single card set; compliance row added; storage comment extended. Aligns with l1-kanban-model 1.1.0. |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): `checkoutRunId` was "never cleared by the run itself", so a normally finished run kept its card claimed — released when the run ends, by stale cleanup when it dies, never by another run; stale-cleanup returns now count against `max_retries`, so a card whose runs keep dying cannot cycle forever. The card delegation cap (10) exceeded the runtime spawn cap (3) and was unreachable — it defaults to and moves with `MAX_SPAWN_DEPTH`. The sprint status file claimed to be the single source of truth for completion beside the board of record (KAN-1) — it is a projection of the board, with the story-status mapping defined. `priority` carried two vocabularies (urgency and P1–P3 delivery tier) — the tier is its own field; a non-canonical `Backlog` state and mismatched field names (`status`, `depends_on`) aligned with the card record. Plan-task criteria (`verify`, acceptance, done) are immutable to their executor (LG-3), run sandboxed, and a check that cannot fail is not proof; a checkpoint's resume signal comes only from the user. |

@@ -1,6 +1,6 @@
 # Global Orchestration
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-global-orchestration.md
@@ -26,8 +26,9 @@ The model requires one building-level coordinator that routes across offices, en
 
 - The global orchestrator does no specialist work; it coordinates and enforces policy.
 - Cross-office delegation is always ACP-mediated (GO-5); it never reads/mutates office internals directly.
-- Phase-awareness concern catalog + phase numbering come from the building global config + `PLAN.md`/phase frontmatter (machine-readable), not hardcoded.
-- Global orchestration is opt-in — absent a home workspace manager, offices run without it.
+- Phase-awareness concern catalog + phase numbering come from the building global config + the office's own plan artifacts (the machine-readable phase frontmatter under `<ws>/planning/`), not hardcoded.
+- Global orchestration is opt-in — absent a home workspace manager, offices run without it. The phase-concern check (GO-3) does not lapse with it: an office without a coordinator applies the same catalog to its own cards.
+- A cross-office send is an outbound sink of the sending office: it carries the confidentiality capacity the user granted that office pair (default below the private label), and content over that capacity is blocked by the runtime at the relay using side-band labels (CF-4, CF-8, CF-10) — without the coordinator reading the content (GO-5).
 
 ## 3. Invariant Compliance (Layer 2)
 
@@ -35,7 +36,7 @@ The model requires one building-level coordinator that routes across offices, en
 | --- | --- |
 | GO-1 One global orchestrator | The home workspace manager is the sole coordinator; peer offices never route directly — all cross-office traffic passes through it or the ACP relay. |
 | GO-2 Non-intrusive | The coordinator may propose/route/escalate but has no code path to cancel or re-delegate an office's active orchestration; it only reads office state and sends ACP messages. |
-| GO-3 Phase-awareness enforcement | On a new-component card, `check_phase_concerns(phase, component)` reads the concern catalog and annotates the card with any mandatory concern as non-optional acceptance criteria before it enters orchestration. |
+| GO-3 Phase-awareness enforcement | Before a new-component card may move to `running`, the office asks the coordinator (over ACP) for `check_phase_concerns(phase, component)`; the office's own orchestrator adds each mandatory concern to the card as a non-optional acceptance criterion. The coordinator never writes the card (GO-2, GO-4), and because the check is a gate the office runs before implementation starts, it cannot race with it. |
 | GO-4 Unified visibility | A building event bus subscribes to every office's `OfficeStateChanged` + kanban-summary + budget + session events into a read-only aggregate view; mutation only via each office's own path. |
 | GO-5 ACP routing | Cross-office messages route over the l2-acp relay; the coordinator is the relay's decision layer — it inspects the envelope (target, session) but never message content. |
 | GO-6 Escalation authority | An office escalation resolves directly, requests a cross-office deliberation round (l2-deliberation) among affected offices' orchestrators, or escalates to the user (HITL, ORC-9). |
@@ -50,9 +51,10 @@ A `BuildingView` subscribes to the building event bus: per office `{OfficeState,
 
 ```text
 [REFERENCE]
-on office creates card C for new component P in phase n:
-  concerns := catalog[n].mandatory ∩ relevant(P)      // GO-3
-  if concerns: annotate C.acceptance_criteria += concerns (non-optional)
+before office moves new-component card C (component P, phase n) to running:
+  concerns := coordinator.check_phase_concerns(n, P)  // GO-3, over ACP;
+                                                      // the office's own catalog copy if no coordinator
+  if concerns: office adds them to C.acceptance_criteria (non-optional)   // office's own path
   C proceeds under normal office orchestration
 ```
 
@@ -67,7 +69,7 @@ Office A → [ACP] → Global orchestrator
 Global orchestrator → [ACP relay] → Office B → response streams back → Office A
 ```
 
-Paused/Hibernating offices are bypassed in routing. The relay layer forwards verbatim (no content inspection).
+Paused/Hibernating offices are bypassed in routing. A message whose only eligible target is paused or hibernating is returned to the sender as undeliverable for now, naming the target's state — or held durably until the target wakes when the sender asked for that — never dropped. The relay layer forwards verbatim (no content inspection).
 
 ### 4.4 Escalation
 
@@ -76,7 +78,7 @@ An office deadlock / multi-office conflict escalates to the coordinator, which r
 ## 5. Implementation Notes
 
 1. GO-4 is a building event-bus subscription over office OfficeState events — no polling.
-2. GO-3 reads the machine-readable phase frontmatter for phase structure + mandatory concerns.
+2. GO-3 reads the office's machine-readable phase frontmatter for phase structure and the building config for mandatory concerns; the office applies the result to its own card.
 3. GO-5 relay inspects only the envelope (target office id, session context), never content.
 
 ## 6. Drawbacks & Alternatives
@@ -98,4 +100,5 @@ An office deadlock / multi-office conflict escalates to the coordinator, which r
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): GO-3 had the coordinator write annotations into an office's card, contradicting GO-2/GO-4 and its own "never mutates office internals", and it reacted to card creation, racing the office's start — it is now a gate the office runs before a new-component card moves to running, with the office applying the concerns itself (and applying the catalog on its own when no coordinator exists). A message to a paused or hibernating office was "bypassed" — returned or held, never dropped. Cross-office sends are outbound sinks subject to confidentiality capacity checked on side-band labels (CF-4/CF-10). Phase numbering now reads the office's plan artifacts, not an ambiguous `PLAN.md`. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — home-manager coordinator, event-bus aggregate view, ACP relay router, phase-awareness card annotation, building-level escalation with cross-office deliberation + HITL; maps GO-1…GO-6. |

@@ -1,6 +1,6 @@
 # Notes (Implementation)
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-notes.md
@@ -20,7 +20,7 @@ grown into.
 ## Related Specifications
 
 - [l1-notes.md](l1-notes.md) - The concept this spec implements.
-- [l2-resource-sharing.md](l2-resource-sharing.md) - `access-grants`; NOT-3 is unbuilt at this layer (§4.1) and would compose with this the way `knowledge_access.rs`'s `GatedKnowledge` already composes with the knowledge store.
+- [l2-resource-sharing.md](l2-resource-sharing.md) - The grant functions (§4.3 there); NOT-3 is unbuilt at this layer (§4.1) and would compose with this the way `knowledge_access.rs`'s `GatedKnowledge` already composes with the knowledge store.
 - [l2-file-store.md](l2-file-store.md) - Inline image references via `FileId` are part of the target rich-content-tree design (§4.1); the current flat-fragment content model has nothing to attach a `FileId` to yet.
 - [l2-agent-session.md](l2-agent-session.md) - Agent sessions creating notes via a `NoteService`, and per-note agent-authorship tracking, are both part of the unbuilt production mechanism (§4.1) — the current `Note` struct carries no author field at all.
 
@@ -31,7 +31,7 @@ Notes are user-facing artifacts distinct from sessions and memory. A dedicated n
 ## 2. Constraints & Assumptions
 
 - The server stores one canonical snapshot of note content per note (the latest merged state). Full CRDT state vectors are stored for conflict resolution during concurrent edits; they are not the primary storage format.
-- CRDT library choice is frontend-driven (Yjs for SvelteKit UI); the server-side stores and merges CRDT binary updates forwarded from the frontend.
+- CRDT library choice is frontend-driven (Yjs for the React UI); the engine stores and merges CRDT binary updates forwarded from the frontend.
 - Version history stores a snapshot at each significant save (not every keystroke); coalescing minor edits is acceptable.
 - Real-time cursor sharing / presence is optional; collaborative editing operates through the event bus without requiring a dedicated websocket per note.
 
@@ -70,7 +70,7 @@ persistence around the existing convergence proof, not replacing it.
 ```sql
 [REFERENCE]
 CREATE TABLE note (
-    id          TEXT PRIMARY KEY,          -- nte/ prefix
+    id          TEXT PRIMARY KEY,          -- nte-prefixed typed ID
     owner_id    TEXT NOT NULL,
     title       TEXT NOT NULL DEFAULT '',
     content     TEXT NOT NULL DEFAULT '{}',  -- JSON document tree
@@ -96,7 +96,7 @@ CREATE INDEX ix_pinned_note_user ON pinned_note(user_id);
 
 -- Append-only version history (significant saves only)
 CREATE TABLE note_version (
-    id          TEXT PRIMARY KEY,          -- nver/ prefix
+    id          TEXT PRIMARY KEY,          -- nver-prefixed typed ID
     note_id     TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
     content     TEXT NOT NULL,             -- JSON snapshot
     saved_by    TEXT NOT NULL,             -- user_id or agent_id
@@ -127,7 +127,7 @@ Note content is stored as a ProseMirror-compatible JSON document tree:
     { "type": "heading", "attrs": { "level": 1 }, "content": [{ "type": "text", "text": "Title" }] },
     { "type": "paragraph", "content": [{ "type": "text", "text": "Body text." }] },
     { "type": "code_block", "attrs": { "language": "rust" }, "content": [{ "type": "text", "text": "fn main() {}" }] },
-    { "type": "image", "attrs": { "file_id": "fil/...", "alt": "diagram" } }
+    { "type": "image", "attrs": { "file_id": "fil…", "alt": "diagram" } }
   ]
 }
 ```
@@ -154,14 +154,14 @@ The server maintains an in-memory Yjs document per active note (loaded from the 
 
 - A new `note_version` row is created when:
   - The note is explicitly saved by the user (manual save action).
-  - The note has not been versioned in the last 5 minutes and a non-trivial edit is detected (content diff > 20 characters).
-- Coalescing: rapid successive edits within a 30-second window are merged into one version row.
-- Retention: version rows older than 90 days may be pruned to the nearest daily snapshot.
+  - The note has not been versioned in the last 5 minutes and any edit beyond a single-character typo patch is pending — size is not substance (changing `10` to `1000` is two characters), so no size threshold decides it (NOT-6).
+- Coalescing: rapid successive edits within a 30-second window are merged into one version row, which records the window's final state; nothing an edit changed is dropped from history, only intermediate keystrokes.
+- Retention: every version is kept by default. A user-configured retention may thin versions older than 90 days to one per day; the thinning is shown as a stated horizon on the history view, never applied silently (previous versions stay auditable, NOT-6).
 
 ### 4.5 Soft Deletion and GC (soft delete is real, see NOT-8; hard-delete-after-30-days GC and the cascade below are unbuilt)
 
 - `DELETE note/:id` sets `deleted_at = now()`. Soft-deleted notes are excluded from all list queries via `WHERE deleted_at IS NULL`.
-- GC: after 30 days, hard-delete the note, cascade-delete `note_version`, `note_crdt_update`, `pinned_note`. `access_grant` rows are deleted by the `access-grants` crate's `delete_grants_for_resource`.
+- GC: after 30 days, hard-delete the note, cascade-delete `note_version`, `note_crdt_update`, `pinned_note`. `access_grant` rows are deleted by `delete_grants_for_resource` (`l2-resource-sharing` §4.3).
 
 ### 4.6 Module Layout
 
@@ -190,11 +190,11 @@ crates/
 
 ## 5. Implementation Notes
 
-1. The in-memory Yjs document cache is keyed by `NoteId`; use a `DashMap` with an idle-eviction background task.
+1. The in-memory Yjs document cache is keyed by `NoteId`: a standard-library concurrent map with idle eviction on the shared idle watcher (`l2-core-library` §4.5) — no extra dependency and no per-cache thread.
 2. Image references in note content must be validated at save time: referenced `FileId` must exist and the note owner must hold at least `read` access to the file (or the file must be public).
-3. When listing notes for a user, include notes where the user is the owner OR where a read/write grant exists for the user or their groups — use the batch grant loader from `access-grants`.
+3. When listing notes for a user, include notes where the user is the owner OR where a read/write grant exists for the user or their groups — use the batch grant loader of `l2-resource-sharing` (§4.5).
 
-## 7. Drawbacks & Alternatives
+## 6. Drawbacks & Alternatives
 
 - **Storing full CRDT state vector:** larger storage but enables offline client sync without server history replay. Trade-off is disk usage vs. client simplicity; update log + merge-on-read is chosen for minimal storage.
 - **Operational transform (OT):** server-side transform is more deterministic but requires a central transform server; CRDT is peer-to-peer and simpler for the edge-case handling.
@@ -212,5 +212,6 @@ crates/
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): The CRDT was said to be chosen for a SvelteKit UI; the frontend is React — corrected. The target version policy dropped edits under 20 characters and pruned history after 90 days by default, contradicting NOT-6 (substantive changes versioned, history auditable) — size no longer decides substance, coalescing keeps each window's final state, and thinning is an opt-in stated horizon. References to a nonexistent `access-grants` crate, a third-party map crate, slash-separated ID prefixes, and a section-number gap corrected. |
 | 1.1.0 | 2026-09-12 | **Realization Status correction** (Retro L2 finding, `/magic.spec main`): this spec described a production mechanism (SQLite schema, ProseMirror rich-content tree, Yjs binary CRDT encoding, pinning, access control, agent authorship) that was never built, as though it were current — `crates/notes/` was never minted as a crate. What actually exists is a domain-tier CRDT algebra at `crates/domain/src/notes.rs`, faithfully proving NOT-6/NOT-7/NOT-8 and a structural (session-independent) reading of NOT-1; NOT-2 is realized only for its flat-content half, and NOT-3/NOT-4/NOT-5 are unbuilt entirely. Every §4 subsection describing the unbuilt mechanism is now explicitly labelled target design; §4.1 added as the disclosure table; Invariant Compliance (§3) rewritten against the real module; the dead `l2-source-layout.md` citation dropped (that spec never covered this placement). No L1 invariant added, removed, or reworded — `l1-notes.md` is unchanged. |
 | 1.0.0 | 2026-06-24 | Initial spec. |

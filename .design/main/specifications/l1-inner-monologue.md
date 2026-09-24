@@ -1,6 +1,6 @@
 # Inner Monologue
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -111,7 +111,7 @@ A suppressed proactive message is still logged in the Pulse log (IM-2), with `di
 
 1. The inner monologue prompt is a harness-engineered nodus workflow step, not a hardcoded system prompt section. It evolves under the harness engineering loop.
 2. IM-1 non-interrupting enforcement is a scheduler guard: heartbeat fires only when the foreground session is in `Waiting` or `Idle` turn state.
-3. The Pulse log is backed by the same SQLite store as the inbox (`l2-inbox.md`), using a distinct message type `pulse_monologue`.
+3. The Pulse log is backed by the same SQLite database as the inbox (`l2-inbox.md`), in a table of its own — inbox message rows are deleted on delivery and pruned by age, which a log the dispatcher must consult (IM-2) cannot tolerate.
 
 ## 6. Drawbacks & Alternatives
 
@@ -133,4 +133,5 @@ A suppressed proactive message is still logged in the Pulse log (IM-2), with `di
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Implementation note placed the Pulse log in inbox message rows, which the inbox deletes on delivery and prunes by age — the log lives in the same database in a table of its own (IM-2). |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — IM-1…IM-5, cycle lifecycle, 5 intention types, Pulse log format, proactivity threshold, reflection focus areas |

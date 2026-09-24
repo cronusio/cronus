@@ -1,6 +1,6 @@
 # Office Deliberation
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -122,7 +122,7 @@ This is the office's public reasoning surface — not private, not ephemeral.
 ## 5. Implementation Notes
 
 1. Parallel argument generation uses the wave-based parallel execution model from `l2-orchestration.md`.
-2. Log entries share the SQLite backing store with the inbox (`l2-inbox.md`) but use a distinct message type to support type-filtered queries.
+2. Log entries share the SQLite database with the inbox (`l2-inbox.md`) but live in an append-only table of their own — inbox message rows are deleted on delivery and pruned by age, which an immutable audit trail (DL-4) cannot tolerate.
 3. The devil's advocate designation is a per-round setting; the orchestrator may skip it for low-stakes decisions.
 
 ## 6. Drawbacks & Alternatives
@@ -145,5 +145,6 @@ This is the office's public reasoning surface — not private, not ephemeral.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Implementation note placed the immutable deliberation log in inbox message rows, which the inbox deletes on delivery and prunes by age — it lives in the same database in an append-only table of its own (DL-4). |
 | 1.1.0 | 2026-07-26 | Core Team | Added DL-6…DL-9 + §4.4a — the **blind cross-critique round** between independent argument and synthesis, the step that makes deliberation more than "ask N times": each participant critiques the full set (strongest / biggest blind spot / what all missed), surfacing cross-argument flaws and panel-wide gaps no single independent argument contains (DL-6); the critique is on **anonymized, position-randomized** material so it evaluates the argument not who produced it or where it appeared, defeating deference and positional/primacy bias, with de-anonymization only at synthesis (DL-7); **full-stance arguments** — independence means leaning fully into the assigned specialty or deliberately-opposed stance, not hedging toward a balanced middle that collapses the diversity DL-2 selected for; the tension is the instrument and balancing is the orchestrator's job at synthesis not the participant's during argument (DL-8); synthesis MUST name convergence, name clashes without smoothing them, surface the critique-caught blind spots, and MAY side with a minority argument on merit — averaging into "it depends", hiding disagreement, and defaulting to the majority all forbidden (DL-9, sharpening DL-3 from "not a vote" to "disagreement preserved, minority can win"). §4.1 lifecycle gains an optional CRITIQUE step; §6 distinguishes the blind round from open group discussion (single anonymized pass after argument closes, not iterative cross-reading during it) and notes skipping it is valid only for low-stakes rounds. Related Specifications extended with l1-competitive-execution / l1-agent-coevaluation / l1-parallel-staffing. |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — DL-1…DL-5, round lifecycle, participant selection, log format, communication visibility |
