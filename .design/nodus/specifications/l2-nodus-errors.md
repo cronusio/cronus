@@ -1,6 +1,6 @@
 # Nodus Error Taxonomy Implementation (Rust)
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -30,6 +30,7 @@ metadata and enforcement site.
 - [l2-nodus-portability.md](l2-nodus-portability.md) — `NODUS:CAPABILITY_UNMET` (LP-8) and `NODUS:POLICY_DENIED` (LP-11, §4.9.4) are portability-layer runtime codes beyond the §4.6 language set; also documents that `@err:` handler dispatch (this spec's first bullet above) is unrealized in `executor.rs` today
 - [l2-nodus-settlement.md](l2-nodus-settlement.md) — [ADDED v1.2.0] `NODUS:SETTLEMENT_UNACCOUNTED` (LP-17, §4.4) is a further portability-layer runtime code, registering beside `POLICY_DENIED`
 - [l2-nodus-environment.md](l2-nodus-environment.md) — [ADDED v1.3.0] `NODUS:ENV_MEASURE_UNKNOWN` (NE-14, §4.4.1) is a further control-category code, registering beside `CAPABILITY_UNMET`
+- [l2-nodus-commands.md](l2-nodus-commands.md) — [ADDED v1.5.0] specifies the emission path for the `UNDEFINED_CMD` / `VALIDATION_FAILED` / `ESCALATION_FAILED` / `CONFIDENCE_LOW` / `KB_UNAVAILABLE` / `MEMORY_FAILED` sites §4.4 names, and the `COMMAND_FAILED` layer code (§4.8 there)
 - [l2-nodus-error-dispatch.md](l2-nodus-error-dispatch.md) — [ADDED v1.1.1] realizes the `@err:` handler-dispatch mechanism this spec's NL-9 row names as a separate obligation; dispatches against the taxonomy this spec owns without adding any new code
 
 ## 1. Motivation
@@ -57,7 +58,7 @@ differently. Closing the §4.6 gap requires three things the current code lacks:
 
 | L1 Invariant | Rust Enforcement |
 | --- | --- |
-| NL-1 Schema-first | **Realized by the validator's lint codes, not by this taxonomy.** An unknown command is the blocking validation error `E021` (`l2-nodus-runtime.md` §3, NL-1 row), so a misspelled command stops the run before it starts. None of the validation-category `NODUS:*` codes (`UNDEFINED_CMD`, `UNDEFINED_VAR`, `NO_SCHEMA`, `SCHEMA_MISMATCH`, `RULE_CONFLICT`, `VALIDATION_FAILED`) has an emission site anywhere in the crate: the validator reports its own `E0xx`/`W0xx` diagnostics instead, and `E021` stands where `UNDEFINED_CMD` would. |
+| NL-1 Schema-first | **Realized by the validator's lint codes, not by this taxonomy.** An unknown command is the blocking validation error `E021` (`l2-nodus-runtime.md` §3, NL-1 row), so a misspelled command stops the run before it starts. None of the validation-category `NODUS:*` codes (`UNDEFINED_CMD`, `UNDEFINED_VAR`, `NO_SCHEMA`, `SCHEMA_MISMATCH`, `RULE_CONFLICT`, `VALIDATION_FAILED`) has an emission site anywhere in the crate: the validator reports its own `E0xx`/`W0xx` diagnostics instead, and `E021` stands where `UNDEFINED_CMD` would; `l2-nodus-commands.md` §4.8 gives `UNDEFINED_CMD` its run-time emission (a known command no provider can answer) and `VALIDATION_FAILED` its own (a failed `^validator`) — specified, not built. |
 | NL-2 Hard constraints absolute | `RULE_VIOLATION` retains its dedicated path: emitted by the executor's rule check, bypasses `@err:`, forces `Status::Failed`. Severity `error`, category `runtime`; metadata never reclassifies it as catchable. |
 | NL-4 Validate-before-run | Any `error`-severity, `validation`-category code in the validation report blocks execution (the existing `has_errors` gate); execution-stage codes are unreachable on an invalid workflow. |
 | NL-9 Typed I/O / `@err:` contract | **Taxonomy realized; dispatch implemented [v1.1.2].** Every runtime error carries a canonical `NODUS:*` code and surfaces in `RunResult.errors`; the taxonomy is a real, typed error surface — this document's own scope. **Dispatch itself** — invoking the declared `@err:` handler — is implemented per `l2-nodus-error-dispatch.md` (Phase 26): any non-fatal error a step returns with no `Signal` reaches a dispatch check in the main loop, `$error` is populated, and the handler runs via `execute_command` before the run ends; `RULE_VIOLATION` keeps its own dedicated fatal path unchanged (this document's NL-2 row) and is structurally excluded from dispatch, never an exception carved out by name. **`UNHANDLED_ERROR` is emitted** for the case L1 assigns it to: an error that ends its step with no `@err:` handler declared ends the step sequence and is recorded as `NODUS:UNHANDLED_ERROR`, with a `StepError` trace event naming the failed step and its cause; the triggering error stays in `RunResult.errors` beside it (`l2-nodus-error-dispatch.md` §4.5). "Routed to `@err:`" means both halves at once: a typed code reaches `RunResult.errors`, **and** the declared handler actually runs. |
@@ -128,6 +129,10 @@ Four further layer codes sit in the same lookup table, each owned by its realiza
 `MODEL_CALL_FAILED` (category `runtime`, severity `error` — `l2-nodus-runtime.md` §4.5): a model call that
 produced no answer, raised by the executor from the fallible `ModelProvider` surface, so a failed
 generation reaches `@err:` dispatch as a typed step error rather than as a short answer.
+`COMMAND_FAILED` (category `runtime`, severity `error`) is a fifth layer code [ADDED v1.5.0], specified by
+`l2-nodus-commands.md` §4.8: a command that produced no answer, raised by the executor when a `CommandProvider`
+reports a failure whose proposed code the registry does not know. A provider cannot mint a code, so an
+unregistered one is recorded as `COMMAND_FAILED` with the proposed code named in the reason. Specified, not built.
 
 ### 4.3 Metadata lookup
 
@@ -172,6 +177,13 @@ validator rejects it as `E021` before the run starts — but that is a lint code
 `UNDEFINED_CMD` is still not emitted. The retirement of `EXECUTION_FAILED` holds — it is
 emitted nowhere — but none of the seven replacements is emitted either.
 
+**[UPDATED v1.5.0]** `l2-nodus-commands.md` §4.8 specifies the emission path for six of the seven sites: an
+unknown command dispatched is `UNDEFINED_CMD` and a `^validator` that fails is `VALIDATION_FAILED` (both emitted by
+the executor itself), and a provider that runs `ESCALATE`, a confidence-scored command, `QUERY_KB` or
+`REMEMBER`/`RECALL` reports its failure as `ESCALATION_FAILED`, `CONFIDENCE_LOW`, `KB_UNAVAILABLE` or
+`MEMORY_FAILED`. `UNDEFINED_MACRO` is not the seam's. Specified, not built: until it is, the paragraph above
+describes the crate.
+
 ### 4.5 Emission points
 
 | Stage | Codes |
@@ -195,6 +207,12 @@ variables surface as `E004`/`E014` diagnostics and an unknown command as `E021`,
 `UNDEFINED_VAR` / `UNDEFINED_CMD`. A code with no emission site is a name a host can match on and
 never receive, so the lockstep test (§4.3) proves the registry is consistent, not that a failure is
 reported.
+
+**[UPDATED v1.5.0]** Once `l2-nodus-commands.md` is built, sixteen of the twenty-four have an emission path: the
+seven above, `UNDEFINED_CMD` and `VALIDATION_FAILED` from the executor, and `KB_UNAVAILABLE`, `MEMORY_FAILED`,
+`GIT_UNAVAILABLE`, `ESCALATION_FAILED`, `ROUTE_NOT_FOUND`, `COUNTER_OVERFLOW` and `CONFIDENCE_LOW` on a provider's
+behalf (its §4.8). The eight that stay unemitted — `PARSE_ERROR`, `UNDEFINED_VAR`, `RULE_CONFLICT`,
+`SCHEMA_MISMATCH`, `NO_SCHEMA`, `NO_TRIGGER`, `UNDEFINED_MACRO` and `TEST_FAILED` — are not the seam's.
 
 ## 5. Drawbacks & Alternatives
 
@@ -220,6 +238,7 @@ reported.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.5.0 | 2026-09-24 | Core Team | Design pass (2026-09-24): `l2-nodus-commands.md` specifies the emission path for six of the seven sites §4.4 names as replacements for the retired catch-all, and registers a fifth layer code, `COMMAND_FAILED` (category `runtime`, severity `error`), beside `MODEL_CALL_FAILED`: a command that produced no answer, raised when a provider proposes a code this registry does not know. §4.2 records the code; §4.4 and §4.5's emission-status notes record the specified paths and the resulting count (sixteen of the twenty-four with an emission path once built, eight not the seam's); the NL-1 row points to the run-time `UNDEFINED_CMD`. Nothing is built: every note still describes the crate as it is. |
 | 1.4.0 | 2026-09-24 | Core Team | Realization sync (2026-09-24): `UNHANDLED_ERROR` is now emitted (seven of the twenty-four canonical codes have an emission site); `MODEL_CALL_FAILED` joins the layer codes; an unknown command is the lint error `E021`, so NL-1 is realized by the validator rather than by an `UNDEFINED_CMD` emission, which remains absent. |
 | 1.3.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): The NL-1 row claimed the validator emits the validation-category `NODUS:*` codes; none has an emission site, and an unknown command is not diagnosed at all. §4.4/§4.5 gain emission-status notes: six of the twenty-four canonical codes are emitted today, and none of the seven `EXECUTION_FAILED` replacements is. The three further layer codes (`CONFIG_INVALID`, `RESTART_LIMIT`, `COMPENSATION_FAILED`) are now listed beside the others. `UNHANDLED_ERROR`'s L1 role (no handler declared) is cross-referenced to the open deviation. |
 | 1.3.0 | 2026-07-31 | Core Team | §4.2 gains a cross-reference for `ENV_MEASURE_UNKNOWN` (category `control`, severity `error`), the new NE-14 environment-layer code specified by `l2-nodus-environment.md` §4.4.1 — same classification as `CAPABILITY_UNMET`, both pre-run structural rejections rather than runtime-stage effect denials. Not added to §4.5's Emission Points table, matching how `CAPABILITY_UNMET`/`POLICY_DENIED`/`SETTLEMENT_UNACCOUNTED` are handled there. Related Specifications gains the new sibling spec. |

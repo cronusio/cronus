@@ -1,6 +1,6 @@
 # Nodus Closed Vocabulary Registries Implementation (Rust)
 
-**Version:** 1.1.2
+**Version:** 1.1.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -25,6 +25,7 @@ specifies how they are stored and checked.
 - [l1-nodus-language.md](l1-nodus-language.md) — NL-1 schema-first vocabulary contract this spec strengthens; §4.6 declares the closed registries
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — the runtime crate this extends; `vocab` constants, `Schema` query methods, the validator; §4.7(f) enumerates the registry contents
 - [l2-nodus-errors.md](l2-nodus-errors.md) — error/diagnostic conventions; registry checks are advisory (warning severity), distinct from the `NODUS:*` runtime taxonomy
+- [l2-nodus-commands.md](l2-nodus-commands.md) — [ADDED v1.1.3] what a registered `^validator` name means at run time: three core-evaluated rules, the rest the host's, an unevaluable rule failing closed (§4.5 there)
 
 ## 1. Motivation
 
@@ -122,3 +123,4 @@ time against the validator's existing code set.
 | 1.1.0 | 2026-09-05 | Core Team | §3 extended with NL-27 and NL-28 verdicts, taken against source. NL-27 is **vacuous at this surface**: none of the three registries this spec owns is host-extensible (`is_known_flag` / `is_known_validator` / `is_known_type` read the builtin constants alone, and `SchemaProvider` contributes only commands and reserved variables), so with one contributor there is no second declaration to detect; the live half of the LP-4 clause is `Schema::with_provider`'s silent collision discard and is carried by `l2-nodus-runtime` §3.1. NL-28 is **Pending**, and this spec owns a region rather than the reporting surface: §4.3's advisory diagnostics never set `has_errors`, so a vocabulary miss leaves the verdict clean, and the closed registries are unreachable against a host-understood extension — both regions NL-28 requires a result to name, once the result has somewhere to name them. No requirement on the implementation changed. |
 | 1.1.1 | 2026-09-05 | Core Team | Re-confirmed NL-27's **Vacuous** verdict after `l2-nodus-runtime.md`'s Phase 33 update closed two of NL-27's three live-and-violated classes elsewhere in the crate (`§config` field duplicates, macro-name duplicates) — neither touches this spec's registries, which remain non-host-extensible by construction, so nothing here changed. Cross-reference to `l2-nodus-runtime.md` §3.1 updated to note its verdict is now **Partially realized**. |
 | 1.1.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): The NL-9 row now states that the registry checks declared type names only; values bound at run time are not type-checked. |
+| 1.1.3 | 2026-09-24 | Core Team | Design pass (2026-09-24): Related Specifications gains `l2-nodus-commands.md`, which specifies what a `^validator` name this registry admits means at run time — `len`, `min_len` and `required` evaluated by the core, every other name by the host's provider, an unevaluable rule failing closed. This spec still owns which names exist and checks only the name; no requirement here changed. |

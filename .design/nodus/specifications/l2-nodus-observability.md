@@ -1,6 +1,6 @@
 # Nodus Observability Implementation (Rust)
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-observability.md
@@ -55,6 +55,7 @@ a pure read-side classification with **no field at all**. Intended realization, 
 - [l1-nodus-observability.md](l1-nodus-observability.md) — observability contract this spec implements
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — executor and public API this spec extends
 - [l1-nodus-portability.md](l1-nodus-portability.md) — `AuditProvider` is the registered Audit extension point
+- [l2-nodus-commands.md](l2-nodus-commands.md) — [ADDED v1.6.0] widens HO-12's mode override to command answers and validator verdicts, adds `Determinism::ContainsHostCommands` and the `EventAnnotations::command` record (§4.9 there)
 
 ## 1. Motivation
 
@@ -354,6 +355,11 @@ mode, with one override: when the model provider reports itself a stub (`ModelPr
 declared as simulated is kept as declared, and a host that wired modeled providers declares it. Same
 manifest-honesty family as HO-10 (completeness): a trace never lies about which mode produced it.
 
+**[UPDATED v1.6.0]** The override reaches past the model. `l2-nodus-commands.md` §4.9 records a run declared `Real`
+as `Simulated { fidelity: Structural }` when any command answer was a simulated stand-in or any validator verdict was
+assumed, and decides the mode when the manifest is written — not at run start — because that is when the run's
+answers are known. Specified, not built: until it is, only a stub model triggers the override.
+
 #### Variant provenance (HO-18)
 
 `RunManifest` gains `exposure_switches: Vec<(String, String)>` — the resolved `(switch_name, value)`
@@ -407,6 +413,12 @@ manifest alone** — the host reconstructs nothing. Two honesty rules from the L
   until `@needs` selective loading is implemented (an honest declared omission, the HO-14 principle
   applied locally at the manifest grain — the general two-state `Measurement` type is the deferred
   batch's concern).
+
+**[UPDATED v1.6.0]** `Determinism` gains a third statement, `ContainsHostCommands`, specified by
+`l2-nodus-commands.md` §4.9: a run whose commands a real `CommandProvider` answered is not stated deterministic,
+because a host answer is as external as a model's. The variant names the first disqualifier — model calls, then host
+commands — not the full set, which stays in the event stream; a simulated answer disqualifies nothing. Specified,
+not built.
 
 nodus embeds nothing into produced artifacts, names no file format, and performs no replay
 (embedding/transport/re-execution are host concerns, LP-1/LP-2). Realizes RR-2 (three recipe layers),
@@ -680,6 +692,7 @@ HO-8/9/10/11/13/16/17 (§4.9, pending its phase). No observability invariant rem
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.6.0 | 2026-09-24 | Core Team | Design pass (2026-09-24): `l2-nodus-commands.md` §4.9 widens two of this spec's honesty rules to the command seam. HO-12: a run declared `Real` is recorded `Simulated { fidelity: Structural }` when any command answer was a simulated stand-in or any validator verdict was assumed, decided when the manifest is written rather than at run start. HO-20: `Determinism` gains `ContainsHostCommands`, so a run answered by a real provider is not stated deterministic. A new `EventAnnotations::command` record carries the effect key, attempt, world and provenance on a seam-answered step's `StepEnd` (no new event variant, HO-6 intact). Nothing is built: every rule still describes the crate as it is. |
 | 1.5.0 | 2026-09-24 | Core Team | Realization sync (2026-09-24): HO-12 implemented: a run answered by the built-in stub records `Simulated { Structural }`. `RunStatus` gains `Paused`; `Partial` with recorded errors maps to `Error`, so a manifest no longer reports `Ok` for a run that ended with errors or stopped at a pause. `workflow_digest` is versioned (`nd1:` + FNV-1a-64 over the canonical compact form). |
 | 1.4.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): HO-12 → Partial: every entry point except `run_with_provider*` substitutes the stub model yet records `ExecutionMode::Real`. §4.1 records the status mapping: `Partial` and `Paused` runs are reported as `RunStatus::Ok`, and `RunStatus::Error`/`ValidationError` are never produced. HO-20 notes that the digest is stable only within one build. §6 no longer claims concurrent `~PARALLEL` event emission. |
 | 1.4.0 | 2026-07-24 | Core Team | Added §4.9 Event Annotations, Cost, Lineage & Completeness — the intended realization (spec-ahead-of-code) of the final seven invariants, **closing all twenty**. Central design decision: HO-9 (receipt), HO-11 (`message`), HO-16 (anomaly), and HO-17 (durability) are all *host-supplied annotations that may ride any event*; as four separate fields they would rewrite all ten `ExecutionEvent` variants four times over, so they land as **one `EventAnnotations` carrier field per variant** (`message`/`anomaly`/`receipt`/`durability`, `Default` = all-`None` + `Durable`) — one churn now, and future annotations become struct fields rather than tenth-variant edits. Targeted realizations: **HO-8** four token classes on `ModelResponse` only, born as §4.8 `Measurement` and `Unavailable`-not-`0` since `ModelProvider` has no token-accounting seam (extending that seam is explicitly out of scope); **HO-13** `Option<Vec<SourceRef>>` (indices only, never content) on collection-mapping events, side-band and outside the NL-7 `Value` space; **HO-10** a pure read-side `classify_trace → { Complete, GapDamaged, Truncated, Empty }` with **no field**, reusing §4.8's `event_count == highest seq + 1` identity as the gap test. Records the load-bearing HO-17 consequence for this crate: **a transient event must not consume a `seq`** — §4.8's counter numbers the durable stream only, so a dropped transient can never register as a gap nor a severed transient tail as a truncated run; nodus emits no transients today (`generate` returns a complete `String`), but the rule is fixed now so a future streaming path cannot default into corrupting the sequence. |

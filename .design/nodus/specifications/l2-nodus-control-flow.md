@@ -1,6 +1,6 @@
 # Nodus Control-Flow Constructs Implementation (Rust)
 
-**Version:** 1.0.3
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -22,6 +22,7 @@ spec mostly adds parsing and dispatch.
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — runtime crate extended here: `lexer`, `ast`, `parser`, `executor`, `transpiler`, `validator`; §4.7(b) itemizes the gap
 - [l2-nodus-errors.md](l2-nodus-errors.md) — owns `SWITCH_NO_MATCH` and `PAUSED`
 - [l2-nodus-dialog.md](l2-nodus-dialog.md) — established `Status::Paused` + `Signal::Pause`, which `!PAUSE` reuses
+- [l2-nodus-commands.md](l2-nodus-commands.md) — [ADDED v1.1.0] closes §4.4's recorded retry hazard by scoping a retry to the failing command through a per-step commit memo (§4.6, §4.7 there)
 
 ## 1. Motivation
 
@@ -119,7 +120,9 @@ Stmt::Map    → for each element of the Value::List collection, bind $it, run t
 `!HALT` status precedence sits with the existing rule-violation/abort logic
 (fatal); `!PAUSE` reuses the paused branch added for dialog.
 
-**Retry re-runs the whole step (hazard, recorded).** A retry re-executes the step's action
+**Retry is scoped to the failing command [SPECIFIED v1.1.0, pending build].** A retry re-executes only the command that failed and the commands after it. Within one retry loop, a command that completed cleanly is recorded under its effect key, and a later attempt re-binds its recorded result instead of executing it again — so a `SETTLE` that paid, an `ASK` that was answered or a host effect that committed is not repeated. The failed command re-executes with the same effect key and an incremented attempt number, which is the provider's cue to recognize an effect it may already have applied (`l2-nodus-commands.md` §4.6, §4.7). A rule that fails is the failing command's failure, so `GEN(…) ^len:280 ~RETRY:3` regenerates; regenerate-until-valid across several commands is `~UNTIL … MAX:n`. *As built today, the hazard below stands:*
+
+**Retry re-runs the whole step (hazard, recorded; superseded by design, not yet by code).** A retry re-executes the step's action
 and every sub-step, including commands that completed in the failed attempt. An
 effect-class command — a model call, `SETTLE`, a host effect — that succeeded before a later
 command in the same step failed therefore runs again: a double commit, the step-grain twin
@@ -183,3 +186,4 @@ already exist; this cluster wires them to syntax.
 | 1.0.1 | 2026-07-25 | Core Team | §4.5 patch: records that `~MAP`'s implicit `$it` binding (§4.3) must count as declared for the pre-existing variable-declaration check, on the same file-wide-set terms as `~FOR`'s explicit loop variable — closes a conformance gap where the realized check omitted this and rejected every `~MAP` workflow. No design change; status stays `Stable`. |
 | 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): §4.4 records two hazards: a retry re-runs the whole step, re-committing effects that succeeded in the failed attempt and leaving them outside the compensation ledger (`+backoff`/`+retry_on` are unrealized); and `~MAP` over a non-list silently yields an empty list, so a check over the result passes vacuously. The NL-5 row names `E017`. |
 | 1.0.3 | 2026-09-24 | Core Team | Realization sync (2026-09-24): `~MAP` over a present non-list collection raises a `MAP_SOURCE_NOT_A_LIST:<name>` flag instead of absorbing the type error silently. The retry-repeats-effects hazard remains recorded. |
+| 1.1.0 | 2026-09-24 | Core Team | Design pass (2026-09-24): §4.4's recorded retry hazard is closed by design — a retry is scoped to the failing command through a per-step commit memo keyed by effect identity, specified in `l2-nodus-commands.md` §4.6 and §4.7. The hazard text stays as the description of the crate until that spec is built. `+backoff` and `+retry_on` remain unrealized. |
