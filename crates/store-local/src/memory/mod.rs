@@ -35,12 +35,16 @@ pub use cronus_contract::{
 #[derive(Debug)]
 pub enum MemoryError {
     Database(rusqlite::Error),
+    /// The database file's schema version could not be reconciled with the
+    /// one this build understands (a newer file, or a failed migration).
+    Schema(crate::versioning::SchemaError),
 }
 
 impl std::fmt::Display for MemoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MemoryError::Database(e) => write!(f, "memory database error: {e}"),
+            MemoryError::Schema(e) => write!(f, "{e}"),
         }
     }
 }
@@ -49,6 +53,7 @@ impl std::error::Error for MemoryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             MemoryError::Database(e) => Some(e),
+            MemoryError::Schema(e) => Some(e),
         }
     }
 }
@@ -56,6 +61,12 @@ impl std::error::Error for MemoryError {
 impl From<rusqlite::Error> for MemoryError {
     fn from(e: rusqlite::Error) -> Self {
         MemoryError::Database(e)
+    }
+}
+
+impl From<crate::versioning::SchemaError> for MemoryError {
+    fn from(e: crate::versioning::SchemaError) -> Self {
+        MemoryError::Schema(e)
     }
 }
 

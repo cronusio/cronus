@@ -20,7 +20,7 @@ use crate::ast::{AbsoluteRule, CommandCall, RuleKind, Step, Stmt, WorkflowFile};
 use crate::observability::{
     AuditProvider, DialogProvenance, EnvInteraction, EventAnnotations, ExecutionEvent,
     ExecutionMode, FaultIdentity, FieldDescriptor, LoopType, Measurement, NoopAuditProvider,
-    ReproRecipe, RunManifest, RunStatus, SourceRef, step_identity,
+    ReproRecipe, RunManifest, RunStatus, SimFidelity, SourceRef, step_identity,
 };
 use crate::portability::{
     NoopPolicyProvider, NoopSettlementRail, PolicyProvider, SettlementRail, effect_class_of,
@@ -129,6 +129,48 @@ pub struct RuntimeError {
 /// Renders a [`RuntimeError`] as the `$error` value an `@err:` handler sees
 /// (NL-9). Called only at the point of dispatch — `$error` stays at its
 /// seeded empty map for the rest of a run that never reaches one.
+/// Split `input` into what may be bound and the runtime-owned names withheld
+/// from it. A name the workflow declares in `@in:` is the workflow's own
+/// input — declared on purpose, so it is kept.
+fn withhold_runtime_owned_input(
+    ast: &WorkflowFile,
+    input: Option<Value>,
+) -> (Option<Value>, Vec<String>) {
+    let Some(Value::Map(entries)) = input else {
+        return (input, Vec::new());
+    };
+    let declares = |key: &str| {
+        ast.input_decl.as_ref().is_some_and(|decl| {
+            decl.fields
+                .iter()
+                .any(|f| f.name.trim_start_matches('$') == key.trim_start_matches('$'))
+        })
+    };
+    let mut kept = Vec::with_capacity(entries.len());
+    let mut withheld = Vec::new();
+    for (key, value) in entries {
+        if crate::validator::is_runtime_owned_name(&key) && !declares(&key) {
+            withheld.push(key);
+        } else {
+            kept.push((key, value));
+        }
+    }
+    (Some(Value::Map(kept)), withheld)
+}
+
+/// The key a `~PARALLEL` branch's result is collected under: the branch's own
+/// pipeline target (without its `$`), else its 1-based position.
+fn branch_result_key(branch: &Stmt, index: usize) -> String {
+    let target = match branch {
+        Stmt::Command(cmd) => cmd.pipeline_target.as_deref(),
+        _ => None,
+    };
+    match target.map(|t| t.trim_start_matches('$')) {
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => format!("branch_{}", index + 1),
+    }
+}
+
 fn error_to_value(err: &RuntimeError) -> Value {
     Value::Map(vec![
         ("code".to_string(), Value::Text(err.code.clone())),
@@ -184,8 +226,40 @@ pub struct RunResult {
 
 // ─── ModelProvider ────────────────────────────────────────────────────────────
 
+/// Why a model call produced no answer.
+///
+/// Carries a short, secret-free description for the run record: never the
+/// prompt, never a credential, never the provider's raw response body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelError {
+    pub reason: String,
+}
+
+impl ModelError {
+    pub fn new(reason: impl Into<String>) -> Self {
+        ModelError {
+            reason: reason.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ModelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "model call failed: {}", self.reason)
+    }
+}
+
+impl std::error::Error for ModelError {}
+
 /// Pluggable LLM backend for `GEN`, `ANALYZE`, and similar model-backed
 /// commands. Implementations can call a real API or return stubs for testing.
+///
+/// The executor calls the fallible [`try_generate`](Self::try_generate) and
+/// [`try_analyze`](Self::try_analyze). Their defaults delegate to the
+/// infallible methods, so a provider that cannot fail — a stub, a test
+/// double — implements only those; a provider in front of a real backend
+/// overrides the fallible pair so a dropped connection or a cancelled call is
+/// reported as a failed step instead of being returned as a short answer.
 pub trait ModelProvider {
     /// A short identifier for this provider (surfaced in the result).
     fn model_id(&self) -> &str;
@@ -195,6 +269,28 @@ pub trait ModelProvider {
 
     /// Analyse text and return a map of flag → score/label.
     fn analyze(&self, text: &str, flags: &[String]) -> Value;
+
+    /// Generate text, or report why no answer was produced.
+    fn try_generate(
+        &self,
+        prompt: &str,
+        modifiers: &[(String, String)],
+    ) -> Result<String, ModelError> {
+        Ok(self.generate(prompt, modifiers))
+    }
+
+    /// Analyse text, or report why no answer was produced.
+    fn try_analyze(&self, text: &str, flags: &[String]) -> Result<Value, ModelError> {
+        Ok(self.analyze(text, flags))
+    }
+
+    /// Whether this provider fabricates its answers instead of consulting a
+    /// model. A run whose model calls are answered by such a provider is a
+    /// simulation by construction and is recorded as one (HO-12), whatever
+    /// the caller declared — nothing that ran was real.
+    fn is_stub(&self) -> bool {
+        false
+    }
 }
 
 /// Zero-dependency stub that returns deterministic responses.
@@ -206,6 +302,10 @@ pub struct StubProvider;
 impl ModelProvider for StubProvider {
     fn model_id(&self) -> &str {
         "nodus-stub"
+    }
+
+    fn is_stub(&self) -> bool {
+        true
     }
 
     fn generate(&self, prompt: &str, modifiers: &[(String, String)]) -> String {
@@ -435,25 +535,54 @@ impl ExecutionContext {
     }
 }
 
-/// Deterministic `std`-only content digest of the parsed workflow definition
-/// (HO-20). `execute_inner` receives only the parsed [`WorkflowFile`], never
-/// the raw source text (parsing happens earlier, in `workflows.rs`) — so this
-/// hashes the AST's canonical `Debug` representation rather than source bytes,
-/// mirroring `environment.rs`'s `digest_source` (`DefaultHasher`, zero-dep,
-/// LP-1; deterministic within one build, not guaranteed stable across Rust
-/// versions/platforms). Two sources differing only in whitespace/comments
-/// parse to the same AST and therefore share a digest — the correct notion of
-/// "same workflow" for reproducibility, since neither affects execution.
+/// The version tag every workflow digest carries. A digest is compared later —
+/// possibly after an upgrade — so it names the scheme that produced it: a
+/// digest with a different tag is *not comparable*, rather than merely unequal.
+/// Bump it whenever the algorithm or the canonical form below changes.
+pub(crate) const DIGEST_VERSION: &str = "nd1";
+
+/// FNV-1a, 64-bit: a fixed, published algorithm (offset basis
+/// `0xcbf29ce484222325`, prime `0x100000001b3`), so the same bytes hash to the
+/// same value on every build, platform and Rust release — which
+/// `DefaultHasher` (SipHash with an unspecified, release-dependent key and
+/// algorithm) does not promise. It is an identity check for *accidental*
+/// change, not a cryptographic commitment: a host that must resist a crafted
+/// collision computes its own digest over [`canonical_text`] (LP-2).
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in bytes {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// `nd1:` plus the 16-hex-digit FNV-1a of `text`.
+pub(crate) fn digest_text(text: &str) -> String {
+    format!("{DIGEST_VERSION}:{:016x}", fnv1a64(text.as_bytes()))
+}
+
+/// The canonical text a workflow definition is identified by: its compact
+/// form, which round-trips to an equal AST (NL-6). Unlike the AST's `Debug`
+/// rendering — which changes whenever any AST type gains a field — it changes
+/// only when the workflow itself does.
+pub(crate) fn canonical_text(ast: &WorkflowFile) -> String {
+    crate::transpiler::Transpiler::to_nodus(ast)
+}
+
+/// Content digest of the parsed workflow definition (HO-20): [`digest_text`]
+/// over [`canonical_text`]. `execute_inner` receives only the parsed
+/// [`WorkflowFile`], never the raw source (parsing happens earlier, in
+/// `workflows.rs`), so identity is taken from the AST — and two sources
+/// differing only in whitespace or comments parse to the same AST and share a
+/// digest, the correct notion of "same workflow" for reproducibility, since
+/// neither affects execution.
 ///
-/// `pub(crate)`: reused directly by `environment.rs`'s `EnvRunResult::candidate()`
+/// `pub(crate)`: reused by `environment.rs`'s `EnvRunResult::candidate()`
 /// (NE-12) so `CandidateResult.workflow_digest` and `ReproRecipe.workflow_digest`
-/// agree on the same notion of identity, rather than each hashing something
-/// different under the identical field name.
+/// agree on one notion of identity under the one field name.
 pub(crate) fn digest_ast(ast: &WorkflowFile) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{ast:?}").hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    digest_text(&canonical_text(ast))
 }
 
 /// Resolve the run's `correlation_id` (HO-7): the caller-supplied `run_id`
@@ -488,7 +617,83 @@ pub struct Executor {
     settlement: Box<dyn SettlementRail>,
 }
 
+/// Assembles an [`Executor`] from any combination of seams.
+///
+/// The `Executor::with_*` constructors each inject one seam and leave the rest
+/// at their built-ins — so no two of them could be used together, and a real
+/// model could never run under a host policy. The builder is the composed
+/// form: every seam is independently replaceable, and any seam left alone
+/// keeps its built-in (the stub model, no audit, the synchronous dialog
+/// resolver, a permit-everything policy, a rail that settles nothing).
+pub struct ExecutorBuilder {
+    provider: Box<dyn ModelProvider>,
+    audit: Box<dyn AuditProvider>,
+    dialog: Box<dyn DialogProvider>,
+    policy: Box<dyn PolicyProvider>,
+    settlement: Box<dyn SettlementRail>,
+}
+
+impl Default for ExecutorBuilder {
+    fn default() -> Self {
+        ExecutorBuilder {
+            provider: Box::new(StubProvider),
+            audit: Box::new(NoopAuditProvider),
+            dialog: Box::new(DefaultDialogProvider),
+            policy: Box::new(NoopPolicyProvider),
+            settlement: Box::new(NoopSettlementRail),
+        }
+    }
+}
+
+impl ExecutorBuilder {
+    /// The model behind `GEN` / `ANALYZE`.
+    pub fn model(mut self, provider: impl ModelProvider + 'static) -> Self {
+        self.provider = Box::new(provider);
+        self
+    }
+
+    /// The sink for the run's execution events and manifest.
+    pub fn audit(mut self, audit: impl AuditProvider + 'static) -> Self {
+        self.audit = Box::new(audit);
+        self
+    }
+
+    /// The resolver behind `ASK` / `CONFIRM`.
+    pub fn dialog(mut self, dialog: impl DialogProvider + 'static) -> Self {
+        self.dialog = Box::new(dialog);
+        self
+    }
+
+    /// The per-effect authorization gate (LP-11) every model call, dialog and
+    /// settlement passes before it happens.
+    pub fn policy(mut self, policy: impl PolicyProvider + 'static) -> Self {
+        self.policy = Box::new(policy);
+        self
+    }
+
+    /// The rail a permitted `SETTLE` step pays through (LP-17).
+    pub fn settlement(mut self, rail: impl SettlementRail + 'static) -> Self {
+        self.settlement = Box::new(rail);
+        self
+    }
+
+    pub fn build(self) -> Executor {
+        Executor {
+            provider: self.provider,
+            audit: self.audit,
+            dialog: self.dialog,
+            policy: self.policy,
+            settlement: self.settlement,
+        }
+    }
+}
+
 impl Executor {
+    /// Start assembling an executor from any combination of seams.
+    pub fn builder() -> ExecutorBuilder {
+        ExecutorBuilder::default()
+    }
+
     /// Create an executor backed by `provider` with no-op audit and the built-in
     /// synchronous dialog resolver.
     pub fn new(provider: impl ModelProvider + 'static) -> Self {
@@ -738,6 +943,48 @@ impl Executor {
         ctx.event_count += 1;
     }
 
+    /// Every execution enters here. The caller's input is first stripped of any
+    /// key that names a runtime-owned variable (`$user`, `$session`, `$ctx`, …)
+    /// the workflow does not itself declare in `@in:`: those values are the
+    /// runtime's to set, so binding a caller's copy would let a caller forge a
+    /// fact the workflow may branch on. The `run*` entry points reject such an
+    /// input outright before the run starts (`E022`); this is the same rule for
+    /// a host that drives the executor directly, where each dropped key is
+    /// reported as an `INPUT_IGNORED:<name>` flag instead of vanishing silently.
+    /// Stripping happens before the restart loop seeds its own `$restart_count`.
+    #[allow(clippy::too_many_arguments)]
+    fn execute_with_restart(
+        &self,
+        ast: &WorkflowFile,
+        input: Option<Value>,
+        run_id: &str,
+        started_at: &str,
+        max_steps: Option<u32>,
+        wall_clock_ms: Option<u64>,
+        env_trajectory: Vec<EnvInteraction>,
+        execution_mode: ExecutionMode,
+        exposure_switches: Vec<(String, String)>,
+    ) -> (RunResult, bool) {
+        let (input, withheld) = withhold_runtime_owned_input(ast, input);
+        let (mut result, budget_halted) = self.execute_restartable(
+            ast,
+            input,
+            run_id,
+            started_at,
+            max_steps,
+            wall_clock_ms,
+            env_trajectory,
+            execution_mode,
+            exposure_switches,
+        );
+        result.flags.extend(
+            withheld
+                .into_iter()
+                .map(|name| format!("INPUT_IGNORED:{name}")),
+        );
+        (result, budget_halted)
+    }
+
     /// NL-23: wraps [`Self::execute_inner`] in a bounded attempt loop when the
     /// workflow declares `restart_max`. Wrapping **around** rather than
     /// reaching inside is the load-bearing choice — `execute_inner` builds a
@@ -751,7 +998,7 @@ impl Executor {
     /// is refused with `NODUS:RESTART_LIMIT` — self-restart is opt-in via
     /// declaration, never silently active).
     #[allow(clippy::too_many_arguments)]
-    fn execute_with_restart(
+    fn execute_restartable(
         &self,
         ast: &WorkflowFile,
         input: Option<Value>,
@@ -823,6 +1070,59 @@ impl Executor {
         }
     }
 
+    /// An error reached the end of its step with no `@err:` handler declared:
+    /// record `NODUS:UNHANDLED_ERROR` (and its trace event) naming what failed.
+    /// The triggering error stays in the run's error list beside it.
+    fn record_unhandled_error(&self, ctx: &mut ExecutionContext, step_num: u32) {
+        let cause = ctx
+            .errors
+            .last()
+            .map(|e| e.code.clone())
+            .unwrap_or_default();
+        let command = ctx
+            .log
+            .last()
+            .map(|entry| entry.command.clone())
+            .unwrap_or_default();
+        let error_detail = format!(
+            "step {step_num} failed with {cause} and the workflow declares no @err handler"
+        );
+        self.emit(ctx, |seq, correlation_id| ExecutionEvent::StepError {
+            step_index: step_num,
+            step_command: command.clone(),
+            error_code: vocab::error_code::UNHANDLED_ERROR.to_string(),
+            error_detail: error_detail.clone(),
+            step_identity: step_identity(step_num, &command),
+            fault_identity: FaultIdentity {
+                step_identity: step_identity(step_num, &command),
+                code: vocab::error_code::UNHANDLED_ERROR.to_string(),
+                discriminator: None,
+            },
+            seq,
+            correlation_id,
+            annotations: EventAnnotations::default(),
+        });
+        ctx.errors.push(RuntimeError {
+            code: vocab::error_code::UNHANDLED_ERROR.to_string(),
+            step: step_num,
+            reason: error_detail,
+        });
+    }
+
+    /// The execution mode a run records (HO-12). A caller that declared
+    /// nothing gets `Real` — unless the model calls are answered by the
+    /// built-in stub, in which case nothing that ran was real and the run is
+    /// recorded as a structural simulation instead. A mode the caller declared
+    /// explicitly as simulated is kept as declared.
+    fn effective_execution_mode(&self, declared: ExecutionMode) -> ExecutionMode {
+        match declared {
+            ExecutionMode::Real if self.provider.is_stub() => ExecutionMode::Simulated {
+                fidelity: SimFidelity::Structural,
+            },
+            other => other,
+        }
+    }
+
     /// Merge a `restart_count` entry into the `@in`-overlay input map for one
     /// attempt, preserving whatever the caller originally passed. Fresh per
     /// attempt (LG-5) — nothing from a prior attempt's variable environment
@@ -854,6 +1154,7 @@ impl Executor {
         exposure_switches: Vec<(String, String)>,
     ) -> (RunResult, bool) {
         let mut ctx = ExecutionContext::new(resolve_correlation_id(run_id));
+        let execution_mode = self.effective_execution_mode(execution_mode);
 
         // Boot step 1: identify workflow.
         let workflow_id = ast
@@ -917,6 +1218,9 @@ impl Executor {
         let mut paused = false;
         let mut halted = false;
         let mut budget_halted = false;
+        // Set when the step sequence ended on an error nothing caught — with
+        // or without a declared handler. It arms the compensation unwind.
+        let mut uncaught_error = false;
         for (step_count, step) in ast.steps.iter().enumerate() {
             // NE-13: a fixed step/wall-clock ceiling halts the run uniformly —
             // a normal graded outcome (Status::Partial below), never an error.
@@ -945,17 +1249,21 @@ impl Executor {
                     // NL-9: a step that returns no Signal but left a new
                     // RuntimeError behind is "uncaught" — nothing else in the
                     // language can catch it. Dispatch the declared @err:
-                    // handler once, then end the run's step sequence.
-                    if let Some(handler) = ast.error_decl.as_ref().and_then(|d| d.handler.as_ref())
-                        && ctx.errors.len() > errors_before_this_step
-                    {
-                        let triggering = ctx
-                            .errors
-                            .last()
-                            .expect("errors grew past errors_before_this_step");
-                        ctx.variables
-                            .insert("error".to_string(), error_to_value(triggering));
-                        self.execute_command(&mut ctx, handler, step.number);
+                    // handler once, then end the run's step sequence. With no
+                    // handler declared the error still ends the sequence, as
+                    // NODUS:UNHANDLED_ERROR: continuing would run later steps
+                    // against whatever the failed one left behind, which makes
+                    // omitting the handler *less* contained than declaring it.
+                    if ctx.errors.len() > errors_before_this_step {
+                        uncaught_error = true;
+                        let handler = ast.error_decl.as_ref().and_then(|d| d.handler.as_ref());
+                        match (handler, ctx.errors.last().map(error_to_value)) {
+                            (Some(handler), Some(error_value)) => {
+                                ctx.variables.insert("error".to_string(), error_value);
+                                self.execute_command(&mut ctx, handler, step.number);
+                            }
+                            _ => self.record_unhandled_error(&mut ctx, step.number),
+                        }
                         break;
                     }
                 }
@@ -985,16 +1293,20 @@ impl Executor {
             Status::Ok
         };
 
-        // NL-22(d): armed only on failure/abort, never automatic on success —
-        // a Status::Ok/Partial/Paused run keeps its effects untouched. Drains
-        // the ledger back-to-front (LIFO, CO-4): later effects were built on
-        // earlier ones, so popping is the correctness contract, not a hint.
-        // A compensation that fails is not retried and does not abort the
+        // NL-22(d): armed by a failure signal, never automatic on success — a
+        // run that ends clean, paused or on a graded budget halt keeps its
+        // effects untouched. The signals are a rule violation, `!HALT`,
+        // `!BREAK`, and an error nothing caught (dispatched to `@err:` or not:
+        // routing to a handler is the workflow's failure path, so the effects
+        // it already committed are unwound too). Drains the ledger
+        // back-to-front (LIFO, CO-4): later effects were built on earlier
+        // ones, so popping is the correctness contract, not a hint. A
+        // compensation that fails is not retried and does not abort the
         // unwind (NL-22(b)) — it stays surfaced as COMPENSATION_FAILED
         // alongside whatever error the original effect already carries, and
         // draining continues so every remaining completed effect still gets
         // its chance to undo.
-        if matches!(status, Status::Failed | Status::Aborted) {
+        if matches!(status, Status::Failed | Status::Aborted) || uncaught_error {
             while let Some(effect) = ctx.compensations.pop() {
                 let errors_before_compensation = ctx.errors.len();
                 self.execute_command(&mut ctx, &effect.compensation, effect.step_number);
@@ -1023,7 +1335,12 @@ impl Executor {
         };
 
         let run_status = match status {
-            Status::Ok | Status::Partial | Status::Paused => RunStatus::Ok,
+            Status::Ok => RunStatus::Ok,
+            // A budget halt (NE-13) ends a run `Partial` without any error: a
+            // graded outcome, not a fault, so the manifest does not call it one.
+            Status::Partial if ctx.errors.is_empty() => RunStatus::Ok,
+            Status::Partial => RunStatus::Error,
+            Status::Paused => RunStatus::Paused,
             Status::Failed | Status::Aborted => RunStatus::ConstraintHalt,
         };
         // HO-20: stated, never inferred from the recipe's mere presence — a
@@ -1343,17 +1660,47 @@ impl Executor {
         None
     }
 
+    /// Run a `~PARALLEL` block. `~PARALLEL` is a scheduling hint, and this
+    /// runtime realizes it as the branches in declared order over the shared
+    /// environment — so the semantics the language gives a parallel block have
+    /// to hold here explicitly:
+    ///
+    /// - **Fail-fast.** The first branch that returns a control signal
+    ///   (`!HALT`, `!BREAK`, `!PAUSE`, a rule violation) or leaves an error
+    ///   behind ends the block: later branches never start and `~JOIN` is
+    ///   bypassed. The signal propagates; an error reaches `@err:` through the
+    ///   main loop's dispatch check.
+    /// - **`~JOIN → $target`** collects every branch's result, in declared
+    ///   order, as a map keyed by each branch's own pipeline target (or
+    ///   `branch_<n>` for a branch that binds none).
     fn execute_parallel(
         &self,
         ctx: &mut ExecutionContext,
         pb: &crate::ast::ParallelBlock,
         step_num: u32,
     ) -> Option<Signal> {
-        for branch in &pb.branches {
-            self.execute_node(ctx, branch, step_num);
+        let errors_before = ctx.errors.len();
+        let mut results: Vec<(String, Value)> = Vec::with_capacity(pb.branches.len());
+        for (index, branch) in pb.branches.iter().enumerate() {
+            let log_before = ctx.log.len();
+            if let Some(signal) = self.execute_node(ctx, branch, step_num) {
+                return Some(signal);
+            }
+            if ctx.errors.len() > errors_before {
+                return None;
+            }
+            let result = ctx.log[log_before..]
+                .last()
+                .map(|entry| entry.result.clone())
+                .unwrap_or(Value::Null);
+            let mut key = branch_result_key(branch, index);
+            if results.iter().any(|(existing, _)| *existing == key) {
+                key = format!("{key}_{}", index + 1);
+            }
+            results.push((key, result));
         }
         if let Some(target) = &pb.join_target {
-            ctx.set_var(target, Value::Map(Vec::new()));
+            ctx.set_var(target, Value::Map(results));
         }
         None
     }
@@ -1410,7 +1757,19 @@ impl Executor {
     ) -> Option<Signal> {
         let items = match ctx.get_var(&mb.collection) {
             Value::List(items) => items,
-            _ => Vec::new(),
+            // Nothing to map: an absent collection is a legitimate empty case.
+            Value::Null => Vec::new(),
+            // A value that is present but not a list is a type error the
+            // run does not halt on (the map yields an empty list, per the
+            // contract) but must not hide: the empty result is otherwise
+            // indistinguishable from mapping an empty list, and a check built
+            // over it — every element validated, every item delivered —
+            // would pass vacuously.
+            _ => {
+                ctx.flags
+                    .push(format!("MAP_SOURCE_NOT_A_LIST:{}", mb.collection));
+                Vec::new()
+            }
         };
         let mut results = Vec::with_capacity(items.len());
         // Route each element's result through a scratch target so the full
@@ -1681,7 +2040,12 @@ impl Executor {
             annotations: EventAnnotations::default(),
         });
 
+        let errors_before = ctx.errors.len();
         let result = self.dispatch(ctx, cmd, step_num);
+        // A command that reported an error produced no answer: its pipeline
+        // target stays as it was rather than holding a placeholder that looks
+        // like one.
+        let failed = ctx.errors.len() > errors_before;
 
         let elapsed_ms = Measurement::Taken(step_start.elapsed().as_millis() as u64);
         let output_vars: Vec<String> = cmd.pipeline_target.iter().cloned().collect();
@@ -1698,7 +2062,7 @@ impl Executor {
 
         ctx.log_step(step_num, &cmd.name, result.clone());
 
-        if let Some(target) = &cmd.pipeline_target {
+        if !failed && let Some(target) = &cmd.pipeline_target {
             ctx.set_var(target, result);
         }
 
@@ -2040,7 +2404,13 @@ impl Executor {
             annotations: EventAnnotations::default(),
         });
         let call_start = Instant::now();
-        let result = self.provider.generate(&prompt_str, &cmd.modifiers);
+        let result = match self.provider.try_generate(&prompt_str, &cmd.modifiers) {
+            Ok(text) => text,
+            Err(failure) => {
+                self.record_model_failure(ctx, cmd, step_num, &failure);
+                return Value::Null;
+            }
+        };
         let elapsed_ms = Measurement::Taken(call_start.elapsed().as_millis() as u64);
         let output_len = result.len() as u32;
         // HO-8: ModelProvider exposes no token-accounting seam, so all four
@@ -2059,6 +2429,40 @@ impl Executor {
             annotations: EventAnnotations::default(),
         });
         Value::Text(result)
+    }
+
+    /// A model call the provider reported as failed: the step gets a typed
+    /// `NODUS:MODEL_CALL_FAILED` error (and its trace event) instead of an
+    /// answer. Signal-free, so it reaches the workflow's `@err:` handler like
+    /// any other non-fatal error — and a `~RETRY` on the step re-runs it.
+    fn record_model_failure(
+        &self,
+        ctx: &mut ExecutionContext,
+        cmd: &CommandCall,
+        step_num: u32,
+        failure: &ModelError,
+    ) {
+        let error_detail = format!("{} did not get an answer: {}", cmd.name, failure.reason);
+        self.emit(ctx, |seq, correlation_id| ExecutionEvent::StepError {
+            step_index: step_num,
+            step_command: cmd.name.clone(),
+            error_code: vocab::error_code::MODEL_CALL_FAILED.to_string(),
+            error_detail: error_detail.clone(),
+            step_identity: step_identity(step_num, &cmd.name),
+            fault_identity: FaultIdentity {
+                step_identity: step_identity(step_num, &cmd.name),
+                code: vocab::error_code::MODEL_CALL_FAILED.to_string(),
+                discriminator: None,
+            },
+            seq,
+            correlation_id,
+            annotations: EventAnnotations::default(),
+        });
+        ctx.errors.push(RuntimeError {
+            code: vocab::error_code::MODEL_CALL_FAILED.to_string(),
+            step: step_num,
+            reason: error_detail,
+        });
     }
 
     fn handle_analyze(
@@ -2082,7 +2486,13 @@ impl Executor {
             annotations: EventAnnotations::default(),
         });
         let call_start = Instant::now();
-        let result = self.provider.analyze(&text, &cmd.flags);
+        let result = match self.provider.try_analyze(&text, &cmd.flags) {
+            Ok(value) => value,
+            Err(failure) => {
+                self.record_model_failure(ctx, cmd, step_num, &failure);
+                return Value::Null;
+            }
+        };
         let elapsed_ms = Measurement::Taken(call_start.elapsed().as_millis() as u64);
         let output_summary = match &result {
             Value::Map(entries) => {
@@ -2231,6 +2641,64 @@ mod tests {
                 .resume
                 .expect("a paused run carries a resume descriptor");
             assert_eq!(resume.workflow_digest, digest_ast(&ast));
+        }
+
+        // ── Workflow digest (versioned, specified) ────────────────────────────
+
+        const DIGEST_WF: &str = "\
+§wf:digest_wf v1.0
+§runtime: { core: schema.nodus }
+@out: $out
+@steps:
+  1. GEN(hello) → $out
+  2. LOG($out)
+";
+
+        #[test]
+        fn fnv1a64_matches_the_published_test_vectors() {
+            // The FNV reference vectors: the digest is a specified algorithm,
+            // so these values hold on every build, platform and Rust release.
+            assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
+            assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+            assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
+        }
+
+        #[test]
+        fn a_digest_names_its_scheme_and_has_a_fixed_shape() {
+            let digest = digest_text("anything");
+            assert_eq!(digest, format!("{DIGEST_VERSION}:{}", &digest[4..]));
+            assert!(digest.starts_with("nd1:"), "{digest}");
+            assert_eq!(digest.len(), "nd1:".len() + 16);
+            assert!(digest[4..].bytes().all(|b| b.is_ascii_hexdigit()));
+            // A known answer pins the scheme end to end.
+            assert_eq!(digest_text(""), "nd1:cbf29ce484222325");
+        }
+
+        #[test]
+        fn a_workflow_digest_is_stable_and_follows_the_definition() {
+            let ast = Parser::parse(DIGEST_WF).expect("parse");
+            assert_eq!(digest_ast(&ast), digest_ast(&ast));
+
+            let reformatted = DIGEST_WF.replace("  1. GEN", "\n\n  1.   GEN");
+            let same = Parser::parse(&reformatted).expect("parse");
+            assert_eq!(
+                digest_ast(&same),
+                digest_ast(&ast),
+                "whitespace is not part of the definition"
+            );
+
+            let changed =
+                Parser::parse(&DIGEST_WF.replace("GEN(hello)", "GEN(goodbye)")).expect("parse");
+            assert_ne!(digest_ast(&changed), digest_ast(&ast));
+        }
+
+        #[test]
+        fn a_workflow_digest_survives_the_compact_round_trip() {
+            // Identity comes from the canonical compact form, which re-parses to
+            // an equal AST — so re-emitting a workflow never changes its digest.
+            let ast = Parser::parse(DIGEST_WF).expect("parse");
+            let reparsed = Parser::parse(&canonical_text(&ast)).expect("re-parse");
+            assert_eq!(digest_ast(&reparsed), digest_ast(&ast));
         }
 
         #[test]

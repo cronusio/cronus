@@ -1,5 +1,5 @@
 //! `CRONUS_PORTABLE_DIR` overrides `Paths::os_native()` for every root at
-//! once (F-06's isolation seam) — the mechanism a test run, a CI job, or a
+//! once — the isolation seam a test run, a CI job, or a
 //! QA pass needs so the product never touches the real per-OS user
 //! directories. This lives in its own integration-test binary, a separate
 //! OS process from the crate's `--lib` unit tests (and every other

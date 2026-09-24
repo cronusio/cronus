@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 const HOST_CMD_WF: &str = r#"§wf:host_cmd_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -85,28 +85,32 @@ fn host_schema_extends_builtin() {
 }
 
 #[test]
-fn host_schema_unknown_command_not_dispatched() {
+fn an_unregistered_command_is_a_validation_error_not_a_silent_skip() {
     // Without schema extension, CUSTOM_CMD is an unknown ALL_CAPS identifier.
-    // The parser's step-body fallthrough treats it as raw text (a comment node),
-    // so it is never dispatched to the executor. The workflow still parses and
-    // validates without block-class errors (the validator never emits E002 —
-    // vocabulary enforcement is the lexer/parser's gate). Status is Ok because
-    // no runtime errors are added, but CUSTOM_CMD is absent from the log.
-    let result = workflows::run(HOST_CMD_WF, "host_cmd_test.nodus", None)
-        .expect("run must succeed — vocabulary errors are a parse-layer gate, not a block error");
+    // The parser keeps such a line as raw text, which used to drop it out of
+    // the run: the workflow finished `Ok` without ever having done the step.
+    // An unknown command has to fail at validation (NL-1), before anything runs.
+    let diagnostics = workflows::run(HOST_CMD_WF, "host_cmd_test.nodus", None)
+        .expect_err("a workflow using an unregistered command must not run");
 
+    let unknown: Vec<_> = diagnostics.iter().filter(|d| d.code == "E021").collect();
     assert_eq!(
-        result.status,
-        Status::Ok,
-        "unregistered command silently skipped must not cause non-Ok status"
+        unknown.len(),
+        1,
+        "one E021 for the one command: {diagnostics:?}"
     );
-
-    // CUSTOM_CMD must NOT appear in the execution log.
     assert!(
-        !result.log.iter().any(|e| e.command == "CUSTOM_CMD"),
-        "unregistered CUSTOM_CMD must be absent from the log (parsed as text); log: {:?}",
-        result.log
+        unknown[0].message.contains("CUSTOM_CMD"),
+        "the diagnostic names the command: {}",
+        unknown[0].message
     );
+}
+
+#[test]
+fn validation_reports_the_unknown_command_without_running_anything() {
+    let report = workflows::validate(HOST_CMD_WF, "host_cmd_test.nodus").expect("parses");
+    assert!(report.has_errors);
+    assert!(report.diagnostics.iter().any(|d| d.code == "E021"));
 }
 
 // ─── Noop-provider compilation test ──────────────────────────────────
@@ -170,7 +174,7 @@ fn in_memory_storage_instances_share_no_state() {
 
 const MANIFEST_WF: &str = r#"§wf:manifest_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -344,7 +348,7 @@ fn manifest_rejects_before_side_effects() {
 
 const DEFERRED_WF: &str = r#"§wf:deferred_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -487,7 +491,7 @@ fn no_policy_supplied_is_byte_for_byte_unchanged() {
 
 const RISK_DECORATED_WF: &str = r#"§wf:risk_decorated_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -579,7 +583,7 @@ fn undeclared_risk_descriptors_are_absent_from_context_not_defaulted() {
 
 #[test]
 fn risk_descriptors_are_inert_without_a_policy_provider() {
-    // Mirrors Phase 24's Guardrail 5 regression: decorating a step with
+    // Regression guard: decorating a step with
     // +reversible/+external/+value must not change behaviour when no
     // PolicyProvider is present to consult them.
     let via_plain =
@@ -607,7 +611,7 @@ fn risk_descriptors_are_inert_without_a_policy_provider() {
 /// is directly observable in `result.log`.
 const ERR_HANDLER_WF: &str = r#"§wf:err_handler_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -618,7 +622,7 @@ const ERR_HANDLER_WF: &str = r#"§wf:err_handler_test v1.0
 /// Same shape, but the `@err:` line carries no handler text at all.
 const EMPTY_ERR_HANDLER_WF: &str = r#"§wf:empty_err_handler_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err:
 @steps:
@@ -629,7 +633,7 @@ const EMPTY_ERR_HANDLER_WF: &str = r#"§wf:empty_err_handler_test v1.0
 /// No `@err:` line at all.
 const NO_ERR_HANDLER_WF: &str = r#"§wf:no_err_handler_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @steps:
   1. GEN($in.query) → $out
@@ -639,7 +643,7 @@ const NO_ERR_HANDLER_WF: &str = r#"§wf:no_err_handler_test v1.0
 /// `~RETRY:2` GEN step that fails its first attempt then succeeds.
 const RETRY_ERR_HANDLER_WF: &str = r#"§wf:retry_err_handler_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:

@@ -86,3 +86,9 @@ The home workspace is the building's lobby: always open, never closed. By defaul
 | `[OFFICE]` | `.design/main/specifications/l1-office-model.md` | Office, manager, and staffing invariants refined here |
 | `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | Blueprint instantiation and scope lifecycle |
 | `[MGMT]` | `.design/main/specifications/l2-workspace-management.md` | Concrete realization (UI + filesystem + bootstrap) |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-18 | Initial specification: how workspaces (offices) come into being, are managed, and end — the permanent home workspace and blueprint-instantiated ones. |

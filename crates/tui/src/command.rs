@@ -29,7 +29,7 @@ pub enum ParseError {
 }
 
 /// Split a command-bar line's body into whitespace-separated tokens,
-/// honoring double- and single-quoted segments as one token each (F-13).
+/// honoring double- and single-quoted segments as one token each.
 ///
 /// A CLI invocation gets this for free from the shell that splits its
 /// argv; the command bar has no shell in front of it, so without this a
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(parse("/   "), Err(ParseError::Empty));
     }
 
-    /// F-13: a double-quoted phrase is one argument, not several — without
+    /// A double-quoted phrase is one argument, not several — without
     /// this, `board block A1 "waiting on dep"` has no TUI spelling at all.
     #[test]
     fn command_parse_keeps_a_double_quoted_phrase_as_one_argument() {

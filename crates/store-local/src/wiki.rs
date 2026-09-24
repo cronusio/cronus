@@ -20,6 +20,10 @@ pub enum WikiError {
     /// the wiki is a rebuildable projection (PW-3), the recovery for this is a
     /// rebuild, not a restore.
     Corrupt(String),
+    /// The cache file's schema version could not be reconciled with the one
+    /// this build understands. The cache is droppable (PW-3), so a file this
+    /// build refuses can be deleted and rebuilt rather than migrated.
+    Schema(crate::versioning::SchemaError),
 }
 
 impl std::fmt::Display for WikiError {
@@ -27,6 +31,7 @@ impl std::fmt::Display for WikiError {
         match self {
             WikiError::Database(e) => write!(f, "wiki database error: {e}"),
             WikiError::Corrupt(m) => write!(f, "corrupt wiki row: {m}"),
+            WikiError::Schema(e) => write!(f, "{e}"),
         }
     }
 }
@@ -36,6 +41,7 @@ impl std::error::Error for WikiError {
         match self {
             WikiError::Database(e) => Some(e),
             WikiError::Corrupt(_) => None,
+            WikiError::Schema(e) => Some(e),
         }
     }
 }
@@ -43,6 +49,12 @@ impl std::error::Error for WikiError {
 impl From<rusqlite::Error> for WikiError {
     fn from(e: rusqlite::Error) -> Self {
         WikiError::Database(e)
+    }
+}
+
+impl From<crate::versioning::SchemaError> for WikiError {
+    fn from(e: crate::versioning::SchemaError) -> Self {
+        WikiError::Schema(e)
     }
 }
 
@@ -417,8 +429,15 @@ fn citations_from_json(s: &str) -> Result<Vec<WikiCitation>> {
         .collect()
 }
 
+/// The schema version this build reads and writes (`crate::versioning`).
+pub(crate) const SCHEMA_VERSION: i64 = 1;
+
 pub(crate) fn setup(conn: &Connection) -> Result<()> {
     conn.execute_batch("PRAGMA journal_mode = WAL")?;
+    crate::versioning::open_schema(conn, "wiki", SCHEMA_VERSION, create_schema, &[])
+}
+
+fn create_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS wiki_page (
             id                 TEXT PRIMARY KEY NOT NULL,

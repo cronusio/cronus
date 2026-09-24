@@ -1,6 +1,6 @@
 # Nodus Human-in-the-Loop Dialog Implementation (Rust)
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-dialog.md
@@ -161,16 +161,7 @@ follows the `digest_ast` precedent rather than adding a third computation; the
 two-function inconsistency is a separate, pre-existing finding recorded in
 `l2-nodus-portability.md` §3.2.
 
-**The digest is stable only within one build (limitation, pending).** `DefaultHasher`'s
-algorithm is unspecified across Rust releases, and `format!("{ast:?}")` changes whenever
-any AST type gains or renames a field. A descriptor is persisted precisely so it can be
-compared later, possibly after a toolchain or nodus upgrade — and then a byte-identical
-definition can mismatch, while the descriptor carries no nodus or toolchain version that
-would let a host tell an upgrade from a real edit. It is also a 64-bit non-cryptographic
-hash: fit for detecting an accidental change, not proof against a definition crafted to
-collide. Pending: a specified digest — a documented algorithm over a canonical
-serialization — with its version carried beside the value; the same applies to
-`ReproRecipe.workflow_digest` and `CandidateResult.workflow_digest`.
+**The digest is a versioned, specified value.** Every `workflow_digest` is `nd1:` followed by the 16-hex-digit FNV-1a (64-bit) of the workflow's canonical text — its compact form, which round-trips to an equal AST (NL-6). The algorithm is fixed and published, so one definition digests to the same value on every build, platform and Rust release, and the canonical form changes only when the workflow does, not whenever an AST type gains a field. The `nd1` tag names the scheme: a digest under another tag is *not comparable* rather than merely unequal, and the tag is bumped whenever the algorithm or the canonical form changes, so a host comparing a descriptor after an upgrade can tell a scheme change from a real edit. It is a 64-bit non-cryptographic hash — fit for detecting an accidental change, not proof against a definition crafted to collide; a host that must resist that computes its own digest over the canonical text (LP-2). The same value backs `ReproRecipe.workflow_digest` and `CandidateResult.workflow_digest`, and the source-byte fallback for an unparseable source (`l2-nodus-environment.md` §4.4) uses the same scheme.
 
 **Implemented [Phase 31].** Field added at `ResumeDescriptor`'s one construction
 site (`executor.rs`), populated by the identical `digest_ast(ast)` call
@@ -447,6 +438,7 @@ nowhere in the crate and are free.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.4.2 | 2026-09-24 | Core Team | Realization sync (2026-09-24): The workflow digest is a specified, versioned value (`nd1:` + FNV-1a-64 over the canonical compact form), stable across builds and toolchains; the limitation recorded as pending is closed. |
 | 1.4.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): DG-4: resume-by-replay re-performs every pre-pause effect, not only model calls — only the dialog answer is memoized. §4.3: `workflow_digest` is stable only within one build (`DefaultHasher` over the AST's `Debug` form) and carries no version, and it is a 64-bit non-cryptographic hash. The `W016` note no longer claims `~PARALLEL` branches run concurrently. |
 | 1.1.1 | 2026-08-01 | Core Team | **Implemented the DG-9/DG-10 seam designed in v1.1.0 — Phase 28.** `DialogOutcome::Remembered(Value)` + `DialogProvenance{Answered,Remembered}` (`observability.rs`, beside `EventAnnotations`) + the `dialog_provenance` field landed exactly as designed; `handle_dialog`'s single `outcome` match now also computes the provenance for the one `StepEnd` emit, no second emit call. **Confirmed rather than assumed**: `dialog_provenance` is the first `EventAnnotations` field the crate's own dispatch logic populates directly (every sibling field has no in-crate writer at all) — `EventAnnotations`'s own doc comment updated to say so; recorded in §4.7 rather than silently adjusted. DG-10 needed zero code, confirming the v1.1.0 prediction. **One real test-writing finding**: asserting "no dialog provenance on rejection" against `DEFERRED_WF` (which declares `@err: ESCALATE(human)`) initially expected one `StepEnd`, but `DIALOG_REJECTED` is `Signal`-free so NL-9 dispatch fires automatically — two `StepEnd` events land (the rejected `ASK`, then the dispatched `ESCALATE`), both correctly carrying no provenance; the test was corrected, not the code. §3's DG-9/DG-10 rows updated to Implemented. 467 tests pass (was 462, +5: 1 unit test in `observability.rs`, 4 integration tests in `tests/portability.rs`); clippy/fmt clean; `Cargo.toml`/`Cargo.lock` diff empty (LP-1 preserved); no `unwrap`/`panic!`/`expect` added to any production path. |
 | 1.4.0 | 2026-09-02 | Core Team | **Phase 31 — LP-22(c) implemented exactly per v1.3.0's design, no scope correction.** `ResumeDescriptor.workflow_digest: String` added at the struct's one construction site, populated by `digest_ast(ast)` — the identical call `ReproRecipe`'s own construction makes a few lines below it in `executor.rs`. Unit test (`executor.rs`) confirms the descriptor's digest equals `digest_ast(&ast)` for the parsed workflow; integration test (`tests/dialog.rs`, a capturing `AuditProvider`) confirms it agrees with the independently-built `ReproRecipe.workflow_digest` surfaced through `run_complete` for the same paused run — the assertion that makes the pinning claim real rather than coincidental, since the two construction sites are never cross-checked in production code. 484 tests pass (was 482, +2); clippy/fmt clean; `Cargo.toml`/`Cargo.lock` diff empty (LP-1 preserved); no `unwrap`/`panic!`/`expect` added to any production path. LP-22 overall stays **Partially realized** — (a)/(b) unaffected by closing (c). |

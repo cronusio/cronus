@@ -11,9 +11,12 @@ use crate::Error;
 use crate::ast::{ConfigDecl, TestBlock, WorkflowFile};
 use crate::environment::{EnvRunResult, EnvironmentProvider, Observation, Reward, Seed, TaskId};
 use crate::executor::{
-    DialogProvider, Executor, ModelProvider, RunResult, RuntimeError, Status, StubProvider, Value,
+    DialogProvider, Executor, ExecutorBuilder, ModelProvider, RunResult, RuntimeError, Status,
+    StubProvider, Value,
 };
-use crate::observability::{AuditProvider, EnvInteraction, EnvInteractionKind, FieldDescriptor};
+use crate::observability::{
+    AuditProvider, EnvInteraction, EnvInteractionKind, ExecutionMode, FieldDescriptor,
+};
 use crate::parser::Parser;
 use crate::portability::{
     CapabilityManifest, ConfigOutcome, ConfigProvider, ExtensionRole, HostCapabilities, Missing,
@@ -150,8 +153,201 @@ pub fn run(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_stub().execute(&ast, input))
+}
+
+/// Every seam a run can be given, at once.
+///
+/// The `run_with_*` entry points each inject one seam and leave the rest at
+/// their built-ins, so no two combine — most consequentially, a real model
+/// could not be run under a host policy, and a real settlement rail could not
+/// be run under one either. `RunOptions` is the composed form: start from the
+/// built-ins and replace what the host supplies. Every seam is independent, and
+/// the run passes the same gate as any other (validation, then the caller's
+/// input against `@in:`, then the optional capability manifest).
+pub struct RunOptions {
+    executor: ExecutorBuilder,
+    schema: Option<crate::vocab::Schema>,
+    capability: Option<(CapabilityManifest, HostCapabilities)>,
+    run_id: String,
+    started_at: String,
+    execution_mode: ExecutionMode,
+    exposure_switches: Vec<(String, String)>,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        RunOptions {
+            executor: Executor::builder(),
+            schema: None,
+            capability: None,
+            run_id: String::new(),
+            started_at: String::new(),
+            execution_mode: ExecutionMode::default(),
+            exposure_switches: Vec::new(),
+        }
+    }
+}
+
+impl RunOptions {
+    /// Built-ins everywhere: the stub model, no audit, the synchronous dialog
+    /// resolver, a permit-everything policy, a settlement rail that settles
+    /// nothing, the builtin vocabulary.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The model behind `GEN` / `ANALYZE`.
+    pub fn model(mut self, provider: impl ModelProvider + 'static) -> Self {
+        self.executor = self.executor.model(provider);
+        self
+    }
+
+    /// The sink for the run's execution events and manifest.
+    pub fn audit(mut self, audit: impl AuditProvider + 'static) -> Self {
+        self.executor = self.executor.audit(audit);
+        self
+    }
+
+    /// The resolver behind `ASK` / `CONFIRM`.
+    pub fn dialog(mut self, dialog: impl DialogProvider + 'static) -> Self {
+        self.executor = self.executor.dialog(dialog);
+        self
+    }
+
+    /// The per-effect authorization gate (LP-11).
+    pub fn policy(mut self, policy: impl PolicyProvider + 'static) -> Self {
+        self.executor = self.executor.policy(policy);
+        self
+    }
+
+    /// The rail a permitted `SETTLE` step pays through (LP-17).
+    pub fn settlement(mut self, rail: impl SettlementRail + 'static) -> Self {
+        self.executor = self.executor.settlement(rail);
+        self
+    }
+
+    /// Extend the builtin vocabulary with the host's commands and variables
+    /// (LP-4): the workflow is parsed and validated against it.
+    pub fn schema(mut self, provider: &dyn SchemaProvider) -> Self {
+        self.schema = Some(crate::vocab::Schema::with_provider(provider));
+        self
+    }
+
+    /// Reject the run before any step executes unless `host` satisfies
+    /// `manifest` (LP-8).
+    pub fn capability_gate(mut self, manifest: CapabilityManifest, host: HostCapabilities) -> Self {
+        self.capability = Some((manifest, host));
+        self
+    }
+
+    /// Run metadata forwarded to the run manifest.
+    pub fn run_metadata(mut self, run_id: &str, started_at: &str) -> Self {
+        self.run_id = run_id.to_string();
+        self.started_at = started_at.to_string();
+        self
+    }
+
+    /// The execution mode the host declares (HO-12). A run answered by the
+    /// built-in stub model is recorded as simulated whatever is declared here.
+    pub fn execution_mode(mut self, mode: ExecutionMode) -> Self {
+        self.execution_mode = mode;
+        self
+    }
+
+    /// The exposure switches the host froze for this run (HO-18).
+    pub fn exposure_switches(mut self, switches: Vec<(String, String)>) -> Self {
+        self.exposure_switches = switches;
+        self
+    }
+}
+
+/// Parse, validate, gate the input, then execute with every seam in `options`.
+///
+/// The composed entry point: it does what each `run_with_*` does for its one
+/// seam, for any combination of them. Fast-fails with `Err(diagnostics)` on a
+/// parse error, a validation error (NL-4) or an input that breaks the declared
+/// `@in:` contract (NL-9); an unsatisfiable capability manifest returns a
+/// `NODUS:CAPABILITY_UNMET` result before any step runs, exactly as
+/// [`run_with_manifest`] does.
+pub fn run_with_options(
+    source: &str,
+    filename: &str,
+    input: Option<Value>,
+    options: RunOptions,
+) -> Result<RunResult, Vec<Diagnostic>> {
+    let RunOptions {
+        executor,
+        schema,
+        capability,
+        run_id,
+        started_at,
+        execution_mode,
+        exposure_switches,
+    } = options;
+
+    let parse_error = |e: Error| {
+        vec![Diagnostic {
+            severity: Severity::Error,
+            code: "PARSE_ERROR".to_string(),
+            message: e.to_string(),
+            line: 0,
+            column: 0,
+            filename: filename.to_string(),
+        }]
+    };
+    let (ast, schema) = match schema {
+        Some(schema) => (
+            Parser::parse_with_schema(source, &schema).map_err(parse_error)?,
+            schema,
+        ),
+        None => (
+            Parser::parse(source).map_err(parse_error)?,
+            crate::vocab::Schema::builtin(),
+        ),
+    };
+
+    let report = ValidationReport::new(Validator::validate_with_schema(&ast, filename, &schema));
+    if report.has_errors {
+        return Err(report.diagnostics);
+    }
+    check_input(&ast, filename, input.as_ref(), &[])?;
+
+    if let Some((manifest, host)) = &capability {
+        let missing = validate_manifest(manifest, host);
+        if !missing.is_empty() {
+            return Ok(capability_rejection(&ast, &missing));
+        }
+    }
+
+    Ok(executor.build().execute_with_manifest_context(
+        &ast,
+        input,
+        &run_id,
+        &started_at,
+        execution_mode,
+        exposure_switches,
+    ))
+}
+
+/// The caller-input half of the pre-run gate (NL-9): the input against the
+/// workflow's declared `@in:` contract, reported as validation errors so a run
+/// never starts on input it was not written for. `host_keys` are the keys the
+/// entry point adds itself after this check (`config`, `observation`).
+fn check_input(
+    ast: &WorkflowFile,
+    filename: &str,
+    input: Option<&Value>,
+    host_keys: &[&str],
+) -> Result<(), Vec<Diagnostic>> {
+    let diagnostics = Validator::validate_input(ast, input, host_keys, filename);
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(diagnostics)
+    }
 }
 
 /// Parse `source` and return the transpiled output for `mode`.
@@ -173,14 +369,58 @@ pub fn transpile(source: &str, mode: TranspileMode) -> Result<String, Error> {
 /// against the final variable environment (NT-3/NT-4). All blocks execute
 /// regardless of individual failures (NT-4). Results are in declaration order
 /// (NT-7). A `tags` predicate may be supplied to filter blocks (NT-6).
-pub fn test(source: &str, _filename: &str) -> Result<TestReport, Error> {
-    test_with_tags(source, &[])
+///
+/// The workflow is validated first, exactly as for an ordinary run: a workflow
+/// that could not run in production cannot pass its tests either, so an error
+/// diagnostic (including a `@test:` block naming something that cannot exist,
+/// NT-9) fails the file before any block executes.
+pub fn test(source: &str, filename: &str) -> Result<TestReport, Error> {
+    test_impl(source, Some(filename), &[])
 }
 
 /// Like [`test()`] but only runs blocks whose `tags:` list contains at least one
 /// of `tag_filter`. If `tag_filter` is empty, all blocks run (NT-6).
 pub fn test_with_tags(source: &str, tag_filter: &[&str]) -> Result<TestReport, Error> {
+    test_impl(source, None, tag_filter)
+}
+
+fn test_impl(
+    source: &str,
+    filename: Option<&str>,
+    tag_filter: &[&str],
+) -> Result<TestReport, Error> {
     let ast = Parser::parse(source)?;
+
+    // Without a caller-supplied file name, validate under the name the workflow
+    // declares, so the name-matches-file rule does not judge a name nobody gave.
+    let synthesized;
+    let filename = match filename {
+        Some(name) => name,
+        None => {
+            synthesized = format!(
+                "{}.nodus",
+                ast.header
+                    .as_ref()
+                    .map(|h| h.name.as_str())
+                    .unwrap_or("workflow")
+            );
+            &synthesized
+        }
+    };
+    let errors: Vec<Diagnostic> = Validator::validate(&ast, filename)
+        .into_iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    if let Some(first) = errors.first() {
+        return Err(Error::Validate {
+            code: first.code.clone(),
+            message: errors
+                .iter()
+                .map(|d| d.message.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+        });
+    }
 
     if ast.tests.is_empty() {
         return Ok(TestReport::from_results(vec![]));
@@ -273,8 +513,12 @@ fn evaluate_test_block(
         };
     }
 
-    // Status failure takes precedence over assertion checks.
-    if *status != Status::Ok && *status != Status::Partial {
+    // Status failure takes precedence over assertion checks. A block passes
+    // only when every assertion holds *and* the run ended `Ok`: `Partial` means
+    // non-fatal errors occurred, so a regression that makes a clean run start
+    // failing steps must not stay green just because the asserted variables
+    // still match.
+    if *status != Status::Ok {
         return (false, format!("execution failed with status {status:?}"));
     }
 
@@ -359,6 +603,7 @@ pub fn run_with_provider(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::new(provider).execute(&ast, input))
 }
@@ -391,6 +636,7 @@ pub fn run_with_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_audit(StubProvider, audit)
         .execute_with_params(&ast, input, run_id, started_at))
@@ -425,6 +671,7 @@ pub fn run_with_provider_and_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_audit(provider, audit).execute_with_params(&ast, input, run_id, started_at))
 }
@@ -456,10 +703,11 @@ pub fn run_with_schema(
         }]
     })?;
 
-    let report = ValidationReport::new(Validator::validate(&ast, filename));
+    let report = ValidationReport::new(Validator::validate_with_schema(&ast, filename, &schema));
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_stub().execute(&ast, input))
 }
@@ -491,10 +739,11 @@ pub fn run_with_schema_and_audit(
         }]
     })?;
 
-    let report = ValidationReport::new(Validator::validate(&ast, filename));
+    let report = ValidationReport::new(Validator::validate_with_schema(&ast, filename, &schema));
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_audit(StubProvider, audit)
         .execute_with_params(&ast, input, run_id, started_at))
@@ -531,6 +780,7 @@ pub fn run_with_manifest(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     let missing = validate_manifest(manifest, host);
     if !missing.is_empty() {
@@ -576,6 +826,7 @@ pub fn run_with_manifest_and_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     let missing = validate_manifest(manifest, host);
     if !missing.is_empty() {
@@ -612,6 +863,7 @@ pub fn run_with_dialog(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_dialog(dialog).execute(&ast, input))
 }
@@ -642,6 +894,7 @@ pub fn run_with_dialog_and_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_dialog_and_audit(dialog, audit)
         .execute_with_params(&ast, input, run_id, started_at))
@@ -677,6 +930,7 @@ pub fn run_with_policy(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_policy(policy).execute(&ast, input))
 }
@@ -707,6 +961,7 @@ pub fn run_with_policy_and_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_policy_and_audit(policy, audit)
         .execute_with_params(&ast, input, run_id, started_at))
@@ -745,6 +1000,7 @@ pub fn run_with_settlement(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_settlement(settlement).execute(&ast, input))
 }
@@ -775,6 +1031,7 @@ pub fn run_with_settlement_and_audit(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &[])?;
 
     Ok(Executor::with_settlement_and_audit(settlement, audit)
         .execute_with_params(&ast, input, run_id, started_at))
@@ -869,6 +1126,7 @@ fn run_with_environment_impl(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &["observation"])?;
 
     // NE-10: calling this function is the declaration; gate before env.open.
     let manifest = CapabilityManifest::from_workflow(&ast).require_role(ExtensionRole::Environment);
@@ -1054,6 +1312,7 @@ fn run_with_config_impl(
     if report.has_errors {
         return Err(report.diagnostics);
     }
+    check_input(&ast, filename, input.as_ref(), &["config"])?;
 
     let outcome = match check_config_values(decl, proposed) {
         Ok(candidate) => provider.accept(decl, candidate),
@@ -1213,7 +1472,7 @@ mod tests {
     const VALID_WF: &str = "\
 §wf:api_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -1457,6 +1716,25 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_partial_status_fails_even_when_every_assertion_matches() {
+        // `Partial` means non-fatal errors occurred: a block only passes on a
+        // clean run, so a regression that starts failing steps cannot hide
+        // behind asserted variables that still happen to match.
+        let mut vars = HashMap::new();
+        vars.insert("out".to_string(), Value::Text("hello".to_string()));
+        let expected = vec![("$out".to_string(), "hello".to_string())];
+        let (passed, msg) = evaluate_test_block(&vars, &Status::Partial, &expected);
+        assert!(!passed, "a Partial run must not pass: {msg}");
+        assert!(
+            msg.contains("Partial"),
+            "the message names the status: {msg}"
+        );
+
+        let (passed_empty, _) = evaluate_test_block(&vars, &Status::Partial, &[]);
+        assert!(!passed_empty, "and neither does one with no assertions");
+    }
+
+    #[test]
     fn evaluate_first_failing_assertion_determines_message() {
         let mut vars = HashMap::new();
         vars.insert("out".to_string(), Value::Text("right".to_string()));
@@ -1476,7 +1754,7 @@ mod tests {
     const WF_WITH_STRUCTURED_TESTS: &str = "\
 §wf:test_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -1581,7 +1859,7 @@ mod tests {
         let wf = "\
 §wf:tagged_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -1604,7 +1882,7 @@ mod tests {
         let wf = "\
 §wf:tagged_wf2 v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:

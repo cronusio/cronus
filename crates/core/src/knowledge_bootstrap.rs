@@ -136,7 +136,7 @@ pub enum KnowledgeServiceError {
     Access(KnowledgeAccessError),
 }
 
-/// Appended to an embedding failure (F-22): the domain-tier `IngestError`/
+/// Appended to an embedding failure: the domain-tier `IngestError`/
 /// `RetrievalError` only ever carry the backend's own message ("Timeout",
 /// with no context), since domain code has no I/O and so cannot know which
 /// endpoint or model was configured — that lives here, where
@@ -479,7 +479,7 @@ mod tests {
         );
     }
 
-    /// F-22: a bare backend message ("Timeout") gives a user nothing to
+    /// A bare backend message ("Timeout") gives a user nothing to
     /// act on — the rendered error must name what is expected (the local
     /// server, its address, and the model) so they know what to start.
     #[test]

@@ -1,6 +1,6 @@
 # Nodus Observability Implementation (Rust)
 
-**Version:** 1.4.1
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-observability.md
@@ -90,7 +90,7 @@ taxonomy from `l1-nodus-observability.md` into the executor.
 | HO-4 Frozen boundary | `observability.rs` contains no validator or executor logic. `record_event` is called *after* the NL-invariant checks in `validator.rs` complete — the audit layer only witnesses outcomes; it never intercepts or modifies them. `ExecutionEvent::ConstraintHit` records that a rule fired; it does not re-evaluate the rule |
 | HO-5 Observer neutrality | `Executor::execute` calls `record_event` on a `&dyn AuditProvider` reference; the return type is `()`. No branch in `executor.rs` inspects provider state or return value. `RunResult` is assembled independently of the provider |
 | HO-6 Structured event taxonomy | `ExecutionEvent` is a closed Rust enum with exactly 10 variants matching the L1 taxonomy. Adding a new event type requires amending this spec (minor version bump) and the `ExecutionEvent` enum — there is no catch-all string variant |
-| HO-12 Execution-mode provenance <!-- [ADDED] v1.2.0 --> | `RunManifest.execution_mode: ExecutionMode` (`Real` default \| `Simulated { fidelity }`); records the host-declared mode, so a consumer excludes simulated runs from real-run analytics. Absent = `Real`. §4.7. **Partial:** the premise that nodus substitutes no providers holds only for `run_with_provider*` — every other entry point substitutes `StubProvider` for all model calls and still records `Real`, so those manifests claim a real run (`l2-nodus-runtime.md` §4.5; pending: a stub entry point declares `Simulated { fidelity: Structural }`). |
+| HO-12 Execution-mode provenance <!-- [ADDED] v1.2.0 --> | `RunManifest.execution_mode: ExecutionMode` (`Real` default \| `Simulated { fidelity }`); records the host-declared mode, so a consumer excludes simulated runs from real-run analytics. Absent = `Real`. §4.7. **Implemented:** an executor whose model provider is the built-in stub records `Simulated { fidelity: Structural }` whatever mode the caller declared, so no stub entry point claims a real run (`l2-nodus-runtime.md` §4.5); a mode the caller explicitly declared as simulated is kept as declared. |
 | HO-15 Cross-run step identity <!-- [ADDED] v1.2.0 --> | `step_identity(&Step)` derived from the definition (number + command name), carried on `StepStart`/`StepEnd`/`StepError` and the manifest; the *same* step across runs is one comparable series. Stable across retries/resumes (NL-12)/recursive children (NL-18); changes only when the definition changes. Distinct from HO-7's within-run `(correlation_id, seq)`. §4.7 |
 | HO-18 Variant provenance <!-- [ADDED] v1.2.0 --> | `RunManifest.exposure_switches: Vec<(String, String)>` — the resolved `(name, value)` pairs the host froze once at run start (LP-19; non-straddling, one value per switch). Empty = prevailing defaults. Names/values only (§4.4). §4.7 |
 | HO-19 Fault-identity contribution <!-- [ADDED] v1.2.0 --> | `StepError.fault_identity: FaultIdentity { step_identity, code, discriminator? }` — a stable, message-independent grouping input, **never** derived from `error_detail` rendered text; the optional workflow-declared `discriminator` outranks the code. nodus computes no grouping. §4.7 |
@@ -163,17 +163,15 @@ pub struct RunManifest {
     pub event_count: u32,
 }
 
-pub enum RunStatus { Ok, Error, ConstraintHalt, ValidationError }
+pub enum RunStatus { Ok, Error, ConstraintHalt, ValidationError, Paused }
 ```
 
-**Status mapping (pending correction).** The executor maps `Status::Ok`, `Partial` and
-`Paused` to `RunStatus::Ok`, and `Failed` and `Aborted` to `ConstraintHalt`. `RunStatus::Error`
-— defined for exactly the `Partial` case, a run that completed with non-fatal errors — is never
-produced, and neither is `ValidationError`: a run rejected at validation returns before
-`run_complete`, so no manifest is written for it. A manifest therefore reports `Ok` for a run
-that ended with errors or stopped at a pause, and only a non-`None` `error_code` contradicts
-it. Alignment: `Partial` maps to `Error`; a suspended run needs a value of its own, since it
-has not completed although `run_complete` fires for it.
+**Status mapping.** The executor maps `Status::Ok` to `RunStatus::Ok`; `Partial` to `Error` when non-fatal
+errors were recorded (a budget halt ends `Partial` with no error — a graded outcome, not a fault — and maps to
+`Ok`); `Paused` to `Paused`, since a suspended run has not completed although `run_complete` fires for it; and
+`Failed` and `Aborted` to `ConstraintHalt`. `ValidationError` is never produced by the executor: a run rejected
+at validation returns before `run_complete`, so no manifest is written for it. A manifest therefore never
+reports `Ok` for a run that ended with errors or stopped at a pause.
 
 ### 4.2 `lib.rs` Changes
 
@@ -350,10 +348,11 @@ pub enum ExecutionMode {
 pub enum SimFidelity { Structural, Modeled, Shadow }
 ```
 
-`RunManifest` gains `execution_mode: ExecutionMode` (default `Real`). The executor records only the
-host-declared mode — nodus substitutes no providers; a `run_with_*` caller that wired modeled
-providers declares it. Same manifest-honesty family as HO-10 (completeness): a trace never lies about
-which mode produced it.
+`RunManifest` gains `execution_mode: ExecutionMode` (default `Real`). The executor records the host-declared
+mode, with one override: when the model provider reports itself a stub (`ModelProvider::is_stub`), a run declared
+`Real` is recorded `Simulated { fidelity: Structural }`, because nothing that ran was real. A mode the caller
+declared as simulated is kept as declared, and a host that wired modeled providers declares it. Same
+manifest-honesty family as HO-10 (completeness): a trace never lies about which mode produced it.
 
 #### Variant provenance (HO-18)
 
@@ -385,7 +384,7 @@ a host groups on are stable and content-independent (FL-3/FL-4, source side).
 ```text
 [REFERENCE]
 pub struct ReproRecipe {
-    pub workflow_digest: String,               // content identity of the definition (std digest, zero-dep — the NE-12 precedent)
+    pub workflow_digest: String,               // content identity of the definition: `nd1:` + FNV-1a-64 of the canonical compact form (versioned, zero-dep — the NE-12 precedent)
     pub capability_set: Vec<String>,           // the LP-8 roles/commands that satisfied the run's manifest
     pub exposure_switches: Vec<(String, String)>, // HO-18 (mirrored into the recipe)
     pub execution_mode: ExecutionMode,         // HO-12
@@ -681,6 +680,7 @@ HO-8/9/10/11/13/16/17 (§4.9, pending its phase). No observability invariant rem
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.5.0 | 2026-09-24 | Core Team | Realization sync (2026-09-24): HO-12 implemented: a run answered by the built-in stub records `Simulated { Structural }`. `RunStatus` gains `Paused`; `Partial` with recorded errors maps to `Error`, so a manifest no longer reports `Ok` for a run that ended with errors or stopped at a pause. `workflow_digest` is versioned (`nd1:` + FNV-1a-64 over the canonical compact form). |
 | 1.4.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): HO-12 → Partial: every entry point except `run_with_provider*` substitutes the stub model yet records `ExecutionMode::Real`. §4.1 records the status mapping: `Partial` and `Paused` runs are reported as `RunStatus::Ok`, and `RunStatus::Error`/`ValidationError` are never produced. HO-20 notes that the digest is stable only within one build. §6 no longer claims concurrent `~PARALLEL` event emission. |
 | 1.4.0 | 2026-07-24 | Core Team | Added §4.9 Event Annotations, Cost, Lineage & Completeness — the intended realization (spec-ahead-of-code) of the final seven invariants, **closing all twenty**. Central design decision: HO-9 (receipt), HO-11 (`message`), HO-16 (anomaly), and HO-17 (durability) are all *host-supplied annotations that may ride any event*; as four separate fields they would rewrite all ten `ExecutionEvent` variants four times over, so they land as **one `EventAnnotations` carrier field per variant** (`message`/`anomaly`/`receipt`/`durability`, `Default` = all-`None` + `Durable`) — one churn now, and future annotations become struct fields rather than tenth-variant edits. Targeted realizations: **HO-8** four token classes on `ModelResponse` only, born as §4.8 `Measurement` and `Unavailable`-not-`0` since `ModelProvider` has no token-accounting seam (extending that seam is explicitly out of scope); **HO-13** `Option<Vec<SourceRef>>` (indices only, never content) on collection-mapping events, side-band and outside the NL-7 `Value` space; **HO-10** a pure read-side `classify_trace → { Complete, GapDamaged, Truncated, Empty }` with **no field**, reusing §4.8's `event_count == highest seq + 1` identity as the gap test. Records the load-bearing HO-17 consequence for this crate: **a transient event must not consume a `seq`** — §4.8's counter numbers the durable stream only, so a dropped transient can never register as a gap nor a severed transient tail as a truncated run; nodus emits no transients today (`generate` returns a complete `String`), but the rule is fixed now so a future streaming path cannot default into corrupting the sequence. |
 | 1.3.0 | 2026-07-24 | Core Team | Added §4.8 Aggregation-Safe Event Stream — the intended realization (spec-ahead-of-code) of **HO-7** (`seq: u64` run-monotonic dense counter + run-scoped `correlation_id` on every `ExecutionEvent`; `RunManifest.event_count` = highest `seq` + 1 as the gap check; streaming chunk-merge recorded as vacuous in core — `ModelProvider::generate` returns a complete `String`, so no chunk exists to merge, and the fold is a host obligation) and **HO-14** (two-state `Measurement { Taken(u64), Unavailable }` replacing every raw numeric that can fail to be obtained — `elapsed_ms` on `StepEnd`/`MacroExit`/`ModelResponse`/`RunManifest` and `LoopIteration.iteration_number`; `FieldDescriptor`'s counts deliberately stay plain `u32`, obtainable by construction). Batched because both rewrite every variant — one round of churn, and Pass-2's HO-8 token classes are born as `Measurement` rather than added raw and retyped. Records two findings from the current crate: emission must route through a single `seq`-assigning choke point (20 `record_event` calls each paired with a manual `event_count += 1` — correct today, fragile once `seq` depends on it), and `handle_dialog`'s hardcoded `elapsed_ms: 0` is the exact fabricated-zero HO-14 forbids and becomes `Unavailable`. Pass 2 (HO-8, HO-9, HO-10, HO-11, HO-13, HO-16, HO-17) explicitly deferred. |

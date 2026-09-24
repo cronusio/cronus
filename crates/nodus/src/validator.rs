@@ -1,9 +1,9 @@
 //! Validator — structural lint and schema-vocabulary checks.
 //!
-//! Runs 34 rules against a parsed [`WorkflowFile`] AST and returns a flat list
-//! of [`Diagnostic`]s. Rules are grouped by severity:
+//! Runs its lint rules against a parsed [`WorkflowFile`] AST and returns a flat
+//! list of [`Diagnostic`]s. Rules are grouped by severity:
 //!
-//! - **Error** (E001–E020): block execution when found.
+//! - **Error** (E001–E023): block execution when found.
 //! - **Warning** (W001–W017): workflow runs but has unsafe or incomplete patterns.
 //! - **Info** (I001–I006): style suggestions.
 //!
@@ -67,8 +67,111 @@ impl Diagnostic {
 pub struct Validator;
 
 impl Validator {
-    /// Run all 33 lint rules against `ast` and return accumulated diagnostics.
+    /// Run every lint rule against `ast` under the builtin vocabulary and
+    /// return the accumulated diagnostics.
     pub fn validate(ast: &WorkflowFile, filename: &str) -> Vec<Diagnostic> {
+        Self::validate_with_schema(ast, filename, &vocab::Schema::builtin())
+    }
+
+    /// NL-9 — check the caller's `input` against the workflow's declared `@in:`
+    /// contract before anything runs. One `E022` error per breach:
+    ///
+    /// - a **required** field (no `?`, no default) that was not supplied;
+    /// - a value of the **wrong type** for its declared type (an unknown type
+    ///   name is not checked — `W013` already flags it);
+    /// - a key **the workflow does not declare**, when it declares an `@in:`
+    ///   block at all — a workflow with no declared contract accepts none of
+    ///   the caller's names silently either way it reads them;
+    /// - a key that names a **runtime-owned variable** (`$user`, `$session`, …)
+    ///   the workflow does not itself declare: the runtime sets those, so a
+    ///   caller supplying one would forge a fact the workflow may branch on.
+    ///
+    /// The check is on the caller's own input. `host_keys` names the keys the
+    /// host itself adds afterwards (a `§config` projection, an environment
+    /// observation): they count as supplied for a field that declares them, and
+    /// are never held against the caller as undeclared or runtime-owned.
+    pub fn validate_input(
+        ast: &WorkflowFile,
+        input: Option<&Value>,
+        host_keys: &[&str],
+        filename: &str,
+    ) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let mut breach = |message: String| {
+            diags.push(Diagnostic::new(Severity::Error, "E022", message, filename));
+        };
+
+        let entries: &[(String, Value)] = match input {
+            None | Some(Value::Null) => &[],
+            Some(Value::Map(entries)) => entries,
+            Some(_) => {
+                breach("The input must be a map of field name to value.".to_string());
+                return diags;
+            }
+        };
+        let fields = ast.input_decl.as_ref().map(|decl| decl.fields.as_slice());
+        let field_name = |f: &crate::ast::InputField| f.name.trim_start_matches('$').to_string();
+        let declared = |key: &str| {
+            fields.is_some_and(|fs| {
+                fs.iter()
+                    .any(|f| field_name(f) == key.trim_start_matches('$'))
+            })
+        };
+        let host_supplied = |name: &str| host_keys.contains(&name);
+
+        for (key, _) in entries {
+            if host_supplied(key.trim_start_matches('$')) {
+                continue;
+            }
+            if is_runtime_owned_name(key) && !declared(key) {
+                breach(format!(
+                    "Input '{key}' names the runtime-owned variable ${key}: the runtime sets it, \
+                     so a caller cannot supply it."
+                ));
+            } else if fields.is_some() && !declared(key) {
+                breach(format!(
+                    "Input '{key}' is not declared in the workflow's @in block."
+                ));
+            }
+        }
+
+        for field in fields.unwrap_or_default() {
+            let name = field_name(field);
+            let supplied = entries
+                .iter()
+                .find(|(key, _)| key.trim_start_matches('$') == name)
+                .map(|(_, value)| value);
+            let required = !field.optional && field.default.is_none();
+            if supplied.is_none() && host_supplied(&name) {
+                continue;
+            }
+            match supplied {
+                None | Some(Value::Null) if required => {
+                    breach(format!("Required input '{name}' was not supplied."));
+                }
+                None | Some(Value::Null) => {}
+                Some(value) => {
+                    if value_fits_declared_type(value, &field.type_name) == Some(false) {
+                        breach(format!(
+                            "Input '{name}' must be {}, got {}.",
+                            field.type_name,
+                            value_kind(value)
+                        ));
+                    }
+                }
+            }
+        }
+        diags
+    }
+
+    /// Like [`validate`](Self::validate), but a command is known when `schema`
+    /// knows it — the entry point for a workflow parsed against a host-extended
+    /// vocabulary, whose host commands are not unknown commands.
+    pub fn validate_with_schema(
+        ast: &WorkflowFile,
+        filename: &str,
+        schema: &vocab::Schema,
+    ) -> Vec<Diagnostic> {
         let mut d = Vec::new();
 
         // Errors
@@ -90,6 +193,8 @@ impl Validator {
         d.extend(Self::e018_restart_max_bounded(ast, filename));
         d.extend(Self::e019_restart_scope(ast, filename));
         d.extend(Self::e020_no_duplicate_macro_names(ast, filename));
+        d.extend(Self::e021_known_commands(ast, schema, filename));
+        d.extend(Self::e023_test_names_exist(ast, filename));
 
         // Warnings
         d.extend(Self::w001_err_handler(ast, filename));
@@ -428,6 +533,145 @@ impl Validator {
                     format!("Duplicate @macro: name '{}'.", mb.name),
                     filename,
                 ));
+            }
+        }
+        diags
+    }
+
+    /// NL-1 — an unknown command fails at validation, never at run time.
+    ///
+    /// Two shapes reach here. A step line the parser could not type as a
+    /// command but that is written like a call (`NAME(...)`) was kept as an
+    /// unclassified line and would silently drop out of the run — the run would
+    /// finish `Ok` without it. And a command node whose name the vocabulary does
+    /// not know would only raise a run-time flag. A misspelled or unregistered
+    /// command is a defect in the workflow, so both block the run.
+    fn e021_known_commands(
+        wf: &WorkflowFile,
+        schema: &vocab::Schema,
+        filename: &str,
+    ) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let mut report = |name: &str| {
+            diags.push(Diagnostic::new(
+                Severity::Error,
+                "E021",
+                format!(
+                    "Unknown command '{name}': it is not in the schema vocabulary, so the step \
+                     would silently do nothing."
+                ),
+                filename,
+            ));
+        };
+
+        for step in &wf.steps {
+            let mut lines = Vec::new();
+            if let Some(body) = &step.body {
+                collect_unclassified_lines(body, &mut lines);
+            }
+            for sub in &step.sub_steps {
+                collect_unclassified_lines(sub, &mut lines);
+            }
+            for text in lines {
+                if let Some(name) = call_shaped_name(text) {
+                    report(name);
+                }
+            }
+            for cmd in extract_commands_step(step) {
+                if !is_schema_command(schema, &cmd.name) {
+                    report(&cmd.name);
+                }
+            }
+            if let Some(cmd) = &step.compensation
+                && !is_schema_command(schema, &cmd.name)
+            {
+                report(&cmd.name);
+            }
+        }
+        if let Some(cmd) = wf.error_decl.as_ref().and_then(|d| d.handler.as_ref())
+            && !is_schema_command(schema, &cmd.name)
+        {
+            report(&cmd.name);
+        }
+        diags
+    }
+
+    /// NT-9 — a `@test:` block that names something that cannot exist in the
+    /// workflow is a validation error, not an assertion that silently never
+    /// fires (or an override that silently never applies).
+    ///
+    /// Two shapes: an `input:` key the workflow does not declare in `@in:` has
+    /// no slot to bind to, so the block would run on the field's default while
+    /// its author believes the override took; and an `expected:` variable that
+    /// is not reserved, not `@out`, not an `@in` field and not the target of any
+    /// step can never be present, so its assertion could only ever fail (or,
+    /// worse, be read as passing on a run that never produced it).
+    fn e023_test_names_exist(wf: &WorkflowFile, filename: &str) -> Vec<Diagnostic> {
+        if wf.tests.is_empty() {
+            return vec![];
+        }
+        let mut diags = Vec::new();
+        let input_fields: Vec<&str> = wf
+            .input_decl
+            .as_ref()
+            .map(|decl| {
+                decl.fields
+                    .iter()
+                    .map(|f| f.name.trim_start_matches('$'))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Everything a run can bind: reserved variables, `@out`, `@in` fields,
+        // and every pipeline target (the same walk E004 uses).
+        let mut declared: std::collections::HashSet<String> = vocab::RESERVED_VARIABLES
+            .iter()
+            .map(|s| s.trim_start_matches('$').to_string())
+            .collect();
+        if let Some(out) = &wf.output_decl {
+            declared.insert(out.variable.trim_start_matches('$').to_string());
+        }
+        declared.extend(input_fields.iter().map(|s| s.to_string()));
+        let mut targets = std::collections::HashSet::new();
+        let mut used = std::collections::HashSet::new();
+        for step in &wf.steps {
+            collect_vars_step(step, &mut targets, &mut used);
+        }
+        declared.extend(targets.iter().map(|t| {
+            t.trim_start_matches('$')
+                .split('.')
+                .next()
+                .unwrap_or("")
+                .to_string()
+        }));
+
+        for test in &wf.tests {
+            for (key, _) in &test.input {
+                if !input_fields.contains(&key.trim_start_matches('$')) {
+                    diags.push(Diagnostic::new(
+                        Severity::Error,
+                        "E023",
+                        format!(
+                            "@test '{}' sets input '{key}', which the workflow does not declare in @in.",
+                            test.name
+                        ),
+                        filename,
+                    ));
+                }
+            }
+            for (var, _) in &test.expected {
+                let root = var.trim_start_matches('$').split('.').next().unwrap_or("");
+                if !declared.contains(root) {
+                    diags.push(Diagnostic::new(
+                        Severity::Error,
+                        "E023",
+                        format!(
+                            "@test '{}' asserts {var}, which the workflow never declares or assigns.",
+                            test.name
+                        ),
+                        filename,
+                    ));
+                }
             }
         }
         diags
@@ -1055,6 +1299,103 @@ fn collect_vars_cmd(
     if let Some(target) = &cmd.pipeline_target {
         declared.insert(target.split('.').next().unwrap_or(target).to_string());
     }
+}
+
+/// Whether an input key (with or without its `$`) names a variable only the
+/// runtime may set.
+pub(crate) fn is_runtime_owned_name(key: &str) -> bool {
+    let name = key.trim_start_matches('$');
+    vocab::RUNTIME_OWNED_VARIABLES
+        .iter()
+        .any(|owned| owned.trim_start_matches('$') == name)
+}
+
+/// Whether `value` fits a declared `@in` type. `None` for a type name outside
+/// the closed registry, which is advisory (`W013`), not a run-time judgement.
+fn value_fits_declared_type(value: &Value, type_name: &str) -> Option<bool> {
+    Some(match type_name {
+        "" | "any" => true,
+        "str" | "text" | "url" => matches!(value, Value::Text(_)),
+        "ts" => matches!(value, Value::Text(_) | Value::Int(_)),
+        "int" => matches!(value, Value::Int(_)),
+        "float" => matches!(value, Value::Float(_) | Value::Int(_)),
+        "bool" => matches!(value, Value::Bool(_)),
+        "list" => matches!(value, Value::List(_)),
+        "obj" | "map" => matches!(value, Value::Map(_)),
+        "null" => matches!(value, Value::Null),
+        _ => return None,
+    })
+}
+
+fn value_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "a bool",
+        Value::Int(_) => "an int",
+        Value::Float(_) => "a float",
+        Value::Text(_) => "text",
+        Value::List(_) => "a list",
+        Value::Map(_) => "a map",
+    }
+}
+
+/// A command the schema knows, or the executor's own assignment form.
+fn is_schema_command(schema: &vocab::Schema, name: &str) -> bool {
+    name == "ASSIGN" || schema.is_command(name)
+}
+
+/// Every unclassified line (`Stmt::Comment`) reachable from `node`.
+fn collect_unclassified_lines<'a>(node: &'a Stmt, out: &mut Vec<&'a str>) {
+    match node {
+        Stmt::Comment(c) => out.push(c.text.as_str()),
+        Stmt::Conditional(cond) => {
+            for child in &cond.body {
+                collect_unclassified_lines(child, out);
+            }
+            for br in &cond.elif_branches {
+                for child in &br.body {
+                    collect_unclassified_lines(child, out);
+                }
+            }
+            if let Some(else_br) = &cond.else_branch {
+                for child in &else_br.body {
+                    collect_unclassified_lines(child, out);
+                }
+            }
+        }
+        Stmt::ForLoop(fl) => fl
+            .body
+            .iter()
+            .for_each(|child| collect_unclassified_lines(child, out)),
+        Stmt::UntilLoop(ul) => ul
+            .body
+            .iter()
+            .for_each(|child| collect_unclassified_lines(child, out)),
+        Stmt::Parallel(pb) => pb
+            .branches
+            .iter()
+            .for_each(|child| collect_unclassified_lines(child, out)),
+        Stmt::Command(_) | Stmt::Switch(_) | Stmt::Map(_) | Stmt::VarRef(_) => {}
+    }
+}
+
+/// The command name of an unclassified line that is written like a call: an
+/// ALL_CAPS word of two or more characters directly followed by `(`. Prose and
+/// bare words are left alone — only a call-shaped line is unmistakably a
+/// command the vocabulary failed to recognize.
+fn call_shaped_name(text: &str) -> Option<&str> {
+    let mut words = text.split_whitespace();
+    let first = words.next()?;
+    let (name, opens) = match first.split_once('(') {
+        Some((name, _)) => (name, true),
+        None => (first, words.next().is_some_and(|w| w.starts_with('('))),
+    };
+    let caps = name.len() >= 2
+        && name.starts_with(|c: char| c.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+    (opens && caps).then_some(name)
 }
 
 fn extract_commands_step(step: &Step) -> Vec<&CommandCall> {
@@ -2516,6 +2857,91 @@ mod tests {
             !diags.iter().any(|d| d.code == "E020"),
             "unexpected E020 for unique macro names"
         );
+    }
+
+    fn e021_diags(steps: &str) -> Vec<String> {
+        let src = format!(
+            "§wf:e021_wf v1.0\n§runtime: {{ core: schema.nodus }}\n@out: $out\n@err: ESCALATE(human)\n@steps:\n{steps}"
+        );
+        let ast = Parser::parse(&src).expect("parse");
+        Validator::validate(&ast, "e021_wf.nodus")
+            .into_iter()
+            .filter(|d| d.code == "E021")
+            .map(|d| d.message)
+            .collect()
+    }
+
+    #[test]
+    fn e021_fires_on_a_call_shaped_step_the_vocabulary_does_not_know() {
+        let found = e021_diags("  1. SENDMAIL($out)\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("SENDMAIL"), "{}", found[0]);
+    }
+
+    #[test]
+    fn e021_fires_on_a_misspelled_known_command_with_a_pipeline_target() {
+        let found = e021_diags("  1. GENERATE_TEXT(hello) → $out\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn e021_fires_on_an_unknown_command_nested_in_a_control_construct() {
+        let found = e021_diags(
+            "  1. ~FOR $item IN $in.items:\n       PUBLISHX($item)\n     ~END\n  2. LOG($out)\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn e021_fires_on_an_unknown_command_in_a_conditional_action() {
+        let found = e021_diags("  1. GEN(x) → $out\n  2. ?IF $out == x → FLUSHX(out)\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("FLUSHX"));
+    }
+
+    #[test]
+    fn e021_fires_on_an_unknown_error_handler_command() {
+        let src = "§wf:h v1.0\n§runtime: { core: schema.nodus }\n@out: $out\n@err: PAGEOPS(team)\n@steps:\n  1. GEN(x) → $out\n";
+        let ast = Parser::parse(src).expect("parse");
+        let diags = Validator::validate(&ast, "h.nodus");
+        assert!(diags.iter().any(|d| d.code == "E021"), "{diags:?}");
+    }
+
+    #[test]
+    fn e021_is_absent_when_every_command_is_known() {
+        let found = e021_diags("  1. GEN(hello) → $out\n  2. LOG($out)\n  3. ESCALATE(human)\n");
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn e021_leaves_prose_and_bare_words_alone() {
+        let found =
+            e021_diags("  1. GEN(hello) → $out\n  2. see the runbook for details\n  3. TODO\n");
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn e021_accepts_a_host_command_the_extended_schema_knows() {
+        struct Host;
+        impl crate::portability::SchemaProvider for Host {
+            fn host_commands(&self) -> &[&str] {
+                &["FLUSHX"]
+            }
+            fn host_reserved_variables(&self) -> &[&str] {
+                &[]
+            }
+        }
+        let schema = vocab::Schema::with_provider(&Host);
+        let src = "§wf:h v1.0\n§runtime: { core: schema.nodus }\n@out: $out\n@err: ESCALATE(human)\n@steps:\n  1. FLUSHX(out)\n  2. ?IF $out == x → FLUSHX(out)\n";
+        let ast = Parser::parse_with_schema(src, &schema).expect("parse");
+        let extended = Validator::validate_with_schema(&ast, "h.nodus", &schema);
+        assert!(
+            !extended.iter().any(|d| d.code == "E021"),
+            "a host command is known under its own schema: {extended:?}"
+        );
+        // Under the builtin schema alone the conditional action is unknown.
+        let builtin = Validator::validate(&ast, "h.nodus");
+        assert!(builtin.iter().any(|d| d.code == "E021"), "{builtin:?}");
     }
 
     #[test]

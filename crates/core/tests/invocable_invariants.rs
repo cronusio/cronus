@@ -196,7 +196,7 @@ fn agent_status_reports_no_active_session() {
     }
 }
 
-/// `exec` has no persistent store yet (F-03/F-04): every verb answers
+/// `exec` has no persistent store yet: every verb answers
 /// `Unavailable` honestly (INV-9, matching `core:loop.evolve`'s own
 /// precedent) rather than a `List([])` that implies a real, empty listing.
 #[test]

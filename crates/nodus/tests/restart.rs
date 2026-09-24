@@ -86,7 +86,7 @@ const NO_RESTART_WF: &str = r#"§wf:no_restart v1.0
 // A $restart request nested inside a ~FOR body — must be rejected before it runs.
 const NESTED_RESTART_WF: &str = r#"§wf:nested_restart v1.0
 §runtime: { core: schema.nodus, restart_max: 3 }
-@in: { items: list }
+@in: { items?: list }
 @out: $out
 @err: ESCALATE(human)
 @steps:

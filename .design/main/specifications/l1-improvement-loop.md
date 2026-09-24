@@ -1,6 +1,6 @@
 # Improvement Loop
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** concept
 
@@ -100,7 +100,7 @@ graph TD
 | --- | --- | --- |
 | Doctor escalations it cannot safely fix (HEAL-3) | defect / inconsistency | RP-2(c) |
 | Health alerts, trend anomalies (OH-3/OH-4) | degradation | RP-2(b) |
-| Crash-on-next-start forensic records (DL-2) | defect | RP-2(a) |
+| Crash-on-next-start forensic records (diagnostic-log DL-2) | defect | RP-2(a) |
 | Repeated retry/cancel patterns | friction | RP-2(e) |
 | Run outcomes, routing/latency patterns, wasted-work signals distilled after the run | inefficiency / optimization opportunity | RP-2(f) improvement |
 | Office-observed capability gaps ("the product lacked X to do Y well") | improvement idea | RP-2(f) improvement |
@@ -188,3 +188,4 @@ All four live on the human-write-only authority plane (SEC-10): the agent reads 
 | 1.0.0 | 2026-07-16 | Core Team | Initial spec — the closed product self-improvement loop: in-work non-blocking observation (IMP-1), product-subject-only generalized capture (IMP-2), user-governed submission autonomy off/confirm/automatic as a standing audited grant (IMP-3), managed AI intake triage (IMP-4), evidence-over-eloquence weak-submitter robustness (IMP-5), append-only supersedable rejection memory with auto-answer (IMP-6), disposition feedback closing the loop (IMP-7), dogfooded triage office (IMP-8), optional-by-construction zero-server posture (IMP-9). |
 | 1.0.1 | 2026-09-12 | Core Team | Patch — cross-reference to `l1-usage-simulation`'s new USM-13, which reuses this spec's IMP-1 taxonomy for a simulation run's own discoveries while staying a wholly separate, local, dev-time mechanism never wired into this loop's findings ledger (RP-6). Documentation linkage only; no invariant added or changed. |
 | 1.0.2 | 2026-09-13 | Core Team | Patch — §5's deferred contract is named. The entry "Alternative — let triage auto-apply trivial fixes" rejected self-application at L1 and recorded that "any self-application of accepted changes is a separate, future contract with its own authority model"; that contract now exists as `l1-remedy-authority` (RA-1…RA-10) and is cross-referenced from §5 and from Related Specifications. The **rejection itself is unchanged and restated explicitly**: the new contract is device-side, governing whether a finding may change the product where it was found, and grants nothing whatsoever to the upstream intake — IMP-4's queue-management-only scope stands exactly as written, and no triage decision reaches code. The demarcation is stated in the vocabulary each spec already owns: IMP-3 decides whether a finding **leaves**, RA-1 decides whether a finding **changes what is here**. `[DR]` Patch rather than minor: no invariant was added, removed, or altered — an alternative entry that deferred a contract now points at it, which is linkage. Status stays `Stable`; no cascade. |
+| 1.0.3 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): A bare `DL-2` citation of the diagnostic-log invariant now names it. |

@@ -11,6 +11,8 @@ use nodus::{
     workflows::{self, TranspileMode},
 };
 
+mod support;
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const SIMPLE_LOG: &str = include_str!("fixtures/simple_log.nodus");
@@ -21,7 +23,7 @@ const UNTIL_QUALITY_LOOP: &str = include_str!("fixtures/until_quality_loop.nodus
 const PREF_ONLY: &str = r#"§wf:pref_only v1.0
 §runtime: { core: schema.nodus }
 !PREF: empathetic OVER neutral IF $in.mood = "sad"
-@in: { mood: str }
+@in: { mood?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -34,7 +36,7 @@ const PREF_AND_NEVER: &str = r#"§wf:pref_and_never v1.0
 §runtime: { core: schema.nodus }
 !PREF: fast OVER thorough
 !!NEVER: FETCH
-@in: { url: str }
+@in: { url?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -45,7 +47,7 @@ const PREF_AND_NEVER: &str = r#"§wf:pref_and_never v1.0
 // Workflow whose ~UNTIL condition is never satisfied by the stub — MAX:2 will be hit.
 const ALWAYS_LOOPS: &str = r#"§wf:always_loops v1.0
 §runtime: { core: schema.nodus }
-@in: { prompt: str }
+@in: { prompt?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -59,7 +61,7 @@ const ALWAYS_LOOPS: &str = r#"§wf:always_loops v1.0
 // ~UNTIL without a MAX cap — the validator must fire E010.
 const UNBOUNDED_LOOP: &str = r#"§wf:unbounded_loop v1.0
 §runtime: { core: schema.nodus }
-@in: { x: str }
+@in: { x?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -155,7 +157,7 @@ fn wfl_2_validator_uses_schema_to_catch_unknown_commands() {
     // must flag it rather than silently accepting it.
     let source = r#"§wf:schema_check v1.0
 §runtime: { core: schema.nodus }
-@in: { x }
+@in: { x? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -176,8 +178,12 @@ fn wfl_2_validator_uses_schema_to_catch_unknown_commands() {
 #[test]
 fn wfl_3_never_rule_halts_execution_with_failed_status() {
     // !!NEVER: FETCH → the executor must refuse and return Failed.
-    let result = workflows::run(PREF_AND_NEVER, "pref_and_never.nodus", None)
-        .expect("validation must pass — constraint enforcement is a runtime check");
+    let result = workflows::run(
+        PREF_AND_NEVER,
+        "pref_and_never.nodus",
+        Some(support::sample_input(PREF_AND_NEVER)),
+    )
+    .expect("validation must pass — constraint enforcement is a runtime check");
     assert_eq!(
         result.status,
         Status::Failed,
@@ -201,8 +207,12 @@ fn wfl_3_never_rule_halts_execution_with_failed_status() {
 #[test]
 fn wfl_4_preference_does_not_halt_execution() {
     // !PREF alone must not block — preferences are advisory, not enforcing.
-    let result = workflows::run(PREF_ONLY, "pref_only.nodus", None)
-        .expect("workflow with only !PREF must execute");
+    let result = workflows::run(
+        PREF_ONLY,
+        "pref_only.nodus",
+        Some(support::sample_input(PREF_ONLY)),
+    )
+    .expect("workflow with only !PREF must execute");
     assert_eq!(
         result.status,
         Status::Ok,
@@ -214,8 +224,12 @@ fn wfl_4_preference_does_not_halt_execution() {
 fn wfl_4_hard_rule_wins_over_preference() {
     // When !PREF and !!NEVER coexist and the NEVER is violated, the hard rule
     // prevails — preference softness does not weaken hard-constraint enforcement.
-    let result =
-        workflows::run(PREF_AND_NEVER, "pref_and_never.nodus", None).expect("validation must pass");
+    let result = workflows::run(
+        PREF_AND_NEVER,
+        "pref_and_never.nodus",
+        Some(support::sample_input(PREF_AND_NEVER)),
+    )
+    .expect("validation must pass");
     assert_eq!(
         result.status,
         Status::Failed,
@@ -228,8 +242,12 @@ fn wfl_4_hard_rule_wins_over_preference() {
 #[test]
 fn wfl_5_block_class_error_prevents_execution() {
     // Missing §runtime (E001) is a block-class error — run() must reject before dispatch.
-    let err = workflows::run(LINT_MISSING_RUNTIME, "lint_missing_runtime.nodus", None)
-        .expect_err("run must fail when block-class errors are present");
+    let err = workflows::run(
+        LINT_MISSING_RUNTIME,
+        "lint_missing_runtime.nodus",
+        Some(support::sample_input(LINT_MISSING_RUNTIME)),
+    )
+    .expect_err("run must fail when block-class errors are present");
     assert!(
         err.iter().any(|d| d.severity == Severity::Error),
         "WFL-5: rejection diagnostics must include at least one Error-severity entry"
@@ -239,8 +257,12 @@ fn wfl_5_block_class_error_prevents_execution() {
 #[test]
 fn wfl_5_valid_workflow_passes_gate_and_executes() {
     // A valid workflow must clear the validate gate and reach the executor.
-    let result = workflows::run(SIMPLE_LOG, "simple_log.nodus", None)
-        .expect("valid workflow must pass validate-before-run and reach executor");
+    let result = workflows::run(
+        SIMPLE_LOG,
+        "simple_log.nodus",
+        Some(support::sample_input(SIMPLE_LOG)),
+    )
+    .expect("valid workflow must pass validate-before-run and reach executor");
     assert_eq!(
         result.status,
         Status::Ok,
@@ -253,8 +275,12 @@ fn wfl_5_valid_workflow_passes_gate_and_executes() {
 #[test]
 fn wfl_6_until_loop_sets_max_reached_flag() {
     // The stub never produces "magic_stop_signal", so MAX:2 is always exhausted.
-    let result = workflows::run(ALWAYS_LOOPS, "always_loops.nodus", None)
-        .expect("must execute without block-class errors");
+    let result = workflows::run(
+        ALWAYS_LOOPS,
+        "always_loops.nodus",
+        Some(support::sample_input(ALWAYS_LOOPS)),
+    )
+    .expect("must execute without block-class errors");
     assert!(
         result.flags.iter().any(|f| f == "NODUS:MAX_REACHED"),
         "WFL-6: when loop condition is never met, NODUS:MAX_REACHED must be set"
@@ -280,8 +306,12 @@ fn wfl_6_until_without_max_is_lint_error() {
 #[test]
 fn wfl_6_bounded_loop_executes_within_limit() {
     // The UNTIL_QUALITY_LOOP fixture uses MAX:3 — execution must complete (not hang).
-    let result = workflows::run(UNTIL_QUALITY_LOOP, "until_quality_loop.nodus", None)
-        .expect("bounded loop must execute without block-class errors");
+    let result = workflows::run(
+        UNTIL_QUALITY_LOOP,
+        "until_quality_loop.nodus",
+        Some(support::sample_input(UNTIL_QUALITY_LOOP)),
+    )
+    .expect("bounded loop must execute without block-class errors");
     assert!(
         result.status == Status::Ok || result.flags.iter().any(|f| f == "NODUS:MAX_REACHED"),
         "WFL-6: bounded loop must either meet its condition or exhaust MAX gracefully"
@@ -294,9 +324,13 @@ fn wfl_6_bounded_loop_executes_within_limit() {
 fn wfl_7_executor_dispatches_through_provider_seam() {
     // A custom ModelProvider replaces the default stub — the executor must route
     // GEN through it, proving the subsystem-dispatch seam is real and pluggable.
-    let result =
-        workflows::run_with_provider(SIMPLE_LOG, "simple_log.nodus", None, FixedOutputProvider)
-            .expect("must execute with custom provider");
+    let result = workflows::run_with_provider(
+        SIMPLE_LOG,
+        "simple_log.nodus",
+        Some(support::sample_input(SIMPLE_LOG)),
+        FixedOutputProvider,
+    )
+    .expect("must execute with custom provider");
     assert_eq!(
         result.status,
         Status::Ok,
@@ -317,7 +351,12 @@ fn wfl_7_executor_dispatches_through_provider_seam() {
 
 #[test]
 fn wfl_8_success_result_has_required_fields() {
-    let result = workflows::run(SIMPLE_LOG, "simple_log.nodus", None).expect("must execute");
+    let result = workflows::run(
+        SIMPLE_LOG,
+        "simple_log.nodus",
+        Some(support::sample_input(SIMPLE_LOG)),
+    )
+    .expect("must execute");
     assert_eq!(
         result.workflow, "wf:simple_log",
         "WFL-8: workflow field must carry the declared identifier"
@@ -340,8 +379,12 @@ fn wfl_8_success_result_has_required_fields() {
 #[test]
 fn wfl_8_failure_result_has_required_fields() {
     // NEVER-rule violation → Status::Failed; the result contract must still be complete.
-    let result =
-        workflows::run(PREF_AND_NEVER, "pref_and_never.nodus", None).expect("validation must pass");
+    let result = workflows::run(
+        PREF_AND_NEVER,
+        "pref_and_never.nodus",
+        Some(support::sample_input(PREF_AND_NEVER)),
+    )
+    .expect("validation must pass");
     assert_eq!(
         result.workflow, "wf:pref_and_never",
         "WFL-8: workflow field must be set even on failure"

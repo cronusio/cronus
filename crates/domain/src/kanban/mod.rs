@@ -77,7 +77,7 @@ impl fmt::Display for KanbanError {
 /// Comfortably under NTFS's 255-UTF-16-code-unit filename component limit
 /// even with the longest suffix a card id ever grows (`.jsonl`, in
 /// `events_dir`) — an id past this reaches the OS's own filename-length
-/// error (F-08) instead of a clear product one.
+/// error instead of a clear product one.
 const MAX_CARD_ID_LEN: usize = 200;
 
 /// Reject any card id that would not stay inside `cards/` when turned into a
@@ -157,7 +157,7 @@ impl CardState {
     /// Every state `self` may transition to directly — derived from
     /// [`Self::can_transition_to`] rather than a second, hand-maintained
     /// list, so the two can never drift apart. Used to name what *is*
-    /// allowed in an [`KanbanError::InvalidTransition`] message (F-34):
+    /// allowed in an [`KanbanError::InvalidTransition`] message:
     /// naming only what was rejected leaves a caller to discover the legal
     /// set by trial.
     pub fn legal_targets(self) -> Vec<CardState> {
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn invalid_transition_message_names_the_legal_targets() {
-        // F-34: `board block` from Todo (only legal from Running) used to
+        // `board block` from Todo (only legal from Running) used to
         // report the rejected pair with no hint of what *was* allowed.
         let err = KanbanError::InvalidTransition {
             from: CardState::Todo,

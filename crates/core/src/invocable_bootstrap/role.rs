@@ -7,7 +7,7 @@ use cronus_domain::roles::{PRESET_CATALOG, RoleManager};
 use super::{core_id, flag_arg, opt_text_arg, text_arg};
 
 /// A hired role instance staffs a specific project's active work — resolves
-/// against the current workspace (F-02), same as every other project-scoped
+/// against the current workspace, same as every other project-scoped
 /// semantic verb. The preset *catalog* (`PRESET_CATALOG`) stays a compiled-in
 /// constant regardless — only hired instances live under this path.
 fn state_dir() -> std::path::PathBuf {
@@ -16,7 +16,7 @@ fn state_dir() -> std::path::PathBuf {
 
 fn open_manager() -> RoleManager {
     let state = state_dir();
-    // F-22: `RoleManager`'s own methods already join "employees" onto
+    // `RoleManager`'s own methods already join "employees" onto
     // `state_dir` wherever they need that subdirectory (`hire`, `fire`,
     // `get`, …) — passing `state.join("employees")` here doubled it
     // (`employees/employees/<id>/`). `state_dir` is the workspace root

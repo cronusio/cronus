@@ -716,9 +716,19 @@ impl cronus_contract::UserDataStore for MemoryStore {
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
+/// The schema version this build reads and writes (`crate::versioning`).
+/// Bump it together with a step appended to the migration list passed in
+/// [`setup`] whenever the shape below changes.
+pub(crate) const SCHEMA_VERSION: i64 = 1;
+
 pub(crate) fn setup(conn: &Connection) -> Result<()> {
     conn.execute_batch("PRAGMA journal_mode = WAL")?;
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
+    crate::versioning::open_schema(conn, "memory", SCHEMA_VERSION, create_schema, &[])
+}
+
+/// Every table of the memory database at the current version, idempotently.
+fn create_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS memories (
             id                 TEXT PRIMARY KEY NOT NULL,

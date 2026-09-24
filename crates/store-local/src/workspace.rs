@@ -108,6 +108,9 @@ pub struct WorkspaceStatus {
 #[derive(Debug)]
 pub enum WorkspaceError {
     Database(rusqlite::Error),
+    /// The registry file's schema version could not be reconciled with the
+    /// one this build understands (a newer file, or a failed migration).
+    Schema(crate::versioning::SchemaError),
     /// The ID does not match the kebab-case format.
     InvalidId(String),
     /// No workspace with the given ID exists.
@@ -120,6 +123,7 @@ impl std::fmt::Display for WorkspaceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WorkspaceError::Database(e) => write!(f, "workspace database error: {e}"),
+            WorkspaceError::Schema(e) => write!(f, "{e}"),
             WorkspaceError::InvalidId(id) => {
                 write!(
                     f,
@@ -136,6 +140,7 @@ impl std::error::Error for WorkspaceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             WorkspaceError::Database(e) => Some(e),
+            WorkspaceError::Schema(e) => Some(e),
             _ => None,
         }
     }
@@ -144,6 +149,12 @@ impl std::error::Error for WorkspaceError {
 impl From<rusqlite::Error> for WorkspaceError {
     fn from(e: rusqlite::Error) -> Self {
         WorkspaceError::Database(e)
+    }
+}
+
+impl From<crate::versioning::SchemaError> for WorkspaceError {
+    fn from(e: crate::versioning::SchemaError) -> Self {
+        WorkspaceError::Schema(e)
     }
 }
 
@@ -156,13 +167,13 @@ pub struct WorkspaceManager {
 impl WorkspaceManager {
     pub fn open<P: AsRef<Path>>(db_path: P) -> Result<Self, WorkspaceError> {
         let conn = Connection::open(db_path)?;
-        create_schema(&conn)?;
+        setup(&conn)?;
         Ok(WorkspaceManager { conn })
     }
 
     pub fn open_in_memory() -> Result<Self, WorkspaceError> {
         let conn = Connection::open_in_memory()?;
-        create_schema(&conn)?;
+        setup(&conn)?;
         Ok(WorkspaceManager { conn })
     }
 
@@ -282,8 +293,21 @@ impl WorkspaceManager {
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
-fn create_schema(conn: &Connection) -> Result<(), WorkspaceError> {
+/// The schema version this build reads and writes (`crate::versioning`).
+const SCHEMA_VERSION: i64 = 1;
+
+fn setup(conn: &Connection) -> Result<(), WorkspaceError> {
     conn.execute_batch("PRAGMA journal_mode = WAL")?;
+    crate::versioning::open_schema(
+        conn,
+        "workspace registry",
+        SCHEMA_VERSION,
+        create_schema,
+        &[],
+    )
+}
+
+fn create_schema(conn: &Connection) -> Result<(), WorkspaceError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS workspaces (
             id         TEXT PRIMARY KEY NOT NULL,

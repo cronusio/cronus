@@ -18,8 +18,17 @@ pub const MAX_DRAIN_PER_TURN: usize = 100;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
-/// Create the inbox and actors tables if they don't exist.
+/// The schema version this build reads and writes (`crate::versioning`).
+pub const SCHEMA_VERSION: i64 = 1;
+
+/// Bring the inbox database to the current schema: create the inbox and actors
+/// tables when absent, stamp the schema version, and refuse a file written by
+/// a newer build.
 pub fn migrate(conn: &Connection) -> InboxResult<()> {
+    crate::versioning::open_schema(conn, "inbox", SCHEMA_VERSION, create_schema, &[])
+}
+
+fn create_schema(conn: &Connection) -> InboxResult<()> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS actors (
@@ -185,12 +194,16 @@ pub enum InboxError {
     Db(rusqlite::Error),
     /// Sender actor ID is not in the actors registry (ESRCH).
     SenderNotFound(String),
+    /// The database file's schema version could not be reconciled with the
+    /// one this build understands (a newer file, or a failed migration).
+    Schema(crate::versioning::SchemaError),
 }
 
 impl std::fmt::Display for InboxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InboxError::Db(e) => write!(f, "inbox DB error: {e}"),
+            InboxError::Schema(e) => write!(f, "{e}"),
             InboxError::SenderNotFound(id) => {
                 write!(f, "inbox send error: sender '{id}' not registered (ESRCH)")
             }
@@ -198,11 +211,25 @@ impl std::fmt::Display for InboxError {
     }
 }
 
-impl std::error::Error for InboxError {}
+impl std::error::Error for InboxError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            InboxError::Db(e) => Some(e),
+            InboxError::Schema(e) => Some(e),
+            InboxError::SenderNotFound(_) => None,
+        }
+    }
+}
 
 impl From<rusqlite::Error> for InboxError {
     fn from(e: rusqlite::Error) -> Self {
         InboxError::Db(e)
+    }
+}
+
+impl From<crate::versioning::SchemaError> for InboxError {
+    fn from(e: crate::versioning::SchemaError) -> Self {
+        InboxError::Schema(e)
     }
 }
 

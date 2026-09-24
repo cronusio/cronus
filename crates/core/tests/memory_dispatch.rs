@@ -124,7 +124,7 @@ fn store_search_forget_round_trip_persists_across_dispatches() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// F-33: `memory.store`'s summary used to call this "key-value" storage,
+/// `memory.store`'s summary used to call this "key-value" storage,
 /// implying a second `store` under the same key replaces the first —
 /// `MemoryEntry` has no key field to be unique on, and every call adds a
 /// genuinely new, separately timestamped entry. Locked in explicitly as the

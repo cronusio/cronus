@@ -1,6 +1,6 @@
 # Generative Surface
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -18,7 +18,7 @@ An interactive visual surface the agent renders as a turn output — a chart, a 
 - [l1-architecture.md](l1-architecture.md) - INV-3 frontend interchangeability; the surface's portable representation degrades across frontends.
 - [l1-storage-model.md](l1-storage-model.md) - Durable surface state (GS-9) is held through the host storage plane, never by the rendered content itself.
 - [l1-model-runtime.md](l1-model-runtime.md) / [l1-usage-allowance.md](l1-usage-allowance.md) - Brokered surface inference (GS-10): the host pins the serving model and enforces the budget.
-- [l1-action-gating.md](l1-action-gating.md) - A surface-initiated model call is an effect and passes the same gates as any tool call (GS-10, CE-3 parity).
+- [l1-action-gating.md](l1-action-gating.md) - A surface-initiated model call is an effect and passes the same gates as any tool call (GS-10, code-execution CE-3 parity).
 
 ## 1. Motivation
 
@@ -80,7 +80,7 @@ perceive(surface) -> { snapshot, interaction_events }   // GS-3
 
 ### 4.3 Confinement & Capability
 
-Rendered content runs sandboxed (GS-2): it has no implicit host access. Any action the surface needs to take (run a tool, read data) is routed through the same authorization and audit path a discrete tool call uses — the surface is not a privilege escape hatch, exactly as code-execution is not (CE-3 parity).
+Rendered content runs sandboxed (GS-2): it has no implicit host access. Any action the surface needs to take (run a tool, read data) is routed through the same authorization and audit path a discrete tool call uses — the surface is not a privilege escape hatch, exactly as code-execution is not (its CE-3 parity).
 
 ### 4.4 Relation to the Automation Canvas
 
@@ -139,3 +139,4 @@ graph LR
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-06-26 | Core Team | Initial spec — generative surface: agent-rendered interactive artifacts as a response output, sandboxed rendering, closed agent-perception loop, user control, portable degradable representation, projection-not-source, bounded generation, explicit lifecycle (GS-1…GS-8); generalizes the automation canvas. |
 | 1.1.0 | 2026-07-13 | Core Team | Amendment — GS-9 durable scoped surface state (host storage seam: personal/shared scoping with disclosure, quotas + key grammar, concurrency honesty, user inspect/erase; no source-of-truth capture) + GS-10 brokered surface inference (host-injected credentials, host-pinned model & budget, stateless exchange, gate/audit parity, typed refusal); §4.5–4.6 added; GS-8 dismissal note; related specs extended (storage-model, model-runtime, usage-allowance, action-gating). |
+| 1.1.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `CE-3` citations of the code-execution invariant now name it. |

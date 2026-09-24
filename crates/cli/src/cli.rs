@@ -2,7 +2,7 @@ use clap::Parser;
 
 use crate::output::OutputFormat;
 
-/// F-10: the exit-code taxonomy and the `--format`/diagnostics split, shown
+/// The exit-code taxonomy and the `--format`/diagnostics split, shown
 /// after `--help` (the long form) rather than repeated on every verb's own
 /// help text. The taxonomy itself was already this small and consistent —
 /// what was missing was writing it down anywhere a user could find it.

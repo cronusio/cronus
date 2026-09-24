@@ -632,7 +632,7 @@ pub fn format_arg() -> Arg {
         .global(true)
         .value_parser(clap::value_parser!(crate::output::OutputFormat))
         .default_value("text")
-        // F-20: `Cli`'s derive-generated `--format` gets its `<FORMAT>` value
+        // `Cli`'s derive-generated `--format` gets its `<FORMAT>` value
         // name and "Output format" help text from the field name and its
         // doc comment automatically; this hand-built duplicate needs the
         // same two calls to match, or the two halves render the same flag
@@ -1188,7 +1188,7 @@ mod tests {
         );
     }
 
-    /// SDD reference containment (F-18): a requirement-clause id
+    /// SDD reference containment: a requirement-clause id
     /// ("KB-1", "OA-10", "BA-8", "DVO-3", ...) resolves to nothing once
     /// `.design/` is absent from a release — printing one in a `--help`
     /// summary a user reads leaves dead, unexplained text behind. Scans
@@ -1244,7 +1244,7 @@ mod tests {
         );
     }
 
-    // --- F-31: completion-script trimming (`strip_help_subcommand`) --------
+    // --- completion-script trimming (`strip_help_subcommand`) --------------
 
     /// A small tree, three levels deep, matching the real grammar's own
     /// shape (`cronus <group> <subgroup> <verb>`, e.g. `ext skill install`).
@@ -1259,8 +1259,8 @@ mod tests {
 
     /// Baseline: clap injects a `help` subcommand at every node with
     /// children by default — the exact behavior that makes an un-stripped
-    /// tree's completion script roughly double the size it needs to be
-    /// (F-31). `Command::build()` is what `clap_complete::generate` (and
+    /// tree's completion script roughly double the size it needs to be.
+    /// `Command::build()` is what `clap_complete::generate` (and
     /// real parsing) triggers internally to synthesize that subcommand —
     /// a fresh, unbuilt tree does not show it yet, so this test forces the
     /// same build pass a completion generator relies on. If a future clap

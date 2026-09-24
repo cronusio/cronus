@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CONFIG_WF: &str = r#"§wf:configured_greeting v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:

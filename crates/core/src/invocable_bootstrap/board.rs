@@ -8,7 +8,7 @@ use cronus_domain::tool_security::now_ms;
 use super::{core_id, flag_arg, opt_text_arg, text_arg};
 
 /// A card belongs to a specific project's work, not the machine — resolves
-/// against the current workspace (F-02), same as every other project-scoped
+/// against the current workspace, same as every other project-scoped
 /// semantic verb.
 fn board_path() -> std::path::PathBuf {
     cronus_domain::paths::resolve_workspace_root().join("kanban")
@@ -108,7 +108,7 @@ fn register_show(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) 
             let card_id = text_arg(args, "id");
             let board = open_board();
             match board.get_card(card_id) {
-                // F-24: `board show` used to render exactly what `board list`
+                // `board show` used to render exactly what `board list`
                 // already does (id + state) — no reason a detail view for
                 // one card should hold less than the card itself carries.
                 Ok(Some(c)) => Outcome::Value(OutcomeValue::Record(vec![

@@ -40,12 +40,16 @@ pub enum KnowledgeError {
         expected: usize,
         actual: usize,
     },
+    /// The database file's schema version could not be reconciled with the
+    /// one this build understands (a newer file, or a failed migration).
+    Schema(crate::versioning::SchemaError),
 }
 
 impl std::fmt::Display for KnowledgeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             KnowledgeError::Database(e) => write!(f, "knowledge database error: {e}"),
+            KnowledgeError::Schema(e) => write!(f, "{e}"),
             KnowledgeError::Corrupt(m) => write!(f, "corrupt knowledge row: {m}"),
             KnowledgeError::ReadOnlyZone { document_id } => {
                 write!(f, "read-only zone: human-authored document {document_id}")
@@ -70,6 +74,7 @@ impl std::error::Error for KnowledgeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             KnowledgeError::Database(e) => Some(e),
+            KnowledgeError::Schema(e) => Some(e),
             _ => None,
         }
     }
@@ -78,6 +83,12 @@ impl std::error::Error for KnowledgeError {
 impl From<rusqlite::Error> for KnowledgeError {
     fn from(e: rusqlite::Error) -> Self {
         KnowledgeError::Database(e)
+    }
+}
+
+impl From<crate::versioning::SchemaError> for KnowledgeError {
+    fn from(e: crate::versioning::SchemaError) -> Self {
+        KnowledgeError::Schema(e)
     }
 }
 
@@ -784,8 +795,15 @@ fn source_ref_from_json(s: &str) -> Result<SourceRef> {
     })
 }
 
+/// The schema version this build reads and writes (`crate::versioning`).
+pub(crate) const SCHEMA_VERSION: i64 = 1;
+
 pub(crate) fn setup(conn: &Connection) -> Result<()> {
     conn.execute_batch("PRAGMA journal_mode = WAL")?;
+    crate::versioning::open_schema(conn, "knowledge", SCHEMA_VERSION, create_schema, &[])
+}
+
+fn create_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS knowledge_collection (
             id          TEXT PRIMARY KEY NOT NULL,

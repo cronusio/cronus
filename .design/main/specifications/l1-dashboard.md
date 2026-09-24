@@ -67,3 +67,9 @@ graph TD
 | --- | --- | --- |
 | `[OFFICE-VIZ]` | `.design/main/specifications/l1-office-visualization.md` | Sibling projection principle |
 | `[DASHBOARD]` | `.design/main/specifications/l2-dashboard.md` | Concrete realization |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-19 | Initial specification: the live, read-only statistics projection of a workspace and of the building aggregate — throughput, activity, cost, schedules, memory. |

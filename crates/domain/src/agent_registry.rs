@@ -164,7 +164,7 @@ impl AgentRegistry {
         }
     }
 
-    /// Active agent definitions, sorted by name (F-12): `agents` is a
+    /// Active agent definitions, sorted by name: `agents` is a
     /// `HashMap`, whose iteration order is randomized per process — without
     /// this, `registry list` printed a different first row on every run,
     /// unusable for anything that diffs or scripts over the output.
@@ -190,7 +190,7 @@ impl AgentRegistry {
     ///
     /// Deliberately kept at the OS-native state tier rather than scoped to
     /// the current workspace (unlike `board`/`memory`/`knowledge`/`role`/
-    /// `schedule`, F-02): an agent *definition* is a reusable template a
+    /// `schedule`): an agent *definition* is a reusable template a
     /// user builds once and expects to have available in every project, not
     /// data belonging to one of them — the same character the shipped
     /// preset catalog already has.
@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(reg.list_active().len(), BUILTIN_NAMES.len());
     }
 
-    /// F-12: `agents` is a `HashMap`, whose iteration order is randomized
+    /// `agents` is a `HashMap`, whose iteration order is randomized
     /// per process — `list_active()` must sort rather than pass that
     /// randomness through, or `registry list` prints a different order on
     /// every run.

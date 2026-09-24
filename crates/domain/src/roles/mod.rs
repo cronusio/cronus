@@ -20,7 +20,7 @@ pub mod revision;
 #[derive(Debug)]
 pub enum RoleError {
     /// A `preset_id` that does not resolve against [`PRESET_CATALOG`] —
-    /// distinct from [`RoleError::InstanceNotFound`] (F-30): "no such
+    /// distinct from [`RoleError::InstanceNotFound`]: "no such
     /// preset to hire from" and "no such hired instance" are different
     /// facts about different collections, and collapsing them into one
     /// generic "role not found" message named the wrong thing on whichever

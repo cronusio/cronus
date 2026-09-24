@@ -60,8 +60,29 @@ impl CodeIndex {
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
-/// Create the `symbols` and `symbols_fts` tables.
+/// The schema version this build reads and writes, recorded in the database
+/// header (`PRAGMA user_version`). A file with no version is a fresh index or
+/// one from before versioning — both are the current schema, so it is stamped;
+/// a higher version is refused rather than read optimistically.
+const SCHEMA_VERSION: i64 = 1;
+
+/// Create the `symbols` and `symbols_fts` tables and stamp the schema version.
 fn migrate(conn: &Connection) -> IndexResult<()> {
+    let found: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if found > SCHEMA_VERSION {
+        return Err(IndexError::NewerSchema {
+            found,
+            supported: SCHEMA_VERSION,
+        });
+    }
+    create_schema(conn)?;
+    if found != SCHEMA_VERSION {
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+    }
+    Ok(())
+}
+
+fn create_schema(conn: &Connection) -> IndexResult<()> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS symbols (
@@ -162,17 +183,37 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedSymbol> {
 #[derive(Debug)]
 pub enum IndexError {
     Db(rusqlite::Error),
+    /// The index file was written by a newer build. The index is a disposable
+    /// cache, so the way out is to delete the file and re-index — never to
+    /// read a shape this build does not know.
+    NewerSchema {
+        found: i64,
+        supported: i64,
+    },
 }
 
 impl std::fmt::Display for IndexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             IndexError::Db(e) => write!(f, "codegraph index error: {e}"),
+            IndexError::NewerSchema { found, supported } => write!(
+                f,
+                "the codegraph index has schema version {found}, newer than the {supported} \
+                 this build understands — it was written by a newer version; update Cronus, \
+                 or delete the index file and re-index"
+            ),
         }
     }
 }
 
-impl std::error::Error for IndexError {}
+impl std::error::Error for IndexError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            IndexError::Db(e) => Some(e),
+            IndexError::NewerSchema { .. } => None,
+        }
+    }
+}
 
 impl From<rusqlite::Error> for IndexError {
     fn from(e: rusqlite::Error) -> Self {

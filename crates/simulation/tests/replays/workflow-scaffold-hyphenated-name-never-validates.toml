@@ -22,5 +22,9 @@ expect_exit = 0
 
 [[step]]
 argv = ["workflow", "run", "simpleflow.nodus"]
+expect_exit = 1
+
+[[step]]
+argv = ["workflow", "run", "simpleflow.nodus", "--input", "{\"query\":\"hello\"}"]
 expect_exit = 0
 

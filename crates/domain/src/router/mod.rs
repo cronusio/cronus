@@ -10,7 +10,7 @@ pub mod provider;
 pub mod recovery;
 pub mod scoring;
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use cache::SemanticCache;
 use circuit::{CircuitBreaker, CircuitState};
@@ -90,9 +90,21 @@ impl RouterPool {
         }
     }
 
+    /// Lock the pool, recovering from a poisoned lock.
+    ///
+    /// Poisoning only records that another holder panicked — most plausibly a
+    /// provider's own `health()` or `score` input, which run under this lock.
+    /// Every field of the pool is valid on its own (a provider list, a mode, a
+    /// last-known-good id, two counters), and a circuit breaker that missed one
+    /// update merely re-learns it, so recovering keeps routing available
+    /// rather than failing every later call after a single provider panic.
+    fn lock(&self) -> MutexGuard<'_, PoolInner> {
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Register a provider. Uses default circuit breaker (threshold=5, cooldown=60s).
     pub fn register(&self, provider: Box<dyn ModelProvider>) {
-        let mut inner = self.inner.lock().expect("router lock poisoned");
+        let mut inner = self.lock();
         inner.entries.push(ProviderEntry {
             provider,
             circuit: CircuitBreaker::default(),
@@ -101,17 +113,17 @@ impl RouterPool {
 
     /// Register a provider with a custom circuit breaker.
     pub fn register_with_circuit(&self, provider: Box<dyn ModelProvider>, circuit: CircuitBreaker) {
-        let mut inner = self.inner.lock().expect("router lock poisoned");
+        let mut inner = self.lock();
         inner.entries.push(ProviderEntry { provider, circuit });
     }
 
     pub fn set_mode(&self, mode: ModePack) {
-        self.inner.lock().expect("router lock poisoned").mode = mode;
+        self.lock().mode = mode;
     }
 
     /// Record a successful call to a provider — resets its circuit.
     pub fn record_success(&self, provider_id: &str) {
-        let mut inner = self.inner.lock().expect("router lock poisoned");
+        let mut inner = self.lock();
         for entry in &mut inner.entries {
             if entry.provider.id() == provider_id {
                 entry.circuit.record_success();
@@ -123,7 +135,7 @@ impl RouterPool {
 
     /// Record a failed call to a provider — may open its circuit.
     pub fn record_failure(&self, provider_id: &str) {
-        let mut inner = self.inner.lock().expect("router lock poisoned");
+        let mut inner = self.lock();
         for entry in &mut inner.entries {
             if entry.provider.id() == provider_id {
                 entry.circuit.record_failure();
@@ -134,16 +146,12 @@ impl RouterPool {
 
     /// Return the current LKGP (Last Known Good Provider) ID, if any.
     pub fn lkgp(&self) -> Option<String> {
-        self.inner
-            .lock()
-            .expect("router lock poisoned")
-            .lkgp
-            .clone()
+        self.lock().lkgp.clone()
     }
 
     /// Return the current circuit state for a registered provider.
     pub fn circuit_state(&self, provider_id: &str) -> Option<circuit::CircuitState> {
-        let inner = self.inner.lock().expect("router lock poisoned");
+        let inner = self.lock();
         inner
             .entries
             .iter()
@@ -160,7 +168,7 @@ impl RouterPool {
             return Ok(cached);
         }
 
-        let mut inner = self.inner.lock().expect("router lock poisoned");
+        let mut inner = self.lock();
 
         if inner.entries.is_empty() {
             return Err(RouterError::NoProvidersAvailable);
@@ -326,5 +334,54 @@ mod tests {
 
         let decision = pool.route(&req()).expect("must route via fallback");
         assert_eq!(decision.provider_id, "ok");
+    }
+
+    /// A provider that panics inside `health()` does so while the pool lock is
+    /// held; that must not make every later call on the pool panic too.
+    #[test]
+    fn pool_survives_a_provider_panicking_under_the_lock() {
+        struct PanickingProvider;
+        impl ModelProvider for PanickingProvider {
+            fn id(&self) -> &str {
+                "boom"
+            }
+            fn health(&self) -> ProviderHealth {
+                panic!("simulated provider panic while the pool lock is held")
+            }
+            fn context_window(&self) -> u32 {
+                128_000
+            }
+            fn cost_per_1k_tokens(&self) -> f64 {
+                0.01
+            }
+            fn latency_p50_ms(&self) -> u64 {
+                300
+            }
+            fn tier(&self) -> ProviderTier {
+                ProviderTier::Standard
+            }
+            fn task_fit(&self, _: TaskType) -> f64 {
+                0.8
+            }
+        }
+
+        let pool = RouterPool::new(ModePack::Quality);
+        pool.register(Box::new(PanickingProvider));
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = pool.route(&req());
+        }));
+        assert!(panicked.is_err(), "the provider must have panicked");
+        assert!(pool.inner.is_poisoned(), "the test must actually poison");
+
+        // Every entry point still works on the recovered pool.
+        pool.set_mode(ModePack::Quality);
+        assert_eq!(pool.lkgp(), None);
+        pool.record_failure("boom");
+        assert!(pool.circuit_state("boom").is_some());
+        pool.register(Box::new(TestProvider {
+            id: "healthy",
+            health: ProviderHealth::Healthy,
+        }));
+        assert_eq!(pool.circuit_state("healthy"), Some(CircuitState::Closed));
     }
 }

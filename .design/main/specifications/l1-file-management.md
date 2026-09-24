@@ -124,3 +124,9 @@ Binary executables and unsupported types are rejected.
 | --- | --- | --- |
 | `[IMPL]` | `.design/main/specifications/l2-file-store.md` | Concrete upload pipeline, backend trait, hash logic, GC scheduler. |
 | `[STORAGE]` | `.design/main/specifications/l1-storage-model.md` | Tier model that governs where files live. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: files as a first-class subsystem — upload, storage, organisation, and retrieval as source material for knowledge and chat. |

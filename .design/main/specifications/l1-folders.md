@@ -103,3 +103,9 @@ graph TD
 | Alias | Path | Purpose |
 | --- | --- | --- |
 | `[SESSION]` | `.design/main/specifications/l2-agent-session.md` | Session record that carries the folder_id field. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: personal hierarchical folders that group chat sessions without affecting session behaviour. |

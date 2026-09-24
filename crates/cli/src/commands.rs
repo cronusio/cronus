@@ -19,7 +19,10 @@ pub(crate) mod init {
 
     fn run_at(target: &Path, ctx: &Context) -> i32 {
         let already = target.join("app.json").exists();
-        match state::bootstrap_at(target) {
+        // A project-local root sits next to the project's own files, so it
+        // also gets the version-control exclusion that keeps office state out
+        // of a commit.
+        match state::bootstrap_project_local(target) {
             Ok(()) => {
                 if already {
                     if ctx.is_json() {
@@ -70,6 +73,10 @@ pub(crate) mod init {
                 tmp.join("app.json").is_file(),
                 "app.json must exist after init"
             );
+            assert!(
+                tmp.join(".gitignore").is_file(),
+                "init must write the version-control exclusion for the state root"
+            );
 
             let _ = fs::remove_dir_all(&tmp);
         }
@@ -92,7 +99,7 @@ pub(crate) mod init {
 
 /// The workspace root every verb — installation half (`status`, `doctor`)
 /// and every semantic invocable alike — resolves its state against: a thin
-/// re-export of the one shared resolver (`cronus_domain::paths`, F-02) so
+/// re-export of the one shared resolver (`cronus_domain::paths`) so
 /// every surface scopes to the same project a user is actually standing in,
 /// never a second, locally-reinvented notion of "the workspace."
 pub(crate) use cronus_core::paths::resolve_workspace_root;
@@ -313,7 +320,7 @@ pub(crate) mod doctor {
         /// A directory with no `app.json` at the resolved root has no
         /// workspace at all — `doctor` must say so (matching `status`'s own
         /// message) rather than diagnose a "repairable" defect in a
-        /// workspace that was never initialized (F-11).
+        /// workspace that was never initialized.
         #[test]
         fn reports_no_workspace_rather_than_a_repairable_defect_when_uninitialized() {
             let tmp =
@@ -347,7 +354,7 @@ pub(crate) mod backup_cmd {
 
     use crate::output::{Context, json_escape};
 
-    /// What a backup snapshots: the resolved workspace root (F-02), the same
+    /// What a backup snapshots: the resolved workspace root, the same
     /// project-scoped state `board`/`memory`/`knowledge`/… now write to —
     /// not the OS-native tier alone, which a per-project workspace user's
     /// actual data no longer lives in. `backups_dir` stays nested under it,
@@ -383,7 +390,7 @@ pub(crate) mod backup_cmd {
         let options = BackupOptions { include_logs };
         match backup::create(state_root, backups_dir, to, options) {
             Ok(backup_ref) => {
-                // F-23: a mixed-separator path (an env-var override, a
+                // A mixed-separator path (an env-var override, a
                 // caller-supplied --to) must display consistently.
                 let shown = cronus_core::paths::display_clean(&backup_ref.path);
                 if ctx.is_json() {
@@ -1833,8 +1840,8 @@ pub(crate) mod archetype_cmd {
     // more.
 
     /// Which archetype an office is staffed against is a specific project's
-    /// choice, not the machine's — resolves against the current workspace
-    /// (F-02), same as `role` (hired instances) and every other
+    /// choice, not the machine's — resolves against the current workspace,
+    /// same as `role` (hired instances) and every other
     /// project-scoped semantic verb. Missed in the original workspace-
     /// scoping sweep since `archetype` wasn't among the groups that sweep's
     /// own evidence had exercised; found while touching this module for a
@@ -1862,7 +1869,7 @@ pub(crate) mod archetype_cmd {
     }
 
     pub(crate) fn list(catalog_only: bool, active: bool, ctx: &Context) -> i32 {
-        // F-29: `--catalog` and `--active` are two different display modes
+        // `--catalog` and `--active` are two different display modes
         // for this same command — silently letting `--active` win (the
         // prior behavior) discarded `--catalog` with no feedback. Same
         // application-level refusal shape `workflow transpile`'s
@@ -2074,7 +2081,7 @@ pub(crate) mod archetype_cmd {
 
         use super::list;
 
-        /// F-29: `--catalog` and `--active` are two different display modes
+        /// `--catalog` and `--active` are two different display modes
         /// for the same command — must be refused together, not silently
         /// resolved by letting one win.
         #[test]

@@ -1,6 +1,6 @@
 # Nodus DSL Testing — Rust Implementation
 
-**Version:** 1.3.1
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** [l1-nodus-testing.md](l1-nodus-testing.md)
@@ -95,12 +95,7 @@ pub fn test_with_tags(source: &str, tag_filter: &[&str]) -> Result<TestReport, E
 
 Both functions are re-exported from the crate root.
 
-**Validation gap (pending).** Neither entry point runs the validator: `test_with_tags` parses
-and executes, so the validate-before-run gate every `run*` entry point enforces is absent from
-the test path. A workflow carrying an error-severity diagnostic — `E015` included — still
-executes its blocks and can report them passed, although the same workflow could not run in
-production. L1 §4.2 step 1 requires validation first: the entry points are to run
-`Validator::validate` and return its errors without executing any block.
+**Validation first (NT-9).** Both entry points validate before any block runs, exactly as every `run*` entry point does. `test` validates under the file name it is given, so the name-matches-file rule applies; `test_with_tags` is given none and validates under the name the workflow declares. Any error-severity diagnostic returns `Error::Validate` — the first code, with every error message — and no block executes, so a workflow that could not run in production cannot pass its tests either. `E015` and the `@test:`-specific `E023` (§7) are among the errors that gate the file.
 
 ### TestReport / TestResult
 
@@ -126,10 +121,10 @@ invariant enforced by `TestReport::from_results`.
 `test_with_tags` iterates over parsed `WorkflowFile.tests` in declaration order. Per block:
 
 1. **Build input (NT-2)**: `build_test_input(ast, &tb.input)` seeds the `@in:` declared defaults,
-   then overlays the block's `input:` key-value pairs. Keys absent from `@in:` are dropped by
-   the merge; the validation error NT-9 requires for such a key is **pending** (no validator
-   check exists), so today a misspelled `input:` key runs the block on the field's default —
-   the silent miss NT-9 forbids. Returns `Value::Map(...)` passed to `Executor::with_stub().execute()`.
+   then overlays the block's `input:` key-value pairs. Every `input:` key is a declared `@in:`
+   field by the time this runs: an undeclared key is `E023` at validation (§7), so a misspelled
+   key fails the file instead of running the block on the field's default. Returns
+   `Value::Map(...)` passed to `Executor::with_stub().execute()`.
 
 2. **Fresh executor (NT-1 / NT-5)**: `Executor::with_stub()` creates a new executor with a
    `StubProvider` instance — no state from prior blocks, no real I/O or network access.
@@ -140,7 +135,8 @@ invariant enforced by `TestReport::from_results`.
 4. **Evaluate (NT-3 / NT-4)**: `evaluate_test_block(&run_result.vars, &run_result.status, &tb.expected)`.
 
 <!-- [ADDED] v1.1.0 -->
-**Parallel-safe stub (NT-5 extension).** `StubProvider` is stateless and input-keyed (`Send + Sync`), so it would stay deterministic under concurrent branch scheduling. The executor schedules none: `~PARALLEL` branches run sequentially in declared order (`l2-nodus-runtime.md` §4.4, corrected v1.5.2), so a `@test:` block containing `~PARALLEL` exercises that sequential realization, and its `~JOIN` target is an empty map until the join gap recorded there closes. Block-level isolation is unchanged: one fresh executor per block, blocks themselves run in declaration order.
+<!-- [ADDED] v1.1.0 -->
+**Parallel-safe stub (NT-5 extension).** `StubProvider` is stateless and input-keyed (`Send + Sync`), so it would stay deterministic under concurrent branch scheduling. The executor schedules none: `~PARALLEL` branches run sequentially in declared order (`l2-nodus-runtime.md` §4.4), so a `@test:` block containing `~PARALLEL` exercises that sequential realization — a failing branch ends the block (fail-fast) and its `~JOIN` target is the map of branch results in declared order. Block-level isolation is unchanged: one fresh executor per block, blocks themselves run in declaration order.
 
 ## 6. Assertion Evaluator
 
@@ -155,7 +151,7 @@ fn evaluate_test_block(
 Semantics:
 
 - Empty `expected`: passes iff `status == Status::Ok`; fails with `"execution failed with status …"` otherwise.
-- Non-empty `expected`: first checks `Status` is `Ok` or `Partial`; then for each `(var, val)` pair:
+- Non-empty `expected`: first checks `Status` is `Ok`; then for each `(var, val)` pair:
   - Strip leading `$` from `var` to get the key in `vars`.
   - If key absent from `vars` → fail with `"… is not in the execution context"` (NT-3).
   - `parse_expected_value(val)` parses the raw string into `Value`.
@@ -164,12 +160,7 @@ Semantics:
   - Continue to next assertion only if current passes.
 - Returns `(true, "ok")` when all assertions pass.
 
-**Deviation (pending).** Accepting `Status::Partial` when `expected:` is non-empty
-contradicts L1 §4.2 step 5 and §4.4 — `passed` holds only when every assertion passes **and**
-the status is `Ok`. `Partial` means non-fatal errors occurred, so a regression that makes a
-clean run start failing steps stays green for as long as the asserted variables still match.
-Alignment: pass only on `Status::Ok`; asserting that a block expects a degraded run needs a
-status assertion, which belongs to the richer-assertion amendment L1 §5 defers.
+**Pass condition (NT-4).** A block passes only when every assertion holds **and** the run ended `Ok`, as L1 §4.2 step 5 and §4.4 require. `Partial` means non-fatal errors occurred, so a regression that makes a clean run start failing steps cannot stay green because the asserted variables still match. Asserting that a block *expects* a degraded run needs a status assertion, which belongs to the richer-assertion amendment L1 §5 defers.
 
 ### Value Parsing
 
@@ -201,12 +192,15 @@ reports a value that cannot be read as that type at validation (NT-9) instead of
 | Code | Severity | Trigger | Rust location |
 | --- | --- | --- | --- |
 | `E015` | Error | Two `@test:` blocks share the same name within a file | `Validator::e015_no_duplicate_test_names` |
+| `E023` | Error | An `@test:` block sets an `input:` key the workflow does not declare in `@in:`, or asserts in `expected:` a variable that is not reserved, not `@out`, not an `@in:` field and not the target of any step — a name that cannot exist (NT-9) | `Validator::e023_test_names_exist` |
 | `W006` | Warning | `ROUTE(wf:x)` step with no `@test:` block covering it (NT-10) | `Validator::w006_route_test_coverage` (pre-existing) |
 | `W009` | Warning | `@test:` block with no `expected:` section (passes trivially on Status::Ok) | `Validator::w009_test_no_expected` |
 | `W015` | Warning | A token run inside `input:`/`expected:` that resembles a key-value pair but uses a separator other than `:` — the pair is skipped by `parse_test_body`, so the assertion never reaches the evaluator (§10.3) | `Validator::w015_test_pair_separator` [ADDED v1.2.0] |
 
 `E015` is a block-class error — workflows with duplicate test names fail the validate-before-run
 gate and cannot execute.
+
+`E023` is an error for the same reason: an `input:` override with no `@in:` slot runs the block on the field's default while its author believes the override took, and an `expected:` variable that can never be present can only fail — or be read as passing on a run that never produced it. Both are defects in the test, so they fail the file rather than the block.
 
 `W015` is deliberately warning-severity, not an error: its purpose is to surface assertions
 that are being silently ignored in the existing corpus, which an error would instead convert
@@ -220,14 +214,14 @@ in source but an empty one in the AST, so it emits **both** `W015` (the pairs we
 | Invariant | Status | Implementation |
 | --- | --- | --- |
 | NT-1 Block isolation | **Implemented** | Fresh `Executor::with_stub()` per block in `run_test_block` |
-| NT-2 Input override | **Partial** | `build_test_input` overlays block `input:` over `@in:` defaults; values are typed from their spelling rather than from the field's declared type, so the `@in:` type contract is not yet honoured (§6) |
+| NT-2 Input override | **Partial** | `build_test_input` overlays block `input:` over `@in:` defaults, and a key the workflow does not declare is rejected at validation (`E023`); values are still typed from their spelling rather than from the field's declared type, so the `@in:` type contract is not yet honoured (§6, literal kind) |
 | NT-3 Expected assertion binding | **Implemented** | `evaluate_test_block` checks `vars` by key; absent variable = fail |
-| NT-4 Assertion failure semantics | **Implemented** | Blocks continue regardless; first-failing-assertion message. The pass condition itself deviates from L1 §4.4 — a block with non-empty `expected:` passes on `Status::Partial` (§6, pending) |
+| NT-4 Assertion failure semantics | **Implemented** | Blocks continue regardless; first-failing-assertion message. A block passes only when every assertion holds and the run ended `Ok` (§6) |
 | NT-5 Provider neutrality | **Implemented** | `StubProvider` per block; no real I/O |
 | NT-6 Tag metadata | **Implemented** | `test_with_tags` filters by tag intersection; skipped blocks absent from report |
 | NT-7 Ordered reporting | **Implemented** | Iterator preserves `WorkflowFile.tests` declaration order |
 | NT-8 Schema inheritance | **Implemented** | `Executor::with_stub().execute(ast, ...)` uses the same `ast` (same `§runtime`) |
-| NT-9 Parse-time validation | **Partial** | `E015` duplicate-name enforced; forward-reference variable checks on `@steps:` (E014) cover declared variables; `W015` covers the silent-drop case NT-9's "not a silent assertion-miss" clause targets (§10.3); a full `@test:`-specific forward-reference check remains deferred. Two gaps keep the invariant Partial: the test entry points skip validation entirely (§4), and an undeclared `input:` key is dropped rather than rejected (§5) |
+| NT-9 Parse-time validation | **Partial** | The test entry points validate first (§4), so `E015` duplicate names and the forward-reference variable checks (`E014`) gate the file; `E023` rejects an undeclared `input:` key and an `expected:` variable that can never exist; `W015` covers the silent-drop case NT-9's "not a silent assertion-miss" clause targets (§10.3). Two clauses remain open: a full `@test:`-specific forward-reference check is deferred, and an `input:` value that cannot be read as its field's declared type is coerced rather than reported (§6, literal kind) |
 | NT-10 Route coverage advisory | **Implemented** | `W006` emitted by pre-existing `Validator::w006_route_test_coverage` |
 | NT-11 Differential parity [ADDED v1.3.0] | **Vacuous in core** | See §11 — the crate has one execution path, so §4.7's `check_parity(fixture, path_B)` has no second `path_B` to run against `path_A`'s recorded fixture |
 
@@ -391,6 +385,7 @@ with no further design work here.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.4.0 | 2026-09-24 | Realization sync (2026-09-24): The test entry points validate before any block runs; `E023` rejects an `input:` key the workflow does not declare and an `expected:` variable that can never exist (NT-9); a block passes only when its assertions hold and the run ended `Ok` (NT-4). NT-2 and NT-9 stay Partial on one point: literal kind is still lost, so an `input:` value is typed from its spelling rather than its field's declared type. |
 | 1.3.1 | 2026-09-24 | Consistency pass (2026-09-24): Four spec-vs-code gaps recorded as pending. The test entry points never run the validator, so a workflow carrying `E015` still executes its blocks. An undeclared `input:` key is dropped rather than rejected (NT-9). Literal kind is lost: a quoted value is re-typed from its spelling and the `@in:` declared type is ignored (NT-2 now Partial). A block with non-empty `expected:` passes on `Status::Partial`, contrary to L1 §4.4. §5's parallel-safe-stub paragraph claimed `~PARALLEL` test blocks exercise real concurrent scheduling; branches run sequentially and `~JOIN` binds an empty map (`l2-nodus-runtime` §4.4). |
 | 1.3.0 | 2026-07-31 | Closes the NT-11 invariant-traceability gap flagged at the v1.29.0 nodus replan (differential parity, added to `l1-nodus-testing` v1.1.0, had never gained a §8 row). New §11 grounds and resolves the open fork that replan named: does NT-11 realize as vacuous-in-core, or does an in-crate second conforming host make it meaningful? Confirmed by direct inspection of `transpiler.rs` that `to_nodus(ast) -> String` emits source text, not an executable — nodus has exactly one execution path (`Executor`), so "interpreter↔transpiler parity" is not two paths to diff; that pairing's actual correctness property is NL-6 AST-equality (§10.4), a different invariant already realized. Also ruled out reusing `l2-nodus-portability.md` §4.8's LP-3 two-host admission record: that harness proves a satisfying and a non-satisfying host **diverge**, the opposite of NT-11's two-conforming-hosts-**agree** requirement. §8 gains the NT-11 row (Vacuous in core); Related Specifications gains `l1-nodus-portability`/`l2-nodus-portability` cross-references distinguishing the two two-host comparisons. Design-only finding — no code change, since there is no second path to build a harness against; §4.7's `Fixture`/`check_parity` shape stays specified and ready for whenever a real second conforming host exists. |
 | 1.2.1 | 2026-07-30 | Discharges the correction queued when Phase 22 was planned: §10.4(a) claimed `raw_lines` "reproduces the body in the form the author wrote it", which overstates. It preserves the author's **token sequence** (including the §10.2 inline form's `{`/`,`/`}`, which the structured fields discard) but not line breaks — `collect_braced_raw_lines` drops `Newline` tokens, so a multi-line body re-emits flat. Clarified that this is sufficient because NL-6 requires AST-equality rather than source identity, and that re-emitting the line breaks would *break* NL-6 by changing `raw_lines` on re-parse. Text-only precision fix; the two-part rule, `W015`, and every §10 conclusion are unchanged, so the implementation shipped in Phase 22 already matches the corrected wording. |

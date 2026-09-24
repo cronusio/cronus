@@ -124,3 +124,9 @@ Individual annotations are shown only to admins with explicit audit access; they
 | --- | --- | --- |
 | `[ROUTER]` | `.design/main/specifications/l2-model-router.md` | How evaluation scores feed into model selection weights. |
 | `[DASH]` | `.design/main/specifications/l2-dashboard.md` | Analytics surface that aggregates evaluation statistics. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: per-message feedback on model responses — discrete sentiment, optional annotation — and how it feeds routing and analytics. |

@@ -324,7 +324,7 @@ fn retry_reruns_failing_step_up_to_bound() {
 // E004 conformance fix, every ~MAP workflow was rejected before it ran.
 const MAP_WF: &str = r#"§wf:map_transform v1.0
 §runtime: { core: schema.nodus }
-@in: { items: list }
+@in: { items?: list }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -365,15 +365,81 @@ fn map_over_empty_collection_yields_empty_list_no_error() {
     );
 }
 
+// The same transform over an untyped source: what the collection actually
+// holds is decided at run time, so a non-list value reaches the ~MAP.
+const MAP_ANY_WF: &str = r#"§wf:map_any v1.0
+§runtime: { core: schema.nodus }
+@in: { items?: any }
+@out: $out
+@err: ESCALATE(human)
+@steps:
+  1. ~MAP $in.items: GEN($it) → $out
+"#;
+
 #[test]
 fn map_over_non_list_collection_yields_empty_list_no_error() {
     let input = Value::Map(vec![("items".to_string(), Value::Int(5))]);
-    let result = workflows::run(MAP_WF, "map_transform.nodus", Some(input)).expect("run");
+    let result = workflows::run(MAP_ANY_WF, "map_any.nodus", Some(input)).expect("run");
     assert_eq!(result.status, Status::Ok, "errors: {:?}", result.errors);
     assert_eq!(
         result.out,
         Value::List(vec![]),
         "a non-list collection must yield an empty list, never an error"
+    );
+    // The empty result is not silent: it is indistinguishable from mapping an
+    // empty list otherwise, and a check built over it would pass vacuously.
+    assert!(
+        result
+            .flags
+            .iter()
+            .any(|f| f.starts_with("MAP_SOURCE_NOT_A_LIST:")),
+        "a present-but-not-a-list source is flagged: {:?}",
+        result.flags
+    );
+}
+
+#[test]
+fn a_list_typed_input_field_rejects_a_non_list_value_before_the_run() {
+    let input = Value::Map(vec![("items".to_string(), Value::Int(5))]);
+    let diagnostics = workflows::run(MAP_WF, "map_transform.nodus", Some(input))
+        .expect_err("the declared type is enforced before any step runs");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "E022" && d.message.contains("items")),
+        "{diagnostics:?}"
+    );
+}
+
+#[test]
+fn map_over_an_absent_collection_is_not_flagged() {
+    let result = workflows::run(MAP_WF, "map_transform.nodus", None).expect("run");
+    assert_eq!(result.status, Status::Ok, "errors: {:?}", result.errors);
+    assert_eq!(result.out, Value::List(vec![]));
+    assert!(
+        result
+            .flags
+            .iter()
+            .all(|f| !f.starts_with("MAP_SOURCE_NOT_A_LIST:")),
+        "nothing to map is a legitimate empty case: {:?}",
+        result.flags
+    );
+}
+
+#[test]
+fn map_over_a_real_list_is_not_flagged() {
+    let input = Value::Map(vec![(
+        "items".to_string(),
+        Value::List(vec![Value::Text("a".to_string())]),
+    )]);
+    let result = workflows::run(MAP_WF, "map_transform.nodus", Some(input)).expect("run");
+    assert!(
+        result
+            .flags
+            .iter()
+            .all(|f| !f.starts_with("MAP_SOURCE_NOT_A_LIST:")),
+        "{:?}",
+        result.flags
     );
 }
 

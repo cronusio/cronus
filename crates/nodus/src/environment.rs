@@ -344,13 +344,11 @@ pub struct CandidateResult {
     pub token_measure: Option<String>,
 }
 
-/// Deterministic `std`-only digest of `source` (NE-12). SipHash via
-/// `DefaultHasher` — deterministic within one build, zero external dependency.
+/// Digest of raw `source` text (NE-12), under the same versioned scheme as
+/// [`crate::executor::digest_ast`]. Used only when `source` does not parse into
+/// a workflow, so there is no AST to take an identity from.
 fn digest_source(source: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    source.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    crate::executor::digest_text(source)
 }
 
 // ─── EnvRunResult ───────────────────────────────────────────────────────────────

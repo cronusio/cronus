@@ -61,7 +61,7 @@ pub enum ArchetypeError {
     UnknownRole(String),
     /// An archetype *preset* id (`archetype create --from <id>`) does not
     /// resolve against the shipped catalog — distinct from
-    /// [`ArchetypeError::UnknownRole`] (F-28): naming a role catalog for a
+    /// [`ArchetypeError::UnknownRole`]: naming a role catalog for a
     /// failure that was actually about the archetype-preset catalog
     /// mis-described which lookup failed.
     UnknownPreset(String),

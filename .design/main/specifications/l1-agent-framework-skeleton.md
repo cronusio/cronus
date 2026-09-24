@@ -370,3 +370,10 @@ are named by their structural form, not by product.
 | `[ORCH]` | `.design/main/specifications/l1-orchestration.md` | Authoritative runtime topology and error containment (ORC-11) referenced by §5.2/§5.4 and AFS-10. |
 | `[OUTPUT]` | `.design/main/specifications/l1-output-contracts.md` | Authoritative output-validation/retry contract referenced by the evaluator-optimizer pattern and AFS-11. |
 | `[HARNESS]` | `.design/main/specifications/l1-harness-engineering.md` | Authoritative disciplined self-improvement loop referenced by §5.7 and AFS-13. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: the paradigm-neutral reference skeleton for agent systems — the primitive triad, coordination patterns, and cross-cutting concerns every agent framework is assembled from. |
+| 1.0.1 | 2026-08-06 | Patch — Related Specifications gains links to the host-native rendering contract (the hand-off from the role-catalog distribution invariant) and to the corpus-originality admission gate; no requirement changed. |

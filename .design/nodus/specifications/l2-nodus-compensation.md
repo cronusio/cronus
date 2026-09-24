@@ -1,6 +1,6 @@
 # Nodus Compensation Seam Implementation (Rust)
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -58,7 +58,7 @@ the record* rather than an absence to be misread as success.
 | NL-22(a) Only completed effects compensate | A step enters the ledger **only** after its action returns without a runtime error. A never-started, still-running, or already-failed step is never in the ledger, so it cannot be compensated. Cancellation of a running step stays the ordinary interrupt path (`Signal`), structurally distinct from the unwind. |
 | NL-22(b) Each compensation is a fallible gated effect | A compensation runs through the same `execute_command` path as any command, so it is subject to the same rule checks and emits the same events. A compensation that errors pushes `NODUS:COMPENSATION_FAILED` onto `ctx.errors`, leaving the original effect **live** — never swallowed, never reported as undone. |
 | NL-22(c) Idempotent and resumable | The ledger is the driving record: each entry is popped and driven at-least-once as the unwind proceeds. Re-driving a persisted ledger is safe because the host-supplied compensation is expected idempotent. Nodus adds no dedupe of its own — it does not silently skip an entry it cannot prove ran. |
-| NL-22(d) Armed, never automatic | The unwind fires only on `Status::Failed` / `Status::Aborted`. A `Status::Ok` / `Status::Partial` run performs no unwind — there is no separate explicit-compensate-request trigger. **Deviation (pending):** L1 (d) composes the failure signal from `!!`/`!HALT` *and `@err:` routing*, but the unwind reads only the final status, and an error routed through `@err:` — like every other non-halting error: a policy denial, a rejected or timed-out dialog, an unaccounted settlement, an exhausted retry — ends the run as `Partial`. So the failures an effectful workflow is most likely to meet leave its completed effects live with no unwind; only a rule violation, `!HALT` or `!BREAK` arms it. Alignment: a run whose step sequence ended on an uncaught error arms the unwind, whether or not a handler ran. |
+| NL-22(d) Armed, never automatic | The unwind fires on a failure signal: a rule violation, `!HALT` or `!BREAK` (`Status::Failed` / `Status::Aborted`), or a run whose step sequence ended on an **uncaught error** — one nothing else in the language catches — whether or not an `@err:` handler ran, because routing to a handler is the workflow's failure path and the effects it already committed are unwound too. A run that ends `Ok`, `Paused` or on a graded budget halt performs no unwind — there is no separate explicit-compensate-request trigger. Without the uncaught-error trigger the failures an effectful workflow is most likely to meet — a policy denial, a rejected or timed-out dialog, an unaccounted settlement, an exhausted retry, a failed model call — would end the run `Partial` and leave its completed effects live with no unwind. |
 | NL-22 reverse order (CO-4) | The ledger is append-on-completion and drained **back-to-front**, so later effects are undone before the earlier effects they were built on. Order is a correctness contract, enforced by popping the ledger rather than re-reading step order. |
 | NL-2 Hard constraints absolute | A `!!` rule violation still bypasses `@err:` and fails the run; the unwind then runs over whatever completed before the violation. Compensation never rescues a rule violation into success. |
 | NL-7 Closed value system | The compensation declaration is a `CommandCall` (existing AST type); its outcome is an ordinary `Value`. No new value kind. |
@@ -137,7 +137,7 @@ and outcome enum were dropped rather than built unread.
 ```text
 [REFERENCE]
 Arming condition (after the step loop finishes):
-    status is Failed or Aborted
+    status is Failed or Aborted, or the step sequence ended on an uncaught error
   → drain ctx.compensations back-to-front (Vec::pop, LIFO falls out for free):
         for each entry (last → first):
             errors_before = ctx.errors.len()
@@ -145,7 +145,7 @@ Arming condition (after the step loop finishes):
             ctx.errors grew ⇒ push RuntimeError { code: COMPENSATION_FAILED,
                                                    step: entry.step_number, .. }
                               CONTINUE to the next entry (see §6)
-    status Ok / Partial ⇒ no unwind (armed, not automatic)
+    a clean, paused or budget-halted run ⇒ no unwind (armed, not automatic)
 ```
 
 A compensation's success or failure is detected by comparing `ctx.errors.len()`
@@ -197,7 +197,7 @@ Vertical-slice order (each slice compiles and is independently verifiable):
 - **An effectfulness classifier in core**: rejected — which commands have external effects is host knowledge (LP-2); a core classifier would be wrong for every host that extends the vocabulary.
 - **A declared `~SCOPE ... ~END` compensation region**: deferred, not rejected. It needs a structural anchor nodus lacks (no subprocess, no indent tokens). Run-as-scope is the honest subset; the region form composes additively when `RUN(@macro)` body expansion lands.
 - **A parallel `uncompensable` ledger plus a per-entry `CompensationOutcome` enum** (the original design in earlier drafts of §4.4): dropped during implementation. Nothing reads either — no accessor exists on `ExecutionContext`, and no external test can observe its internals — and NL-22(a)'s honesty property (an un-compensable committed effect is never silently treated as undone) already holds by construction, since the ledger only ever contains what a step explicitly declared. Building unread fields would have been the exact over-engineering this project's own discipline rules out. Compensation success/failure is instead read off the `ctx.errors` length delta around each `execute_command` call (§4.5).
-- **An explicit "compensate now" request as a second arming trigger alongside `Status::Failed`/`Status::Aborted`** (as earlier drafts of §3/§4.5 described): not built. No mechanism for a workflow or host to request compensation outside of a failed/aborted run exists in the crate; the unwind is armed by run status alone.
+- **An explicit "compensate now" request as a second arming trigger alongside `Status::Failed`/`Status::Aborted`** (as earlier drafts of §3/§4.5 described): not built. No mechanism for a workflow or host to request compensation outside of a failed, aborted or uncaught-error run exists in the crate; the unwind is armed by a failure signal alone.
 
 ## Canonical References
 
@@ -216,3 +216,4 @@ Vertical-slice order (each slice compiles and is independently verifiable):
 | 1.0.0 | 2026-07-30 | Core Team | Initial spec — Rust realization of NL-22 (compensation seam): `TildeCompensate` token, `Step.compensation: Option<CommandCall>` mirroring `Step.retry`, `~COMPENSATE: CMD(args)` trailing same-line clause, completed-effect ledger + parallel un-compensable record, LIFO drain armed on `Failed`/`Aborted`/explicit request, `NODUS:COMPENSATION_FAILED`. Three compositions NL-22 names are recorded as **vacuous in core today** rather than silently dropped: the LP-11 `decide → effect → observe` gate (no gate exists — compensations route through the one existing effect path, inheriting the seam for free when it lands), crash-mid-compensation resume (needs NL-12; nodus drives at-least-once per process run, the ledger being the host's replay artifact), and the declared sub-region scope (no structural anchor — run-as-scope is the honest subset). Resolves one point NL-22 leaves open: a failed compensation **continues** the unwind rather than aborting it (§4.5, alternative weighed in §6). |
 | 1.0.1 | 2026-07-30 | Core Team | Reconciled to Phase 19's as-built implementation (no design/status change) — §4.4/§4.5 rewritten: `CompletedEffect` is only `{ step_number, compensation }`, with no `step_identity` field, no `CompensationOutcome` enum, and no parallel `uncompensable` vector (nothing read any of them — NL-22(a)'s honesty property already holds by construction). §3/§4.5's "or an explicit compensate request" arming trigger removed — only `Status::Failed`/`Status::Aborted` arm the unwind; no such request mechanism was built. §4.3's canonical example (`UNPUBLISH`) replaced with `NOTIFY`, a real `KNOWN_COMMANDS` entry, matching the crate's own test fixtures. Fixed three dangling `§7` cross-references (the document has no §7) to `§6`. §6 gained two Drawbacks entries recording why the outcome enum/uncompensable record and the explicit-request trigger were dropped. |
 | 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): NL-22(d): L1 composes the failure signal from `!!`/`!HALT` and `@err:` routing, but the unwind reads only the final status, and every non-halting error — the `@err:`-routed ones included — ends the run `Partial`, so the common failures leave completed effects live. Recorded as a pending deviation. §2's statement that no LP-11 gate exists is updated: it landed, and compensations inherit it. |
+| 1.1.0 | 2026-09-24 | Core Team | Realization sync (2026-09-24): NL-22(d): the unwind is armed by an uncaught error as well as by `Failed`/`Aborted`, whether or not an `@err:` handler ran; the deviation recorded as pending is closed. |

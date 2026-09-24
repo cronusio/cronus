@@ -94,7 +94,7 @@ fn index_store_returns_count() {
     assert_eq!(n, 2);
 }
 
-// ── Index: persistent open (F-03) ─────────────────────────────────────────────
+// ── Index: persistent open ─────────────────────────────────────────────
 
 fn temp_db_path(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("cronus-codegraph-{tag}-{}.db", std::process::id()))
@@ -135,6 +135,71 @@ fn opening_a_fresh_path_starts_with_an_empty_but_working_schema() {
     assert!(idx.get_by_name("anything").unwrap().is_none());
     assert!(idx.search("anything", 10).unwrap().is_empty());
 
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── Index: schema version ─────────────────────────────────────────────────────
+
+fn recorded_version(path: &std::path::Path) -> i64 {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap()
+}
+
+#[test]
+fn a_new_index_records_its_schema_version() {
+    let path = temp_db_path("stamped");
+    let _ = std::fs::remove_file(&path);
+    drop(CodeIndex::open(&path).unwrap());
+    assert_eq!(recorded_version(&path), 1);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn an_index_from_before_versioning_is_adopted_with_its_symbols() {
+    let path = temp_db_path("legacy");
+    let _ = std::fs::remove_file(&path);
+    {
+        let idx = CodeIndex::open(&path).unwrap();
+        let syms = RegexExtractor.extract("fn kept_symbol() {}");
+        idx.index_symbols("src/a.rs", &syms).unwrap();
+    }
+    // Simulate a file written before the version was recorded.
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 0")
+        .unwrap();
+
+    let idx = CodeIndex::open(&path).unwrap();
+    assert!(idx.get_by_name("kept_symbol").unwrap().is_some());
+    drop(idx);
+    assert_eq!(recorded_version(&path), 1);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn an_index_written_by_a_newer_build_is_refused_and_left_untouched() {
+    let path = temp_db_path("newer");
+    let _ = std::fs::remove_file(&path);
+    drop(CodeIndex::open(&path).unwrap());
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 9")
+        .unwrap();
+
+    let refused = CodeIndex::open(&path)
+        .err()
+        .expect("a newer file must be refused");
+    assert!(
+        refused.to_string().contains("newer"),
+        "the message names the problem: {refused}"
+    );
+    assert_eq!(
+        recorded_version(&path),
+        9,
+        "the refused file is not rewritten"
+    );
     let _ = std::fs::remove_file(&path);
 }
 

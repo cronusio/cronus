@@ -281,7 +281,7 @@ mod tests {
         let err = catalog
             .create_from_preset(&dir, "x", "no-such-preset")
             .unwrap_err();
-        // F-28: naming the *preset* catalog, not the role catalog — a
+        // Naming the *preset* catalog, not the role catalog — a
         // caller reading the message must not have to guess which
         // "no-such-preset" failed to resolve.
         assert!(

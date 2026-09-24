@@ -131,12 +131,58 @@ fn workflow_run_clean_exits_0() {
     )
     .unwrap();
 
-    let status = bin()
+    let output = bin()
         .args(["workflow", "run"])
         .arg(&file)
-        .status()
+        .args(["--input", r#"{"x":"hello"}"#])
+        .output()
         .expect("failed to spawn binary");
-    assert!(status.success(), "run on valid workflow must exit 0");
+    assert!(
+        output.status.success(),
+        "run on valid workflow with its declared input must exit 0"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simulated"),
+        "no model is wired to `workflow run`, so the run must say it was simulated: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn workflow_run_without_its_required_input_exits_1() {
+    let dir = std::env::temp_dir().join(format!("cronus-smoke-run-noin-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("smoke_noin.nodus");
+    std::fs::write(
+        &file,
+        "§wf:smoke_noin v1.0\n\
+         §runtime: { core: schema.nodus }\n\
+         @in: { x }\n\
+         @out: $out\n\
+         @err: ESCALATE(human)\n\
+         @steps:\n\
+           1. GEN($in.x) → $out\n\
+           2. LOG($out)\n",
+    )
+    .unwrap();
+
+    let output = bin()
+        .args(["workflow", "run"])
+        .arg(&file)
+        .output()
+        .expect("failed to spawn binary");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a run that cannot satisfy its input contract must not exit 0"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("E022"),
+        "the missing input must be named by its diagnostic code: {stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -276,7 +322,7 @@ fn schedule_list_exits_0() {
     );
 }
 
-/// `budget` has no persistent store yet (F-03/F-04) — every verb answers
+/// `budget` has no persistent store yet — every verb answers
 /// `Unavailable` honestly rather than a silent success stub, matching
 /// `loop evolve`'s established INV-9 pattern.
 #[test]
@@ -296,7 +342,7 @@ fn budget_show_is_honestly_unavailable() {
     );
 }
 
-/// `exec` has no persistent store yet (F-03) — every verb answers
+/// `exec` has no persistent store yet — every verb answers
 /// `Unavailable` honestly rather than a silent success stub, matching
 /// `loop evolve`'s established INV-9 pattern.
 #[test]

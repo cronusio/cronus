@@ -99,3 +99,9 @@ On group deletion: all access grants referencing the deleted `group_id` must be 
 | --- | --- | --- |
 | `[AUTH]` | `.design/main/specifications/l2-multi-user-auth.md` | User identity and privilege level used in GRP-2. |
 | `[SHARING]` | `.design/main/specifications/l1-resource-sharing.md` | Group as principal type in the grant model. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: named collections of users that act as a single principal in the resource-sharing model. |

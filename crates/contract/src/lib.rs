@@ -646,13 +646,21 @@ impl CaptureBusSender {
     }
 
     pub fn captured(&self) -> Vec<BusEvent> {
-        self.events.lock().unwrap().clone()
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 }
 
 impl BusSender for CaptureBusSender {
     fn send(&self, event: BusEvent) {
-        self.events.lock().unwrap().push(event);
+        // A sender that panicked elsewhere must not stop later events being
+        // recorded: the list is only ever appended to, so it stays coherent.
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(event);
     }
 }
 

@@ -282,6 +282,11 @@ pub mod error_code {
     /// `execute_for_environment` runs, never a silent default-encoder
     /// substitution.
     pub const ENV_MEASURE_UNKNOWN: &str = "NODUS:ENV_MEASURE_UNKNOWN";
+    /// A host `ModelProvider` reported that a `GEN` / `ANALYZE` call failed
+    /// (transport error, cancellation, refusal). The step produced no answer:
+    /// its pipeline target stays unbound and the error reaches the workflow's
+    /// `@err:` handler — a failed call is never folded into a short answer.
+    pub const MODEL_CALL_FAILED: &str = "NODUS:MODEL_CALL_FAILED";
 }
 
 /// Severity of a runtime error code.
@@ -367,6 +372,8 @@ pub fn error_meta(code: &str) -> Option<(ErrorSeverity, ErrorCategory)> {
         ec::SETTLEMENT_UNACCOUNTED => (Error, Runtime),
         // Environment-layer code (NE-14).
         ec::ENV_MEASURE_UNKNOWN => (Error, Control),
+        // Model-call failure (a host provider reported the call failed).
+        ec::MODEL_CALL_FAILED => (Error, Runtime),
         // Non-canonical (incl. deprecated EXECUTION_FAILED) → no metadata.
         _ => return None,
     };
@@ -739,11 +746,12 @@ mod tests {
             POLICY_DENIED,
             SETTLEMENT_UNACCOUNTED,
             ENV_MEASURE_UNKNOWN,
+            MODEL_CALL_FAILED,
         ];
         assert_eq!(
             canonical.len(),
-            31,
-            "24 language codes + CAPABILITY_UNMET + CONFIG_INVALID + RESTART_LIMIT + COMPENSATION_FAILED + POLICY_DENIED + SETTLEMENT_UNACCOUNTED + ENV_MEASURE_UNKNOWN"
+            32,
+            "24 language codes + CAPABILITY_UNMET + CONFIG_INVALID + RESTART_LIMIT + COMPENSATION_FAILED + POLICY_DENIED + SETTLEMENT_UNACCOUNTED + ENV_MEASURE_UNKNOWN + MODEL_CALL_FAILED"
         );
         for code in canonical {
             assert!(

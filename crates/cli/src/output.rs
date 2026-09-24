@@ -44,7 +44,7 @@ pub(crate) fn json_escape(s: &str) -> String {
 }
 
 /// Render an `io::Error` naming `path` as a fixed English phrase instead of
-/// `Display`'s own OS-locale message (F-07): on a non-English-locale host
+/// `Display`'s own OS-locale message: on a non-English-locale host
 /// (e.g. a Russian-locale Windows install), the raw `Display` impl calls
 /// into the OS's own message table and leaks that locale's text into an
 /// otherwise all-English product surface — unparseable for any consumer of

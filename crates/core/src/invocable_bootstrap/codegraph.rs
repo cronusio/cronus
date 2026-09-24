@@ -9,7 +9,7 @@ use super::{core_id, text_arg};
 
 /// On-disk location of the codegraph index. An index is symbols from a
 /// specific project's own source tree — resolves against the current
-/// workspace (F-02), the same resolution `board.rs`/`memory.rs` use.
+/// workspace, the same resolution `board.rs`/`memory.rs` use.
 fn index_db_path() -> std::path::PathBuf {
     cronus_domain::paths::resolve_workspace_root()
         .join("codegraph")

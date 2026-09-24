@@ -1,6 +1,6 @@
 # Configuration Hot-Reload
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-doctor.md, l1-architecture.md
@@ -201,7 +201,7 @@ When the watcher detects a file change:
 2. Diff against the in-memory current config snapshot → `changed_paths`.
 3. Set aside authority-plane paths as drift (§4.2); match each remaining path against the rule table → build `ConfigReloadPlan`.
 4. If `isNoopPlan(plan)` → log DEBUG and return.
-5. If `restart_daemon` → initiate the safe restart: drain and checkpoint as `l2-office-control` describes for a pause (OC-1), then respawn.
+5. If `restart_daemon` → initiate the safe restart: drain and checkpoint as `l2-office-control` describes for a pause (office-control OC-1), then respawn.
 6. Otherwise:
    a. Emit `skills snapshot invalidation` if applicable (§4.3).
    b. Dispatch hot actions to subsystem service bus in order.
@@ -228,5 +228,6 @@ When the watcher detects a file change:
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.4 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): A bare `OC-1` citation of the office-control invariant now names it. |
 | 1.0.3 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited DOC-2/DOC-4 (the doctor prefix is HEAL) — now HEAL-2/HEAL-5, plus HEAL-8 for code-loading hot actions. Security: a watched change to any config path was applied, including authority-plane keys an agent able to write the file could change (SEC-10) — those are held back as drift for the integrity shields, never applied hot or by restart. An unparseable or invalid file is never applied. The safe-restart reference pointed at the doctor's runbook — it is the office-control drain and checkpoint. A foreign `hooks.gmail` rule removed. |
 | 1.0.2 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

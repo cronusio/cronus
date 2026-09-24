@@ -1,6 +1,6 @@
 # Model Runtime (Transport & Provider Connectivity)
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-model-runtime.md
@@ -147,10 +147,14 @@ An `Error` event — a dropped connection, a provider failure, a cancellation �
 into text. Text that arrived before the error is a fragment, and handing it back as the
 model's answer would let a workflow continue on a truncated plan or an empty result as though
 the call had succeeded. The call fails, and the step fails into its declared error handler
-(`l1-workflow-language` WFL-8). **Pending:** `nodus::ModelProvider::generate` returns a bare
-`String` and so has no failure channel; the trait gains a fallible return (nodus stays
-dependency-free, nodus LP-1), and until it does the shipped bridge returns the partial text on an
-error — a known gap, not the intended behaviour.
+(`l1-workflow-language` WFL-8). The nodus provider trait carries that failure channel:
+`nodus::ModelProvider` gains `try_generate` and `try_analyze`, returning `Result<_, ModelError>`
+(their defaults delegate to the infallible methods, so no existing provider breaks, and nodus stays
+dependency-free, nodus LP-1). The bridge reports an `Error` event, or a stream that ends without its
+completion marker, as a `ModelError` whose description names the failure kind and never the raw
+payload, which can hold fragments of the response. The executor turns it into a
+`NODUS:MODEL_CALL_FAILED` step error that reaches `@err:` dispatch, so a failed call is a failed step,
+never a short answer.
 
 ### 4.3 Provider endpoint profiles
 
@@ -236,6 +240,7 @@ Per the shipped-surface honesty rule, these verbs appear on a frontend only once
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.4 | 2026-09-24 | Realization sync (2026-09-24): §4.2: the fallible provider surface is in place (`try_generate` / `try_analyze` returning `ModelError`); the bridge reports an error event or an incomplete stream as a failed call, which the executor raises as `NODUS:MODEL_CALL_FAILED` into `@err:` dispatch. |
 | 1.0.3 | 2026-09-24 | Consistency pass (2026-09-24): §4.2 said nothing about `Error` events in the nodus bridge, and the shipped bridge returns the text received before an error as a successful generation — an error is never folded into text; the call fails into the workflow's error handler (WFL-8). The fallible nodus `generate` this needs is recorded as pending. Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): The nodus bridge was said to delegate to `contract::ModelProvider`, which is routing metadata with no generate method — it delegates to the inference trait this spec defines. The Overview called credential lanes implemented (they are specified, RTG-10). Compliance gains MR-15 and MR-16 (Pending) and the parent range reads MR-1…MR-16. |
 | 1.0.1 | 2026-07-16 | Post-Update Review correction (Stable): the initial draft wrongly claimed the transport "implements `contract::ModelProvider`" with generate/embed/describe — but that trait is **routing metadata** (no call method), and the only real generate surface is nodus's synchronous `generate`/`analyze` → `String`. Corrected the seam model: the transport defines a NEW `InferenceBackend` trait in the contract crate; a concrete provider implements it *plus* the routing-metadata facet; the nodus trait is satisfied by a stream-collapsing bridge. Also clarified two seams against Stable neighbors — endpoint profile consumes the router's `api_base` (not a parallel address registry), and credential rotation stays in router/error-recovery (transport only attaches the selected credential). Promoted RFC→Stable. |

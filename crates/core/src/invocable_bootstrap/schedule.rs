@@ -7,7 +7,7 @@ use cronus_domain::scheduler::{RecurrencePreset, Schedule, ScheduleAction, Sched
 use super::{core_id, opt_text_arg, text_arg};
 
 /// A recurring schedule automates a specific project's workflows — resolves
-/// against the current workspace (F-02), same as every other project-scoped
+/// against the current workspace, same as every other project-scoped
 /// semantic verb.
 fn sched_dir() -> std::path::PathBuf {
     cronus_domain::paths::resolve_workspace_root().join("schedules")

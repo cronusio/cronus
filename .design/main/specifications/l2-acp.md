@@ -1,6 +1,6 @@
 # Agent Client Protocol (ACP)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-acp.md
@@ -39,7 +39,7 @@ The model fixes the external contract; this spec makes it concrete without dupli
 | ACP-4 Tool delegation boundary | `client_tool_request` is emitted only when the session's `tool_delegation_opt_in` flag is set at creation; otherwise server-side tools run locally. |
 | ACP-5 Idempotent session creation | `create_session` upserts on a unique `session_id` index; a racing duplicate returns the winner's state to both callers. Idempotency is scoped to the creating principal and office: a create naming an existing id returns that session only to its owner, and is a conflict that discloses nothing to anyone else — otherwise a known or guessed id would hand over another caller's session. |
 | ACP-6 Graceful interrupt | `interrupt(session)` sets a fence; the turn loop finishes its current atomic step (ORC-5), emits `interrupted` + `checkpoint_id`, and leaves the session resumable. |
-| ACP-7 Budget transparency | Every terminal event embeds `remaining_budget`; a `budget_exhausted` terminal is emitted when the budget governing the session hits zero and names its scope. When that budget is the office's, the office is hibernating (`l2-office-control`) and wakes by itself on a reset or top-up (OC-4); a session-scoped exhaustion says so, so a client does not wait for a wake that will not come. |
+| ACP-7 Budget transparency | Every terminal event embeds `remaining_budget`; a `budget_exhausted` terminal is emitted when the budget governing the session hits zero and names its scope. When that budget is the office's, the office is hibernating (`l2-office-control`) and wakes by itself on a reset or top-up (office-control OC-4); a session-scoped exhaustion says so, so a client does not wait for a wake that will not come. |
 | ACP-8 Monotonic event ordering | The bus assigns a per-session `AtomicU64` `seq` at emission; clients order/dedup by `seq`. A gap surfaces as `EVENT_GAP`, never silently ignored. |
 | ACP-9 Pure adapters | Each projection implements `ProjectionAdapter::translate(event) -> wire` — a total, side-effect-free shape map. Adapters cannot add/drop/reorder events, hold logic, or fork state; all bind to the same bus. |
 | ACP-10 Live steering | `steer(session, msg)` enqueues into the session-scoped bounded steering queue; the turn loop polls at safe boundaries, cancels not-yet-started planned actions as `action_skipped`, injects the message, and continues. Same-session messages serialize (WL-4); overflow → `STEER_REJECTED`. |
@@ -112,5 +112,6 @@ The turn loop (agent-session) polls `steering_queue(session)` at: loop start, af
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): A bare `OC-4` citation of the office-control invariant now names it. |
 | 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ACP-5 idempotent creation returned an existing session to any caller naming its id — scoped to the creating principal and office. `trusted` was granted to "local" callers: loopback is not an identity (the agent's own sandboxed tools can reach it) and now only narrows. A revoked credential ends its sessions instead of running on the cached trust level. ACP-7 tied every `budget_exhausted` to office hibernation — the terminal names its scope. The cross-office relay checks confidentiality labels without reading content (CF-4). |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — session store, monotonic event bus, capability/trust gate, pure projection adapters, cross-office relay, live-steering + interrupt over the agent-session `/acp` transport; maps ACP-1…ACP-10. |

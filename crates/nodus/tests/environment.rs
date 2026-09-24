@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 const ENV_WF: &str = r#"§wf:env_test v1.0
 §runtime: { core: schema.nodus }
-@in: { observation }
+@in: { observation? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -379,8 +379,7 @@ fn candidate_digest_deterministic_and_content_addressed() {
 }
 
 /// Captures the `RunManifest` `run_complete` delivers — the same shape as
-/// `tests/dialog.rs`'s `ManifestCapture` (Phase 31 precedent), trimmed to
-/// just the manifest.
+/// `tests/dialog.rs`'s `ManifestCapture`, trimmed to just the manifest.
 #[derive(Clone)]
 struct ManifestCapture {
     manifests: Arc<Mutex<Vec<RunManifest>>>,

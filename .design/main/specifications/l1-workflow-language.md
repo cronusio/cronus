@@ -86,3 +86,9 @@ Routines (scheduler), delegated tasks and `/goal` plans (orchestration), and reu
 | `[ORCH]` | `.design/main/specifications/l1-orchestration.md` | Plans/delegation expressed as workflows |
 | `[SCHED]` | `.design/main/specifications/l1-scheduler-model.md` | Routines run workflows |
 | `[RUNTIME]` | `.design/main/specifications/l2-workflow-runtime.md` | Concrete runtime |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-19 | Initial specification: the agent workflow language — a compact, LLM-native DSL in which routines, delegated tasks, and plans are expressed. |

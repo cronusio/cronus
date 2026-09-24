@@ -8,5 +8,6 @@
 pub mod inbox;
 pub mod knowledge;
 pub mod memory;
+pub mod versioning;
 pub mod wiki;
 pub mod workspace;

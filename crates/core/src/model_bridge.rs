@@ -14,8 +14,10 @@
 
 use std::sync::Arc;
 
-use cronus_contract::{CancelHandle, GenerateRequest, InferenceBackend, StreamEvent};
-use nodus::{ModelProvider, Value};
+use cronus_contract::{
+    CancelHandle, GenerateRequest, InferenceBackend, InferenceError, StreamEvent,
+};
+use nodus::{ModelError, ModelProvider, Value};
 
 /// Adapts a `contract::InferenceBackend` to `nodus::ModelProvider`.
 ///
@@ -36,12 +38,17 @@ impl NodusModelBridge {
 
     /// Drive one generation to completion, concatenating token text.
     ///
-    /// `nodus::ModelProvider::generate` has no error channel, so a transport
-    /// error ends collection and returns whatever text arrived before it
-    /// (possibly empty) — the honest projection available within the trait's
-    /// `-> String` shape; non-text events (tool calls, usage) are not folded
-    /// into the generated text.
-    fn collect(&self, prompt: &str, parameters: Vec<(String, String)>) -> String {
+    /// A call is only successful if the stream says so: text that arrived
+    /// before an error, a cancellation or a stream that ends without its
+    /// completion marker is a fragment, and handing it back as the model's
+    /// answer would let a workflow carry on from a truncated plan or an
+    /// empty result as though the call had worked. Non-text events (tool
+    /// calls, usage) are not folded into the generated text.
+    fn collect(
+        &self,
+        prompt: &str,
+        parameters: Vec<(String, String)>,
+    ) -> Result<String, ModelError> {
         let request = GenerateRequest {
             model: self.model.clone(),
             prompt: prompt.to_string(),
@@ -51,11 +58,33 @@ impl NodusModelBridge {
         for event in self.backend.generate_stream(request, CancelHandle::new()) {
             match event {
                 StreamEvent::Token(t) => out.push_str(&t),
-                StreamEvent::Done | StreamEvent::Error(_) => break,
+                StreamEvent::Done => return Ok(out),
+                StreamEvent::Error(failure) => return Err(ModelError::new(describe(&failure))),
                 StreamEvent::ToolCall { .. } | StreamEvent::Usage { .. } => {}
             }
         }
-        out
+        Err(ModelError::new("the stream ended without completing"))
+    }
+}
+
+/// A short, secret-free description of a transport failure. The variant is
+/// named, never the raw payload a malformed stream carried — that can hold
+/// fragments of the response, and this text lands in the run record.
+fn describe(failure: &InferenceError) -> String {
+    match failure {
+        InferenceError::ConnectRefused => "the model endpoint refused the connection".to_string(),
+        InferenceError::Timeout => "the model endpoint timed out".to_string(),
+        InferenceError::ClientError(status) => {
+            format!("the model endpoint rejected the request (HTTP {status})")
+        }
+        InferenceError::ServerError(status) => {
+            format!("the model endpoint failed (HTTP {status})")
+        }
+        InferenceError::MalformedStream(_) => "the model endpoint sent a malformed stream".into(),
+        InferenceError::Cancelled => "the call was cancelled".to_string(),
+        InferenceError::Unsupported => {
+            "the model endpoint does not support the operation".to_string()
+        }
     }
 }
 
@@ -64,18 +93,39 @@ impl ModelProvider for NodusModelBridge {
         &self.model
     }
 
+    /// The infallible surface cannot report a failure, so a failed call yields
+    /// an empty string rather than a fragment of an answer. The executor never
+    /// takes this path — it calls [`try_generate`](Self::try_generate).
     fn generate(&self, prompt: &str, modifiers: &[(String, String)]) -> String {
-        self.collect(prompt, modifiers.to_vec())
+        self.collect(prompt, modifiers.to_vec()).unwrap_or_default()
     }
 
     fn analyze(&self, text: &str, flags: &[String]) -> Value {
+        self.try_analyze(text, flags)
+            .unwrap_or_else(|_| null_verdict(flags))
+    }
+
+    fn try_generate(
+        &self,
+        prompt: &str,
+        modifiers: &[(String, String)],
+    ) -> Result<String, ModelError> {
+        self.collect(prompt, modifiers.to_vec())
+    }
+
+    fn try_analyze(&self, text: &str, flags: &[String]) -> Result<Value, ModelError> {
         // Realize `analyze` over the one call surface the backend exposes
         // (generation): ask for a JSON verdict, parse it, and project each
         // requested flag. A flag the model did not answer stays `Null` —
         // never a fabricated score (contrast the stub's constant 0.9).
-        let raw = self.collect(&build_analysis_prompt(text, flags), Vec::new());
-        parse_analysis(&raw, flags)
+        let raw = self.collect(&build_analysis_prompt(text, flags), Vec::new())?;
+        Ok(parse_analysis(&raw, flags))
     }
+}
+
+/// The verdict of a call that failed: every requested flag unanswered.
+fn null_verdict(flags: &[String]) -> Value {
+    Value::Map(flags.iter().map(|f| (f.clone(), Value::Null)).collect())
 }
 
 fn build_analysis_prompt(text: &str, flags: &[String]) -> String {
@@ -186,6 +236,131 @@ mod tests {
 
     fn bridge(tokens: Vec<&'static str>) -> NodusModelBridge {
         NodusModelBridge::new(Arc::new(ScriptedBackend { tokens }), "test-model")
+    }
+
+    /// A backend whose stream ends the way `ending` says, after a few tokens.
+    struct EndingBackend {
+        ending: Option<StreamEvent>,
+    }
+
+    impl InferenceBackend for EndingBackend {
+        fn generate_stream(
+            &self,
+            _request: GenerateRequest,
+            _cancel: CancelHandle,
+        ) -> Box<dyn Iterator<Item = StreamEvent> + Send> {
+            let mut events = vec![
+                StreamEvent::Token("The plan has ".to_string()),
+                StreamEvent::Token("three ".to_string()),
+            ];
+            events.extend(self.ending.clone());
+            Box::new(events.into_iter())
+        }
+
+        fn embed(&self, _model: &str, _input: &str) -> Result<Vec<f32>, InferenceError> {
+            Err(InferenceError::Unsupported)
+        }
+
+        fn describe(&self, model: &str) -> Result<ModelDescriptor, InferenceError> {
+            Ok(ModelDescriptor {
+                name: model.to_string(),
+                ..Default::default()
+            })
+        }
+
+        fn pull(&self, _model: &str) -> Box<dyn Iterator<Item = PullProgress> + Send> {
+            Box::new(std::iter::once(PullProgress::Done { digest: None }))
+        }
+
+        fn set_residency(&self, _model: &str, _hint: ResidencyHint) -> Result<(), InferenceError> {
+            Ok(())
+        }
+    }
+
+    fn ending_with(ending: Option<StreamEvent>) -> NodusModelBridge {
+        NodusModelBridge::new(Arc::new(EndingBackend { ending }), "test-model")
+    }
+
+    #[test]
+    fn an_error_event_fails_the_call_and_no_fragment_is_returned() {
+        let b = ending_with(Some(StreamEvent::Error(InferenceError::ConnectRefused)));
+        let failure = b.try_generate("plan", &[]).expect_err("the call failed");
+        assert!(
+            failure.reason.contains("refused"),
+            "the reason names the failure: {}",
+            failure.reason
+        );
+        assert!(
+            !failure.reason.contains("three"),
+            "the fragment that arrived before the error is not part of the record"
+        );
+        // The infallible surface cannot report the failure; it must not hand
+        // back the fragment as if it were the answer.
+        assert_eq!(b.generate("plan", &[]), "");
+    }
+
+    #[test]
+    fn a_cancelled_call_fails_rather_than_returning_what_arrived() {
+        let b = ending_with(Some(StreamEvent::Error(InferenceError::Cancelled)));
+        assert!(b.try_generate("plan", &[]).is_err());
+    }
+
+    #[test]
+    fn a_stream_that_ends_without_completing_fails_the_call() {
+        let b = ending_with(None);
+        let failure = b.try_generate("plan", &[]).expect_err("truncated stream");
+        assert!(failure.reason.contains("without completing"));
+    }
+
+    #[test]
+    fn a_malformed_stream_error_does_not_leak_its_payload_into_the_reason() {
+        let b = ending_with(Some(StreamEvent::Error(InferenceError::MalformedStream(
+            "secret-bearing raw response fragment".to_string(),
+        ))));
+        let failure = b.try_generate("plan", &[]).expect_err("malformed");
+        assert!(!failure.reason.contains("secret"), "{}", failure.reason);
+    }
+
+    #[test]
+    fn a_failed_analysis_reports_the_failure_and_answers_no_flag() {
+        let b = ending_with(Some(StreamEvent::Error(InferenceError::Timeout)));
+        let flags = vec!["intent".to_string()];
+        assert!(b.try_analyze("text", &flags).is_err());
+        assert_eq!(
+            b.analyze("text", &flags),
+            Value::Map(vec![("intent".to_string(), Value::Null)]),
+            "the infallible surface leaves every flag unanswered, never invents one"
+        );
+    }
+
+    #[test]
+    fn a_failed_call_inside_a_workflow_is_a_typed_step_error_that_reaches_err() {
+        let source = r#"
+§wf:plan v1.0
+§runtime: { core: schema.nodus }
+@out: $out
+@err: ESCALATE(human)
+@steps:
+  1. GEN(plan) → $out
+  2. LOG($out)
+"#;
+        let b = ending_with(Some(StreamEvent::Error(InferenceError::ServerError(503))));
+        let result = nodus::run_with_provider(source, "plan.nodus", None, b).expect("runs");
+
+        assert_eq!(result.status, nodus::Status::Partial);
+        let error = result.errors.first().expect("the failure is recorded");
+        assert_eq!(error.code, nodus::vocab::error_code::MODEL_CALL_FAILED);
+        assert!(error.reason.contains("503"), "{}", error.reason);
+        assert!(
+            result.flags.iter().any(|f| f.starts_with("ESCALATE:")),
+            "the workflow's @err handler ran: {:?}",
+            result.flags
+        );
+        assert_ne!(
+            result.vars.get("out"),
+            Some(&Value::Text("The plan has three ".to_string())),
+            "the truncated plan must never be bound as the answer"
+        );
     }
 
     #[test]

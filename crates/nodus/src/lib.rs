@@ -5,7 +5,7 @@
 //! # Quick start
 //!
 //! ```rust
-//! use nodus::{workflows, executor::Status};
+//! use nodus::{workflows, executor::{Status, Value}};
 //!
 //! let source = r#"
 //! §wf:greet v1.0
@@ -18,8 +18,13 @@
 //!   2. LOG($out)
 //! "#;
 //!
-//! let result = workflows::run(source, "greet.nodus", None).unwrap();
+//! // The input must satisfy the declared `@in:` contract before anything runs.
+//! let input = Value::Map(vec![("name".to_string(), Value::Text("Ada".to_string()))]);
+//! let result = workflows::run(source, "greet.nodus", Some(input)).unwrap();
 //! assert_eq!(result.status, Status::Ok);
+//!
+//! // A required field left out is a validation error, not a silent empty prompt.
+//! assert!(workflows::run(source, "greet.nodus", None).is_err());
 //! ```
 //!
 //! # Workflow lifecycle
@@ -61,8 +66,8 @@ pub use environment::{
 };
 pub use error::{Error, Result, Span};
 pub use executor::{
-    DefaultDialogProvider, DialogOutcome, DialogProvider, Executor, ModelProvider,
-    ResumeDescriptor, RunResult, Status, StubProvider, Value,
+    DefaultDialogProvider, DialogOutcome, DialogProvider, Executor, ExecutorBuilder, ModelError,
+    ModelProvider, ResumeDescriptor, RunResult, Status, StubProvider, Value,
 };
 pub use lexer::{Lexer, Token, TokenType};
 pub use observability::{
@@ -85,12 +90,13 @@ pub use validator::{
 };
 pub use vocab::Schema;
 pub use workflows::{
-    TestReport, TestResult, TranspileMode, ValidationReport, run, run_with_audit, run_with_config,
-    run_with_config_and_audit, run_with_dialog, run_with_dialog_and_audit, run_with_environment,
-    run_with_environment_and_audit, run_with_manifest, run_with_manifest_and_audit,
-    run_with_policy, run_with_policy_and_audit, run_with_provider, run_with_provider_and_audit,
-    run_with_schema, run_with_schema_and_audit, run_with_settlement, run_with_settlement_and_audit,
-    scaffold, test, test_with_tags, transpile, validate,
+    RunOptions, TestReport, TestResult, TranspileMode, ValidationReport, run, run_with_audit,
+    run_with_config, run_with_config_and_audit, run_with_dialog, run_with_dialog_and_audit,
+    run_with_environment, run_with_environment_and_audit, run_with_manifest,
+    run_with_manifest_and_audit, run_with_options, run_with_policy, run_with_policy_and_audit,
+    run_with_provider, run_with_provider_and_audit, run_with_schema, run_with_schema_and_audit,
+    run_with_settlement, run_with_settlement_and_audit, scaffold, test, test_with_tags, transpile,
+    validate,
 };
 
 #[cfg(test)]

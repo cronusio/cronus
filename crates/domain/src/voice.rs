@@ -115,7 +115,9 @@ impl VoiceSession {
         self.stage = Stage::Review { transcript };
         match &self.stage {
             Stage::Review { transcript } => Ok(transcript),
-            _ => unreachable!(),
+            // Just assigned above; reported rather than asserted so the
+            // transition can never take the caller down with it.
+            _ => Err(VoiceError::WrongStage),
         }
     }
 

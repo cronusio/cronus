@@ -152,3 +152,9 @@ The IR metrics themselves do not apply to nodus — a workflow DSL is determinis
 | `[MEMORY]` | `.design/main/specifications/l2-memory-store.md` | First subject under test (recall fusion §4.2) |
 | `[EVAL-SUITES]` | `.design/main/specifications/l1-evaluation-suites.md` | Sibling eval concept; baseline/regression discipline (ES-9) |
 | `[QUALITY]` | `.design/main/specifications/l1-quality-standards.md` | The regression gate as a definition-of-done check |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-26 | Initial specification: the measurement subsystem for ranked-recall quality — labeled query fixtures, information-retrieval metrics, and a regression gate. |

@@ -1,6 +1,6 @@
 # Nodus Control-Flow Constructs Implementation (Rust)
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-nodus-language.md
@@ -37,7 +37,7 @@ executor.
 - No new external dependency (LP-1).
 - NL-5 (bounded loops) extends to `~RETRY`: `n` is mandatory and capped (max 10); a missing or over-cap bound is a validation error.
 - `?SWITCH` is first-match-wins with no fallthrough; an unmatched scrutinee with no `* →` default emits `NODUS:SWITCH_NO_MATCH` (warning) and continues.
-- `~MAP` over an empty or non-list collection yields an empty list and never errors.
+- `~MAP` over an empty or non-list collection yields an empty list and never errors; a collection that is present but not a list is additionally flagged `MAP_SOURCE_NOT_A_LIST:<name>` on the run.
 - `!HALT` requires an `ESCALATE()` in the same step (validation-checked); it sets `Status::Failed` and stops the run.
 - `!PAUSE` reuses the dialog suspension path: `Signal::Pause` → `Status::Paused` + `ResumeDescriptor`.
 
@@ -130,11 +130,7 @@ retry is scoped to the failing command, a retried step holds only idempotent eff
 `+backoff` and `+retry_on` modifiers L1 §4.6 lists are not realized: every runtime error
 retries, immediately.
 
-**`~MAP` over a non-list swallows a type error (recorded).** §2 makes a non-list collection
-yield an empty list without error, so the result is indistinguishable from mapping an empty
-list, and a check built over it — every element validated, every item delivered — passes
-vacuously. The run stays non-halting by design, but the substitution is to be surfaced as a
-flag on the run, never absorbed silently.
+**`~MAP` over a non-list is flagged, not absorbed.** §2 keeps a non-list collection non-halting — the map yields an empty list — but the substitution is no longer silent: the run raises a `MAP_SOURCE_NOT_A_LIST:<collection>` flag, so a check built over the empty result (every element validated, every item delivered) is distinguishable from one built over mapping an empty list. An absent collection is a legitimate empty case and raises no flag.
 
 ### 4.5 Validator
 
@@ -186,3 +182,4 @@ already exist; this cluster wires them to syntax.
 | 1.0.0 | 2026-06-27 | Core Team | Initial spec — Rust realization of the v0.7 control constructs (`?SWITCH`/`~MAP`/`~RETRY`/`!HALT`/`!PAUSE`): lexer tokens, `SwitchBlock`/`MapBlock` AST + action flags + retry, parser/executor/validator/transpiler wiring; reuses `Status::Paused`/`Signal::Pause` and `SWITCH_NO_MATCH`/`PAUSED`. Phased implementation recommended. |
 | 1.0.1 | 2026-07-25 | Core Team | §4.5 patch: records that `~MAP`'s implicit `$it` binding (§4.3) must count as declared for the pre-existing variable-declaration check, on the same file-wide-set terms as `~FOR`'s explicit loop variable — closes a conformance gap where the realized check omitted this and rejected every `~MAP` workflow. No design change; status stays `Stable`. |
 | 1.0.2 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): §4.4 records two hazards: a retry re-runs the whole step, re-committing effects that succeeded in the failed attempt and leaving them outside the compensation ledger (`+backoff`/`+retry_on` are unrealized); and `~MAP` over a non-list silently yields an empty list, so a check over the result passes vacuously. The NL-5 row names `E017`. |
+| 1.0.3 | 2026-09-24 | Core Team | Realization sync (2026-09-24): `~MAP` over a present non-list collection raises a `MAP_SOURCE_NOT_A_LIST:<name>` flag instead of absorbing the type error silently. The retry-repeats-effects hazard remains recorded. |

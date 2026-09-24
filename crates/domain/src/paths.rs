@@ -123,7 +123,7 @@ const WORKSPACE_MARKER: &str = "app.json";
 /// Every semantic invocable (`board`, `memory`, `role`, `schedule`,
 /// `registry`, `knowledge`, `codegraph`, …) resolves its own state through
 /// this — the project a user is actually standing in, rather than one
-/// machine-global tier `cronus init` never wrote to (F-02). A workspace
+/// machine-global tier `cronus init` never wrote to. A workspace
 /// that was never initialized anywhere still resolves to the same global
 /// fallback every verb already used before this existed, so existing
 /// machine-global data stays exactly where it was and keeps working
@@ -158,7 +158,7 @@ pub fn resolve_workspace_root_from(start: Option<&std::path::Path>, fallback: Pa
 /// and `workflow scaffold` reported `\\?\C:\Users\...`, which is technically the
 /// same path but reads as noise and does not match what a user would type back.
 ///
-/// On Windows, also normalizes every `/` to `\` (F-23): Windows accepts
+/// On Windows, also normalizes every `/` to `\`: Windows accepts
 /// both as a separator, so a path built by joining a component that
 /// happened to contain a forward slash (an env-var override, a value a
 /// caller supplied) displays with a visibly inconsistent mix — `backup
@@ -201,7 +201,7 @@ mod tests {
         );
     }
 
-    /// F-23: a path containing a `/` (a env-var override, a caller-supplied
+    /// A path containing a `/` (a env-var override, a caller-supplied
     /// value) must display with the platform's own separator throughout,
     /// never a mix — `backup list` showed exactly the mixed form this
     /// guards against (`C:/Users/…/iso\Cronus\backups\backup-…`). Windows

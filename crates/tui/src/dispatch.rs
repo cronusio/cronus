@@ -193,7 +193,7 @@ pub fn bind_args(binders: &[Binder], args: &[String]) -> Result<ArgValues, Rejec
             }
         }
     }
-    // A positional token past what any declared binder consumes (F-14): the
+    // A positional token past what any declared binder consumes: the
     // CLI's own clap-composed grammar already rejects this ("unexpected
     // argument"), so a surplus positional the TUI silently drops is an
     // invocation the two surfaces disagree on, not one this surface is
@@ -229,8 +229,8 @@ fn too_many_positionals(extra: &[&str]) -> Rejection {
 }
 
 /// Render a dispatched `Outcome` into the single feedback string the
-/// command bar shows — `None` when a real success carries nothing to say
-/// (F-26): a stateless acknowledgment (`core:pane.*`'s own `Outcome::Value(
+/// command bar shows — `None` when a real success carries nothing to say.
+/// A stateless acknowledgment (`core:pane.*`'s own `Outcome::Value(
 /// Empty)`, "ran, no further detail") is not the same fact as "empty
 /// result" or "empty string", so it renders as no feedback line at all
 /// rather than the placeholder text `"(empty)"`. That placeholder still
@@ -394,7 +394,7 @@ mod tests {
         );
     }
 
-    /// F-14: a positional token past what any declared binder consumes is
+    /// A positional token past what any declared binder consumes is
     /// rejected, not silently dropped — `board add T2 ref2 EXTRA` used to
     /// succeed identically to `board add T2 ref2`.
     #[test]
@@ -485,7 +485,7 @@ mod tests {
         );
     }
 
-    /// F-26: a pane action's own stateless acknowledgment
+    /// A pane action's own stateless acknowledgment
     /// (`Outcome::Value(Empty)`, the exact shape every `core:pane.*`
     /// handler answers) used to render the literal placeholder text
     /// `"(empty)"` — a real success with nothing further to say is not the

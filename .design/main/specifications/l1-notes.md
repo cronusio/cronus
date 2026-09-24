@@ -126,3 +126,9 @@ The content tree supports these node types at minimum:
 | --- | --- | --- |
 | `[IMPL]` | `.design/main/specifications/l2-notes.md` | Concrete storage, CRDT sync, and Rust/TS implementation. |
 | `[SHARING]` | `.design/main/specifications/l1-resource-sharing.md` | Access grant model governing note visibility. |
+
+## Document History
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 1.0.0 | 2026-06-24 | Initial specification: notes as persistent artifacts — structured content, access control, per-user pinning, agent authorship, append-only edit history. |

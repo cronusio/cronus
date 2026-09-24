@@ -1,4 +1,4 @@
-//! Black-box integration coverage for the TUI surface (F-32): every existing
+//! Black-box integration coverage for the TUI surface: every existing
 //! test in `crates/tui/src/*.rs` drives `App`/`dispatch` over a synthetic or
 //! partial registry (an empty one, a hand-built `board.list` fixture, a
 //! `test_catalog()`) — none of them combine the *real* production wiring

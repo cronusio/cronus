@@ -529,6 +529,9 @@ pub enum RunStatus {
     ConstraintHalt,
     /// Validation errors prevented execution from starting.
     ValidationError,
+    /// The run suspended awaiting a human answer (`!PAUSE` or an unresolved
+    /// dialog). It has not completed, so it must not read as `Ok`.
+    Paused,
 }
 
 /// Run-level summary delivered to [`AuditProvider::run_complete`] once per run.

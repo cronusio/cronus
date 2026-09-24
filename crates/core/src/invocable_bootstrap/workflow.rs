@@ -1,11 +1,12 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use cronus_contract::{Binder, BinderKind, Invocable, Locus, Outcome, OutcomeValue, Stability};
 use cronus_domain::invocable::{Dispatcher, InvocableRegistry, Registrant};
 use cronus_domain::io_message;
 use nodus::executor::{Status, Value};
 use nodus::validator::Severity;
-use nodus::workflows::{self, TranspileMode};
+use nodus::workflows::{self, RunOptions, TranspileMode};
+use nodus::{AuditProvider, ExecutionEvent, ExecutionMode, RunManifest, RunResult};
 
 use super::{core_id, flag_arg, opt_text_arg, text_arg};
 
@@ -256,90 +257,133 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
                     }
                 },
             };
-            match workflows::run(&source, &filename, parsed_input) {
-                Err(diags) => {
-                    let messages: Vec<OutcomeValue> = diags
-                        .iter()
-                        .map(|d| {
-                            OutcomeValue::Text(format!(
-                                "[{}] {} (line {})",
-                                d.code, d.message, d.line
-                            ))
-                        })
-                        .collect();
-                    Outcome::Value(OutcomeValue::Record(vec![
-                        (
-                            "status".to_string(),
-                            OutcomeValue::Text("failed".to_string()),
-                        ),
-                        ("diagnostics".to_string(), OutcomeValue::List(messages)),
-                    ]))
-                }
-                Ok(result) => {
-                    // Pre-migration exit codes were 3-way (Ok|Partial → 0,
-                    // Failed|Aborted → 1, Paused → 2). This migration keeps
-                    // Failed/Aborted mapping to a non-zero exit ("status"
-                    // recognized by the renderer) but collapses Paused
-                    // into the same non-zero bucket rather than a distinct
-                    // third code — no test locks the finer distinction,
-                    // and inventing a third render convention for one
-                    // verb's one status was not worth it under this
-                    // task's own scope. Disclosed, not silent.
-                    let status_str = match result.status {
-                        Status::Ok | Status::Partial => "ok",
-                        Status::Failed | Status::Aborted => "failed",
-                        Status::Paused => "paused",
-                    };
-                    let mut fields = vec![
-                        (
-                            "workflow".to_string(),
-                            OutcomeValue::Text(result.workflow.clone()),
-                        ),
-                        (
-                            "status".to_string(),
-                            OutcomeValue::Text(status_str.to_string()),
-                        ),
-                        ("out".to_string(), nodus_value_to_outcome(&result.out)),
-                    ];
-                    if !result.log.is_empty() {
-                        fields.push((
-                            "log".to_string(),
-                            OutcomeValue::List(
-                                result
-                                    .log
-                                    .iter()
-                                    .map(|e| {
-                                        OutcomeValue::Text(format!(
-                                            "{}. [{}] {:?}",
-                                            e.step, e.command, e.result
-                                        ))
-                                    })
-                                    .collect(),
-                            ),
-                        ));
-                    }
-                    if !result.errors.is_empty() {
-                        fields.push((
-                            "errors".to_string(),
-                            OutcomeValue::List(
-                                result
-                                    .errors
-                                    .iter()
-                                    .map(|e| {
-                                        OutcomeValue::Text(format!(
-                                            "[{} step {}] {}",
-                                            e.code, e.step, e.reason
-                                        ))
-                                    })
-                                    .collect(),
-                            ),
-                        ));
-                    }
-                    Outcome::Value(OutcomeValue::Record(fields))
-                }
-            }
+            run_outcome(&source, &filename, parsed_input)
         }),
     );
+}
+
+/// Records whether the model behind a run was real, as the run's own manifest
+/// states it. The verb reports this beside the answer so a run answered by the
+/// built-in stand-in is never mistaken for one a model produced.
+#[derive(Clone, Default)]
+struct ModeProbe {
+    mode: Arc<Mutex<Option<ExecutionMode>>>,
+}
+
+impl ModeProbe {
+    /// `real`, `simulated`, or `unreported` when the run never filed a manifest.
+    fn label(&self) -> &'static str {
+        let mode = self.mode.lock().unwrap_or_else(PoisonError::into_inner);
+        match &*mode {
+            Some(ExecutionMode::Real) => "real",
+            Some(ExecutionMode::Simulated { .. }) => "simulated",
+            None => "unreported",
+        }
+    }
+}
+
+impl AuditProvider for ModeProbe {
+    fn record_event(&self, _event: ExecutionEvent) {}
+
+    fn run_complete(&self, manifest: RunManifest) {
+        *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = Some(manifest.execution_mode);
+    }
+}
+
+/// Runs one workflow source and shapes the result for the renderer.
+///
+/// Every run goes through the same validation and input gate as any other
+/// entry point; a source that fails it never starts and is reported as
+/// `failed` with its diagnostics. `partial` is reported as its own status — a
+/// run that finished with recorded step errors is not the same claim as one
+/// that finished clean — though it still exits 0, as before.
+fn run_outcome(source: &str, filename: &str, input: Option<Value>) -> Outcome {
+    let probe = ModeProbe::default();
+    let options = RunOptions::new().audit(probe.clone());
+    match workflows::run_with_options(source, filename, input, options) {
+        Err(diags) => {
+            let messages: Vec<OutcomeValue> = diags
+                .iter()
+                .map(|d| {
+                    OutcomeValue::Text(format!("[{}] {} (line {})", d.code, d.message, d.line))
+                })
+                .collect();
+            let mut fields = vec![
+                (
+                    "status".to_string(),
+                    OutcomeValue::Text("failed".to_string()),
+                ),
+                ("diagnostics".to_string(), OutcomeValue::List(messages)),
+            ];
+            // A breach of the input contract is the one failure the caller can
+            // fix without touching the workflow, so say how.
+            if diags.iter().any(|d| d.code == "E022") {
+                fields.push((
+                    "hint".to_string(),
+                    OutcomeValue::Text(
+                        "the input is checked against the workflow's @in: declaration; \
+                         pass it as JSON with --input, for example --input '{\"field\": \"value\"}'"
+                            .to_string(),
+                    ),
+                ));
+            }
+            Outcome::Value(OutcomeValue::Record(fields))
+        }
+        Ok(result) => shape_result(&result, probe.label()),
+    }
+}
+
+fn shape_result(result: &RunResult, mode: &str) -> Outcome {
+    // Failed, aborted and paused runs exit non-zero (the renderer recognises
+    // those `status` values); ok and partial exit 0. Paused shares the failed
+    // bucket rather than getting a third exit code.
+    let status_str = match result.status {
+        Status::Ok => "ok",
+        Status::Partial => "partial",
+        Status::Failed | Status::Aborted => "failed",
+        Status::Paused => "paused",
+    };
+    let mut fields = vec![
+        (
+            "workflow".to_string(),
+            OutcomeValue::Text(result.workflow.clone()),
+        ),
+        (
+            "status".to_string(),
+            OutcomeValue::Text(status_str.to_string()),
+        ),
+        ("mode".to_string(), OutcomeValue::Text(mode.to_string())),
+        ("out".to_string(), nodus_value_to_outcome(&result.out)),
+    ];
+    if !result.log.is_empty() {
+        fields.push((
+            "log".to_string(),
+            OutcomeValue::List(
+                result
+                    .log
+                    .iter()
+                    .map(|e| {
+                        OutcomeValue::Text(format!("{}. [{}] {:?}", e.step, e.command, e.result))
+                    })
+                    .collect(),
+            ),
+        ));
+    }
+    if !result.errors.is_empty() {
+        fields.push((
+            "errors".to_string(),
+            OutcomeValue::List(
+                result
+                    .errors
+                    .iter()
+                    .map(|e| {
+                        OutcomeValue::Text(format!("[{} step {}] {}", e.code, e.step, e.reason))
+                    })
+                    .collect(),
+            ),
+        ));
+    }
+    Outcome::Value(OutcomeValue::Record(fields))
 }
 
 fn json_value_to_nodus(jv: serde_json::Value) -> Value {
@@ -438,4 +482,122 @@ fn register_transpile(registry: &mut InvocableRegistry, dispatcher: &mut Dispatc
             }
         }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GREET: &str = "\
+§wf:greet v1.0
+§runtime: { core: schema.nodus }
+@in: { name: text }
+@out: $out
+@err: ESCALATE(human)
+@steps:
+  1. GEN($in.name) → $out
+  2. LOG($out)
+";
+
+    fn field<'a>(outcome: &'a Outcome, name: &str) -> Option<&'a OutcomeValue> {
+        match outcome {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                fields.iter().find(|(k, _)| k == name).map(|(_, v)| v)
+            }
+            _ => None,
+        }
+    }
+
+    fn text<'a>(outcome: &'a Outcome, name: &str) -> Option<&'a str> {
+        match field(outcome, name) {
+            Some(OutcomeValue::Text(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    fn named(name: &str) -> Option<Value> {
+        Some(Value::Map(vec![(
+            "name".to_string(),
+            Value::Text(name.to_string()),
+        )]))
+    }
+
+    #[test]
+    fn a_run_answered_by_the_built_in_stand_in_is_labelled_simulated() {
+        let outcome = run_outcome(GREET, "greet.nodus", named("Ada"));
+        assert_eq!(text(&outcome, "status"), Some("ok"));
+        assert_eq!(
+            text(&outcome, "mode"),
+            Some("simulated"),
+            "no model is wired to this verb, so the answer must not read as a model's"
+        );
+    }
+
+    #[test]
+    fn a_missing_required_input_is_a_failed_run_that_never_started() {
+        let outcome = run_outcome(GREET, "greet.nodus", None);
+        assert_eq!(text(&outcome, "status"), Some("failed"));
+        assert!(text(&outcome, "mode").is_none(), "no run, so no mode");
+        let Some(OutcomeValue::List(diagnostics)) = field(&outcome, "diagnostics") else {
+            panic!("diagnostics missing: {outcome:?}");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| matches!(d, OutcomeValue::Text(t) if t.contains("E022"))),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn an_input_breach_tells_the_caller_how_to_supply_the_input() {
+        let outcome = run_outcome(GREET, "greet.nodus", None);
+        let hint = text(&outcome, "hint").expect("a hint accompanies an input breach");
+        assert!(hint.contains("--input"), "{hint}");
+    }
+
+    #[test]
+    fn a_source_that_fails_validation_is_reported_failed() {
+        let outcome = run_outcome("§wf:x v1.0\n@steps:\n  1. GEN(a)\n", "x.nodus", None);
+        assert_eq!(text(&outcome, "status"), Some("failed"));
+        assert!(field(&outcome, "diagnostics").is_some());
+        assert!(
+            text(&outcome, "hint").is_none(),
+            "the input hint is only for input breaches"
+        );
+    }
+
+    fn finished(status: Status) -> RunResult {
+        RunResult {
+            workflow: "wf:greet".to_string(),
+            status,
+            out: Value::Null,
+            log: Vec::new(),
+            errors: Vec::new(),
+            flags: Vec::new(),
+            vars: std::collections::HashMap::new(),
+            resume: None,
+        }
+    }
+
+    #[test]
+    fn each_run_status_keeps_its_own_label() {
+        for (status, label) in [
+            (Status::Ok, "ok"),
+            (Status::Partial, "partial"),
+            (Status::Failed, "failed"),
+            (Status::Aborted, "failed"),
+            (Status::Paused, "paused"),
+        ] {
+            let outcome = shape_result(&finished(status), "real");
+            assert_eq!(text(&outcome, "status"), Some(label));
+            assert_eq!(text(&outcome, "mode"), Some("real"));
+        }
+    }
+
+    #[test]
+    fn a_probe_that_saw_no_manifest_says_so_instead_of_claiming_real() {
+        let probe = ModeProbe::default();
+        assert_eq!(probe.label(), "unreported");
+    }
 }

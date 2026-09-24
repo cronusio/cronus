@@ -64,6 +64,8 @@ fn parse_and_validate(source: &str, filename: &str) -> Vec<Diagnostic> {
 
 // ── Validation parity ─────────────────────────────────────────────────────────
 
+mod support;
+
 mod validation {
     use super::*;
 
@@ -460,8 +462,12 @@ mod execution {
 
     #[test]
     fn simple_log_executes_ok() {
-        let result = workflows::run(SIMPLE_LOG, "simple_log.nodus", None)
-            .expect("simple_log must execute without block-class errors");
+        let result = workflows::run(
+            SIMPLE_LOG,
+            "simple_log.nodus",
+            Some(crate::support::sample_input(SIMPLE_LOG)),
+        )
+        .expect("simple_log must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -475,8 +481,12 @@ mod execution {
 
     #[test]
     fn ticket_triage_executes_ok() {
-        let result = workflows::run(TICKET_TRIAGE, "ticket_triage.nodus", None)
-            .expect("ticket_triage must execute without block-class errors");
+        let result = workflows::run(
+            TICKET_TRIAGE,
+            "ticket_triage.nodus",
+            Some(crate::support::sample_input(TICKET_TRIAGE)),
+        )
+        .expect("ticket_triage must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -486,8 +496,12 @@ mod execution {
 
     #[test]
     fn until_quality_loop_executes_ok() {
-        let result = workflows::run(UNTIL_QUALITY_LOOP, "until_quality_loop.nodus", None)
-            .expect("until_quality_loop must execute without block-class errors");
+        let result = workflows::run(
+            UNTIL_QUALITY_LOOP,
+            "until_quality_loop.nodus",
+            Some(crate::support::sample_input(UNTIL_QUALITY_LOOP)),
+        )
+        .expect("until_quality_loop must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -497,8 +511,12 @@ mod execution {
 
     #[test]
     fn conditional_executes_ok() {
-        let result = workflows::run(CONDITIONAL, "conditional.nodus", None)
-            .expect("conditional must execute without block-class errors");
+        let result = workflows::run(
+            CONDITIONAL,
+            "conditional.nodus",
+            Some(crate::support::sample_input(CONDITIONAL)),
+        )
+        .expect("conditional must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -508,15 +526,23 @@ mod execution {
 
     #[test]
     fn for_loop_executes_ok() {
-        let result = workflows::run(FOR_LOOP, "for_loop.nodus", None)
-            .expect("for_loop must execute without block-class errors");
+        let result = workflows::run(
+            FOR_LOOP,
+            "for_loop.nodus",
+            Some(crate::support::sample_input(FOR_LOOP)),
+        )
+        .expect("for_loop must execute without block-class errors");
         assert_eq!(result.status, Status::Ok, "for_loop must return Status::Ok");
     }
 
     #[test]
     fn parallel_join_executes_ok() {
-        let result = workflows::run(PARALLEL_JOIN, "parallel_join.nodus", None)
-            .expect("parallel_join must execute without block-class errors");
+        let result = workflows::run(
+            PARALLEL_JOIN,
+            "parallel_join.nodus",
+            Some(crate::support::sample_input(PARALLEL_JOIN)),
+        )
+        .expect("parallel_join must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -526,8 +552,12 @@ mod execution {
 
     #[test]
     fn macro_expand_executes_ok() {
-        let result = workflows::run(MACRO_EXPAND, "macro_expand.nodus", None)
-            .expect("macro_expand must execute without block-class errors");
+        let result = workflows::run(
+            MACRO_EXPAND,
+            "macro_expand.nodus",
+            Some(crate::support::sample_input(MACRO_EXPAND)),
+        )
+        .expect("macro_expand must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -540,8 +570,12 @@ mod execution {
         // No input: $in.items is unset, so ~MAP iterates zero elements — this
         // proves the workflow clears the validator gate and runs to
         // completion, matching for_loop/parallel_join's no-input convention.
-        let result = workflows::run(MAP_TRANSFORM, "map_transform.nodus", None)
-            .expect("map_transform must execute without block-class errors");
+        let result = workflows::run(
+            MAP_TRANSFORM,
+            "map_transform.nodus",
+            Some(crate::support::sample_input(MAP_TRANSFORM)),
+        )
+        .expect("map_transform must execute without block-class errors");
         assert_eq!(
             result.status,
             Status::Ok,
@@ -552,8 +586,12 @@ mod execution {
 
     #[test]
     fn run_rejects_missing_runtime_with_e001() {
-        let err = workflows::run(LINT_MISSING_RUNTIME, "lint_missing_runtime.nodus", None)
-            .expect_err("run must fail fast when §runtime is absent");
+        let err = workflows::run(
+            LINT_MISSING_RUNTIME,
+            "lint_missing_runtime.nodus",
+            Some(crate::support::sample_input(LINT_MISSING_RUNTIME)),
+        )
+        .expect_err("run must fail fast when §runtime is absent");
         assert!(!err.is_empty(), "rejection diagnostics must not be empty");
         let got: Vec<_> = err.iter().map(|d| d.code.as_str()).collect();
         assert!(

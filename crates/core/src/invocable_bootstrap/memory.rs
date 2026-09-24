@@ -13,7 +13,7 @@ pub(super) fn register(registry: &mut InvocableRegistry, dispatcher: &mut Dispat
 }
 
 /// On-disk location of the memory database. A memory entry is notes about a
-/// specific project — resolves against the current workspace (F-02), the
+/// specific project — resolves against the current workspace, the
 /// same resolution `board.rs` uses for the kanban store.
 fn memory_db_path() -> std::path::PathBuf {
     cronus_domain::paths::resolve_workspace_root()
@@ -24,8 +24,8 @@ fn memory_db_path() -> std::path::PathBuf {
 /// Open the **persistent** memory store. Every `memory` verb used to open a
 /// fresh `open_in_memory()` database, so a `store` wrote into a database that
 /// was dropped when the handler returned and the next `search`/`forget` saw an
-/// empty one — the entry, and the id `store` handed back, were unreachable
-///. One file, opened by every verb, is what makes the round-trip
+/// empty one — the entry, and the id `store` handed back, were unreachable.
+/// One file, opened by every verb, is what makes the round-trip
 /// work.
 fn open_memory_store() -> Result<MemoryStore, String> {
     let path = memory_db_path();
@@ -42,7 +42,7 @@ fn register_store(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher)
     let invocable = Invocable {
         id: id.clone(),
         name: "Store",
-        // F-33: "key-value" promised single-value-per-key uniqueness this
+        // "key-value" promised single-value-per-key uniqueness this
         // verb never delivered — MemoryEntry has no key field to be unique
         // on (only `title`/`body`), and every call adds a genuinely new,
         // separately timestamped entry, never replacing a same-titled one.

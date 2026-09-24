@@ -13,7 +13,7 @@ use nodus::workflows::{self};
 const ISOLATION_WF: &str = "\
 §wf:isolation_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -37,7 +37,7 @@ const ISOLATION_WF: &str = "\
 const OVERRIDE_WF: &str = "\
 §wf:override_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -55,7 +55,7 @@ const OVERRIDE_WF: &str = "\
 const FAIL_WF: &str = "\
 §wf:fail_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -77,7 +77,7 @@ const FAIL_WF: &str = "\
 const TAG_WF: &str = "\
 §wf:tag_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -94,7 +94,7 @@ const TAG_WF: &str = "\
 const ORDER_WF: &str = "\
 §wf:order_wf v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:

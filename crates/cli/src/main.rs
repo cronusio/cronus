@@ -386,7 +386,7 @@ fn render_value(value: OutcomeValue, ctx: &output::Context) -> Rendered {
     // `core:workflow.validate`'s own shape — a Record naming "status" plus
     // "errors"/"warnings"/"infos" (each a List of {code, message, line}
     // Records) — gets its own arm ahead of the failed/aborted/… check
-    // below (F-16): the general fallback flattened every diagnostic and
+    // below: the general fallback flattened every diagnostic and
     // the record's own "status"/"errors: "/"warnings: " labels onto one
     // comma-separated line, unreadable past a couple of findings. --format
     // json already produced well-structured, valid nesting through the
@@ -421,7 +421,7 @@ fn render_value(value: OutcomeValue, ctx: &output::Context) -> Rendered {
     }
     // `core:board.show`'s own shape — a multi-field Record naming "id" and
     // "history" (a List of transition Records) — gets a dedicated
-    // multi-line renderer (F-21/F-24): once `show` grew beyond id+state to
+    // multi-line renderer: once `show` grew beyond id+state to
     // the card's full detail, the general one-line-per-Record fallback
     // flattened every field, including the whole transition history, onto
     // one unreadable line. Recognized by field shape (an "id" field plus a
@@ -913,7 +913,7 @@ mod render_tests {
         }
     }
 
-    /// F-21/F-24: `board show`'s text rendering is one field per line, with
+    /// `board show`'s text rendering is one field per line, with
     /// the transition history indented underneath rather than flattened
     /// onto the same comma-separated line every other field-name shape
     /// falls back to.
@@ -951,7 +951,7 @@ mod render_tests {
         assert!(rendered.stdout.iter().any(|l| l == "history: (none)"));
     }
 
-    /// F-16: each `workflow validate` diagnostic renders on its own line,
+    /// Each `workflow validate` diagnostic renders on its own line,
     /// never flattened together with the record's own status/errors/
     /// warnings/infos labels.
     #[test]

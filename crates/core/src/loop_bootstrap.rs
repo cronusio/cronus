@@ -87,7 +87,7 @@ pub fn file_exists_spec(max_iterations: u32) -> LoopSpec {
 /// Where completed runs persist their ledger (`<run-id>.log`) — not a
 /// scratch temp directory, so `log`/`show` remain readable across separate
 /// CLI invocations. A run operates on a specific project's unit file —
-/// resolves against the current workspace (F-02), same as every other
+/// resolves against the current workspace, same as every other
 /// project-scoped semantic verb.
 pub fn loop_log_dir() -> PathBuf {
     cronus_domain::paths::resolve_workspace_root().join("loops")

@@ -1,6 +1,6 @@
 # Filesystem Layout (OS-native)
 
-**Version:** 1.2.2
+**Version:** 1.2.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-storage-model.md
@@ -38,7 +38,7 @@ The model demands two separated tiers and scoped memory; this spec pins exactly 
 | STO-6 Secret isolation | Secrets in `<state>/.env` (template `.env.example`); excluded from backups and version control. |
 | STO-7 Restore-by-copy | Copying `<state>/` minus `.env` and cache restores the system. **Partial** for project-local state roots (§4.3): until they are registered with the state tier, a copy of `<state>/` does not include them. |
 | STO-8 Human-inspectable state | Config as JSON, rules/notes/STATE as Markdown; `*.db` are derived indices alongside `notes/`. |
-| STO-9 Versioned state with forward migration | **Partial.** Session files carry a version and migrate forward on load (`l2-agent-session` §4.15). The SQLite stores create their schema idempotently but carry no schema version yet, and the JSON config files carry none — a version marker on each, the refuse-unknown-shape load, and the backup before a destructive rewrite are pending. |
+| STO-9 Versioned state with forward migration | **Partial.** Session files carry a version and migrate forward on load (`l2-agent-session` §4.15). Every SQLite store records its schema in the database's own `user_version` header, and opening a file does exactly one of four things: a fresh file gets the baseline schema and is stamped; a file from before versioning is adopted as the current version, the baseline being idempotent; an older versioned file runs its ordered migration steps — the path validated before anything is touched, each step in its own transaction together with its stamp — after a consistent copy of the file is taken, since a migration is one-way; and a newer versioned file is refused, never read optimistically or written into. The droppable caches (the project wiki index, the code graph) follow the same refuse-newer rule. The JSON config files carry no version yet — a version marker on each, the refuse-unknown-shape load, and the backup before a destructive rewrite are pending for them. |
 
 ## 4. Detailed Design
 
@@ -106,8 +106,10 @@ alone. It is excluded from the project's version control, since office state is 
 content and a checkout must not carry sessions or memory with it. It never holds a secret —
 those stay in the OS state tier's secret store (STO-6). And it is registered with the OS
 state tier, so a backup can enumerate it; otherwise copying `<state>/` would silently leave
-it behind (STO-7). **Partial:** `cronus init` creates the root, but writing the
-version-control exclusion and registering the root are pending. Project *configuration*
+it behind (STO-7). **Partial:** `cronus init` creates the root and writes its version-control
+exclusion — a self-ignoring `.gitignore` (`*`, so `init` leaves nothing in `git status`) that opts
+`settings.json` and `commands/` back in by name and is left untouched when it already exists;
+registering the root with the OS state tier is pending. Project *configuration*
 committed on purpose (`.cronus/settings.json`, commands, skills) is a different thing, loaded
 only after the workspace trust decision (`l2-security` §4.8).
 
@@ -155,3 +157,4 @@ Physical consolidation (one file with attached schemas vs separate files per lev
 | 1.2.0 | 2026-07-15 | `[ADDED]` `<state>/workspaces/<ws>/wiki/wiki.db` — the per-office project-wiki projection cache (SQLite + FTS5; rebuildable/droppable, not source of truth) to the workspace tree and the §4.4 database-placement table. Additive — status remains Stable. Realized by the new l2-project-wiki. |
 | 1.2.1 | 2026-09-23 | Consistency pass (2026-09-23): STO-9 (versioned state with forward migration) was unmapped — Partial (session files versioned; SQLite and JSON state carry no schema version yet). Other specifications write `<ws>/…` and `.planning/…` for office state that this layout never placed — the convention is now defined (`<state>/workspaces/<ws>/`, planning tree in the state tier, never in the user's repository, per STO-7) and the workspace tree lists missions/, planning/, constitution/, extensions/, skills/. One graph path lacked its `<state>/workspaces/` prefix. The state-tier convention now names its one exception: an artifact a specification deliberately makes part of the project's version-controlled history — the development workflow's design documents and progress ledger (DW-5). |
 | 1.2.2 | 2026-09-24 | Consistency pass (2026-09-24): The state-root convention added yesterday placed office state only in the OS tier, but `cronus init` creates a project-local `.cronus/` state root that every verb resolves first (as shipped) — the convention now names both, with the obligations a project-local root carries (excluded from version control, no secrets, registered for backup — Partial), and the STO-7 row states the backup gap. The program tier listed three executables (`cronus`, `cronus-tui`, `cronusd`) although the product ships one binary — the terminal UI and the always-on engine are modes of `cronus` (`l2-cli` §4.2, `l2-service-activation` §2). |
+| 1.2.3 | 2026-09-24 | Realization sync (2026-09-24): STO-9: every SQLite store carries a schema version (fresh, adopted, migrated with a safety copy, or refused when newer); the JSON config files remain unversioned. §4.3: `cronus init` writes the version-control exclusion; registering the root with the OS state tier is still pending. |

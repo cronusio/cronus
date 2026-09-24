@@ -54,7 +54,7 @@ impl AuditProvider for RecordingProvider {
 const DETERMINISTIC_WF: &str = "\
 §wf:obs_test v1.0
 §runtime: { core: schema.nodus }
-@in: { query }
+@in: { query? }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -190,7 +190,7 @@ const NEVER_FETCH_UPPER: &str = "\
 §wf:never_fetch v1.0
 §runtime: { core: schema.nodus }
 !!NEVER: FETCH
-@in: { url: str }
+@in: { url?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -204,7 +204,7 @@ const NEVER_FETCH_MIXED_CASE: &str = "\
 §wf:never_fetch v1.0
 §runtime: { core: schema.nodus }
 !!NEVER: Fetch
-@in: { url: str }
+@in: { url?: str }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -422,8 +422,45 @@ fn execution_mode_and_exposure_switches_round_trip() {
     );
 }
 
+/// A host's own model provider: answers for itself and is not the built-in stub.
+struct HostModel;
+
+impl nodus::ModelProvider for HostModel {
+    fn model_id(&self) -> &str {
+        "host-model"
+    }
+
+    fn generate(&self, _prompt: &str, _modifiers: &[(String, String)]) -> String {
+        "a real answer".to_string()
+    }
+
+    fn analyze(&self, _text: &str, _flags: &[String]) -> nodus::Value {
+        nodus::Value::Null
+    }
+}
+
 #[test]
 fn default_execution_context_is_real_with_no_switches() {
+    let recorder = RecordingProvider::new();
+    run_with_provider_and_audit(
+        DETERMINISTIC_WF,
+        "obs_test.nodus",
+        None,
+        HostModel,
+        recorder.clone(),
+        "",
+        "",
+    )
+    .expect("audited run on a host model");
+    let manifests = recorder.manifests.lock().unwrap();
+    assert_eq!(manifests[0].execution_mode, ExecutionMode::Real);
+    assert!(manifests[0].exposure_switches.is_empty());
+}
+
+// HO-12: a run whose model calls the built-in stub answers is a simulation by
+// construction — the manifest must never call it real, whatever was declared.
+#[test]
+fn a_run_on_the_built_in_stub_records_itself_as_simulated() {
     let recorder = RecordingProvider::new();
     run_with_audit(
         DETERMINISTIC_WF,
@@ -435,8 +472,60 @@ fn default_execution_context_is_real_with_no_switches() {
     )
     .expect("plain audited run");
     let manifests = recorder.manifests.lock().unwrap();
-    assert_eq!(manifests[0].execution_mode, ExecutionMode::Real);
-    assert!(manifests[0].exposure_switches.is_empty());
+    let simulated = ExecutionMode::Simulated {
+        fidelity: SimFidelity::Structural,
+    };
+    assert_eq!(manifests[0].execution_mode, simulated);
+    assert_eq!(
+        manifests[0].repro.execution_mode, simulated,
+        "the recipe mirrors the manifest"
+    );
+}
+
+#[test]
+fn an_explicit_real_declaration_cannot_make_a_stub_run_real() {
+    let recorder = RecordingProvider::new();
+    let executor = Executor::with_audit(nodus::executor::StubProvider, recorder.clone());
+    let ast = ast_of(DETERMINISTIC_WF);
+    let _ = executor.execute_with_manifest_context(
+        &ast,
+        None,
+        "run-claims-real",
+        "2026-09-24T00:00:00Z",
+        ExecutionMode::Real,
+        Vec::new(),
+    );
+    let manifests = recorder.manifests.lock().unwrap();
+    assert_eq!(
+        manifests[0].execution_mode,
+        ExecutionMode::Simulated {
+            fidelity: SimFidelity::Structural
+        }
+    );
+}
+
+#[test]
+fn a_declared_simulation_fidelity_is_kept_as_declared_on_the_stub() {
+    let recorder = RecordingProvider::new();
+    let executor = Executor::with_audit(nodus::executor::StubProvider, recorder.clone());
+    let ast = ast_of(DETERMINISTIC_WF);
+    let _ = executor.execute_with_manifest_context(
+        &ast,
+        None,
+        "run-modeled",
+        "2026-09-24T00:00:00Z",
+        ExecutionMode::Simulated {
+            fidelity: SimFidelity::Modeled,
+        },
+        Vec::new(),
+    );
+    let manifests = recorder.manifests.lock().unwrap();
+    assert_eq!(
+        manifests[0].execution_mode,
+        ExecutionMode::Simulated {
+            fidelity: SimFidelity::Modeled
+        }
+    );
 }
 
 // HO-20: determinism is stated from whether a model call occurred — never
@@ -574,7 +663,7 @@ fn repro_workflow_digest_is_deterministic_and_distinguishing() {
 const MULTI_EVENT_WF: &str = "\
 §wf:multi_event v1.0
 §runtime: { core: schema.nodus }
-@in: { items: list }
+@in: { items?: list }
 @out: $out
 @err: ESCALATE(human)
 @steps:
@@ -866,7 +955,7 @@ fn emit_choke_point_is_the_only_record_event_call_site() {
 const MAP_WF: &str = "\
 §wf:map_test v1.0
 §runtime: { core: schema.nodus }
-@in: { items: list }
+@in: { items?: list }
 @out: $out
 @err: ESCALATE(human)
 @steps:
