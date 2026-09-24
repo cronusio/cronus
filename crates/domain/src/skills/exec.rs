@@ -1,12 +1,12 @@
-//! Execution model (§4.5): activation loads the instruction body; if the
+//! Execution model: activation loads the instruction body; if the
 //! package declares a workflow and is not degraded, invocation validates
-//! then bounded-executes it (WFL-6/8), dispatching a built-in command per
+//! then bounded-executes it, dispatching a built-in command per
 //! operation step with a per-call grant check. A `degraded: instruction-only`
 //! package never reaches the runtime, regardless of what it carries on disk.
 //!
 //! The nodus workflow runtime is a seam — [`WorkflowRuntime`] is the
 //! interface this module drives; wiring it to the real `nodus` crate is a
-//! separate cross-crate concern (out of this phase's scope, per §4.3 Notes).
+//! separate cross-crate concern (out of this phase's scope.3 Notes).
 
 use crate::extensions::ExtensionPermissions;
 use crate::skills::commands::{CommandRegistry, DispatchError, ParamValue};
@@ -14,7 +14,7 @@ use crate::skills::package::SkillPackage;
 use std::collections::HashMap;
 
 /// Whether a package's workflow reached full canonical form, or was
-/// downgraded to instruction-only by the conversion pipeline (§4.4 stage 5).
+/// downgraded to instruction-only by the conversion pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Degradation {
     Full,
@@ -34,15 +34,15 @@ pub struct OperationStep {
 /// would dispatch.
 pub trait WorkflowRuntime {
     /// Validate the package's workflow. `Err` stops execution before any
-    /// operation dispatches (WFL-2/5 is the runtime's own contract).
+    /// operation dispatches (the runtime's own contract).
     fn validate(&self, package: &SkillPackage) -> Result<(), String>;
 
-    /// Execute the validated workflow, bounded (WFL-6), returning the
+    /// Execute the validated workflow, bounded, returning the
     /// ordered operation steps it dispatches.
     fn execute(&self, package: &SkillPackage) -> Result<Vec<OperationStep>, String>;
 }
 
-/// The structured result of an activation (§4.5, WFL-8).
+/// The structured result of an activation.
 #[derive(Debug, PartialEq)]
 pub enum ActivationResult {
     /// Only the instruction body reached the agent's context; the runtime
@@ -50,7 +50,7 @@ pub enum ActivationResult {
     /// degraded instruction-only.
     InstructionOnly,
     /// The workflow executed; each step's dispatch outcome, in step order.
-    /// A per-call grant check is invoked for every step (§4.5).
+    /// A per-call grant check is invoked for every step.
     WorkflowExecuted(Vec<Result<(), DispatchError>>),
 }
 
@@ -62,7 +62,7 @@ pub enum ActivationError {
 
 /// Activate a package. Degraded or workflow-less packages short-circuit to
 /// [`ActivationResult::InstructionOnly`] before `runtime` is touched at all
-/// (the guard §4.5 requires). Otherwise: validate, execute, then check the
+/// (the required guard). Otherwise: validate, execute, then check the
 /// caller's grants against every dispatched operation step.
 pub fn activate(
     package: &SkillPackage,
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn degraded_package_never_reaches_runtime_even_with_workflow() {
         // Guard test: a workflow.nd is present on disk, but degradation must
-        // still short-circuit before the runtime is touched (§4.5).
+        // still short-circuit before the runtime is touched.
         let package = package_with_workflow();
         let runtime = MockRuntime::new(vec![step("noop")]);
         let commands = CommandRegistry::new();
@@ -253,7 +253,7 @@ mod tests {
         assert!(runtime.execute_called.get());
         match result {
             ActivationResult::WorkflowExecuted(results) => {
-                // Every one of the three steps was checked (§4.5 "per call").
+                // Every one of the three steps was checked ("per call").
                 assert_eq!(results.len(), 3);
                 assert!(results[0].is_ok());
                 assert_eq!(

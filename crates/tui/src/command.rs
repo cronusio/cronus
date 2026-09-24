@@ -4,7 +4,7 @@
 //! structured [`SlashCommand`], builds the [`CommandSpec`] catalog from the
 //! core's invocable registry — never a hand-maintained list — and classifies a
 //! submitted line into a [`CommandOutcome`]. Dispatch to the core is a separate
-//! concern — this module never calls the core (INV-2); [`build_catalog`] only
+//! concern — this module never calls the core; [`build_catalog`] only
 //! ever consumes an already-fetched `&[&Invocable]` slice, the same shape data
 //! the sibling CLI frontend's own `generated.rs` consumes.
 
@@ -99,10 +99,10 @@ pub struct CommandSpec {
 }
 
 /// Whether this surface projects `invocable` at all: `Semantic` (the shared
-/// vocabulary INV-3 parity binds) plus `ClientLocal` (this surface's own
+/// vocabulary cross-surface parity binds) plus `ClientLocal` (this surface's own
 /// pane/panel actions) — never `Installation` or `HostOnly`, which belong to
-/// the command line and the host respectively — and only `Shipped` stability
-/// (INV-9): a retired or unshipped invocable is unrepresentable here, not
+/// the command line and the host respectively — and only `Shipped` stability:
+/// a retired or unshipped invocable is unrepresentable here, not
 /// merely undiscoverable.
 ///
 /// Delegates to [`Invocable::is_projected`] — the same predicate the desktop
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn parity_matrix_crate_depends_on_core_not_the_cli() {
-        // Structural INV-2 guard: the manifest links the engine tiers it
+        // Structural inward-dependency guard: the manifest links the engine tiers it
         // actually needs — `cronus-domain` (Capabilities/Engine/redact),
         // `cronus-contract` (the descriptor types this module consumes), and
         // `cronus-core` (the facade composing the registry) — never the CLI
@@ -442,7 +442,7 @@ mod tests {
         );
         assert!(
             !manifest.contains("cronus-cli"),
-            "the TUI must not depend on cronus-cli (INV-2 inward dependency)"
+            "the TUI must not depend on cronus-cli (inward dependency)"
         );
     }
 }

@@ -1,4 +1,4 @@
-//! Consolidation write path (MC-2, MC-3, MC-4, MC-7, MC-9, MC-10): the
+//! Consolidation write path: the
 //! synchronous authoring stage that turns a candidate unit of memory into
 //! consolidated content, plus the periodic passes that operate on the
 //! resulting edge graph.
@@ -6,7 +6,7 @@
 //! Deliberately a **new, separate table** from `memory_chains`/`ChainKind`:
 //! the chain machinery serves session-continuation and explicit user chains
 //! with a closed 3-variant vocabulary, walked by Bellman trust propagation.
-//! MC-3 wants an **open** typed-predicate vocabulary over consolidated
+//! The relationship graph wants an **open** typed-predicate vocabulary over consolidated
 //! content specifically — a different concept with a different table, not a
 //! retrofit onto code that already has established, tested semantics.
 
@@ -40,29 +40,29 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-// ── MC-3: write-time additive-only relationship binding ────────────────────
+// ── Write-time additive-only relationship binding ────────────────────
 
 /// The mandatory edge every consolidated item carries back to the
 /// working/raw material that grounds it.
 pub const PROVENANCE_PREDICATE: &str = "derived-from";
 
-/// A cluster-membership edge from an MC-7 summary node to a member it rests
+/// A cluster-membership edge from an summary node to a member it rests
 /// on — grounding for the summary, in the same open vocabulary as any other
 /// relationship edge.
 pub const SUMMARIZES_PREDICATE: &str = "summarizes";
 
-/// A correction's forward pointer to the item it superseded (MC-4 `correct`).
+/// A correction's forward pointer to the item it superseded (`correct`).
 pub const SUPERSEDES_PREDICATE: &str = "supersedes";
 
 /// A capture-time forward pointer to a related item the caller named
-/// (MI-6's "cheap forward MC-3 edges") — distinct from `derived-from`
+/// ("cheap forward edges") — distinct from `derived-from`
 /// (provenance) and `supersedes` (correction): a cross-reference asserts no
 /// lineage or replacement, only relatedness.
 pub const CROSS_REF_PREDICATE: &str = "cross-ref";
 
 /// Add a relationship edge. **Additive-only by construction**: this is an
 /// insert-or-ignore — there is no `delete_edge`/`update_edge` in this module,
-/// so the only way the edge set changes is by growing (MC-3). A duplicate
+/// so the only way the edge set changes is by growing. A duplicate
 /// `(source, target, predicate)` is a no-op, not an accreting duplicate.
 pub(crate) fn add_edge(
     conn: &Connection,
@@ -93,9 +93,9 @@ pub(crate) fn edges_from(conn: &Connection, id: &MemoryId) -> Result<Vec<(Memory
 }
 
 /// In-degree (count of distinct incoming edges) for every node that has at
-/// least one — the graph in-degree MC-8's `centrality` factor is defined
+/// least one — the graph in-degree the `centrality` factor is defined
 /// over. Nodes with zero in-edges are absent (degrade to the signal store's
-/// own neutral default, MC-5).
+/// own neutral default).
 fn in_degrees(conn: &Connection) -> Result<std::collections::HashMap<String, usize>> {
     let mut stmt =
         conn.prepare("SELECT target_id, COUNT(*) FROM memory_edge GROUP BY target_id")?;
@@ -108,7 +108,7 @@ fn in_degrees(conn: &Connection) -> Result<std::collections::HashMap<String, usi
 /// Recompute the `Centrality` derived signal for every node with at least
 /// one incoming edge (step 1 of the maintenance pass, the half `recompute_recency`
 /// left for this task). Normalized by the largest in-degree seen so the
-/// factor stays in the same (0, 1] band as the other MC-8 factors.
+/// factor stays in the same (0, 1] band as the other ranking factors.
 pub(crate) fn recompute_centrality(conn: &Connection, now: u64) -> Result<usize> {
     let degrees = in_degrees(conn)?;
     let max_degree = degrees.values().copied().max().unwrap_or(0);
@@ -130,7 +130,7 @@ pub(crate) fn recompute_centrality(conn: &Connection, now: u64) -> Result<usize>
     Ok(updated)
 }
 
-// ── MC-4: consolidation action algebra ──────────────────────────────────────
+// ── Consolidation action algebra ──────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsolidationAction {
@@ -183,7 +183,7 @@ fn find_same_abstraction(conn: &Connection, candidate_body: &str) -> Result<Opti
         .map(|(id, _)| MemoryId::from(id)))
 }
 
-/// The routine consolidation write (MC-4): a new unit meets the existing
+/// The routine consolidation write: a new unit meets the existing
 /// corpus and resolves to exactly one action.
 ///
 /// - No same-abstraction match → **create**: write `candidate` as a new
@@ -254,11 +254,11 @@ pub(crate) fn consolidate(
 
 /// Explicit refine: the caller (a generator, or its own certain knowledge)
 /// asserts that `addition` extends `target`'s scope, steps, or boundary
-/// conditions. Additive-only (MC-3): appends, never truncates or replaces
+/// conditions. Additive-only: appends, never truncates or replaces
 /// the existing body. Adds a provenance edge if `provenance` is given.
 ///
 /// `expected_body` is what the caller read earlier and is refining against
-/// — a real optimistic-concurrency token (MC-9), not a same-call read that
+/// — a real optimistic-concurrency token, not a same-call read that
 /// could never observe a concurrent change: if the stored body no longer
 /// matches (someone else's write landed in between), this refuses rather
 /// than clobbering it, and the caller re-reads and retries.
@@ -296,10 +296,10 @@ pub(crate) fn refine(
 }
 
 /// Explicit correct: the caller asserts `target` contains an error;
-/// `corrected` replaces it non-destructively (MC-4/MEM-6) — `target` is
+/// `corrected` replaces it non-destructively — `target` is
 /// **superseded** (`superseded_at` set, never deleted, never rewritten) and
 /// `corrected` is inserted as a new item carrying a `supersedes` edge back
-/// to it. Transactional (MC-9): supersede + insert + edge commit together.
+/// to it. Transactional: supersede + insert + edge commit together.
 pub(crate) fn correct(
     conn: &Connection,
     target: &MemoryId,
@@ -367,12 +367,12 @@ fn record_action(
     Ok(())
 }
 
-// ── MC-2: incremental, failed-not-checkpointed consolidation pass ──────────
+// ── Incremental, failed-not-checkpointed consolidation pass ──────────
 
 /// Run `consolidate` over every `raw`/`working` item created after the
 /// checkpoint watermark. The watermark advances only over inputs that
 /// commit successfully — a failed input is **not** checkpointed, so it is
-/// retried on the next pass (MC-2). No changed input is a successful no-op.
+/// retried on the next pass. No changed input is a successful no-op.
 pub(crate) fn run_incremental_pass(
     conn: &Connection,
     actor: &str,
@@ -406,7 +406,7 @@ pub(crate) fn run_incremental_pass(
     for candidate in candidates {
         let created_at = candidate.created_at as i64;
         let provenance_id = candidate.id.clone();
-        // The raw/working row stays exactly as-is (never rewritten, MC-1) —
+        // The raw/working row stays exactly as-is (never rewritten) —
         // consolidate() writes a *new* consolidated item citing it as
         // provenance; nothing here mutates `candidate`'s own row.
         match consolidate(conn, candidate, Some(&provenance_id), actor, now) {
@@ -430,13 +430,13 @@ pub(crate) fn run_incremental_pass(
     Ok(results)
 }
 
-// ── MC-7: emergent topic-cluster abstraction ────────────────────────────────
+// ── Emergent topic-cluster abstraction ────────────────────────────────
 
 /// A cluster's minimum size to be summary-eligible — below this, a cluster
 /// is too small to be worth an overview node.
 pub const MC7_MIN_CLUSTER_SIZE: usize = 3;
 /// A member's body is truncated to this many characters when folded into a
-/// summary — keeps the summary size-bounded (MC-7: must not re-trigger split).
+/// summary — keeps the summary size-bounded (must not re-trigger split).
 const MC7_MEMBER_EXCERPT_CHARS: usize = 200;
 
 /// Union-find over the `memory_edge` graph — the algorithmic *shape* named
@@ -562,7 +562,7 @@ pub(crate) fn synthesize_summaries(
     Ok(created)
 }
 
-// ── MC-10: advisory interest extraction (read-only, generator-free) ────────
+// ── Advisory interest extraction (read-only, generator-free) ────────
 
 /// One advisory interest topic — memory decides *what*; the caller (e.g. an
 /// inner-monologue-style background reviewer) decides *whether/when/how* to
@@ -577,7 +577,7 @@ pub struct InterestTopic {
 /// Emit at most `limit` interest topics from the most recently created
 /// active items, deduplicated by normalized title against the window
 /// itself (never the same title twice in one call) — bounded, read-only,
-/// generator-free (MC-10).
+/// generator-free.
 pub(crate) fn extract_interest_topics(
     conn: &Connection,
     limit: usize,
@@ -684,7 +684,7 @@ mod tests {
             "the max in-degree node normalizes to 1.0"
         );
         // `lonely` has zero in-edges — no row written, degrades to the
-        // signal store's own neutral default (MC-5).
+        // signal store's own neutral default.
         let lonely_factor = signal::factor(&c, &lonely, SignalKind::Centrality).unwrap();
         assert_eq!(lonely_factor, signal::NEUTRAL_FACTOR);
     }

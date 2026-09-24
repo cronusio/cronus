@@ -1,17 +1,17 @@
 //! Integration tests for the portability extension seam.
 //!
-//! Verifies the LP-4 vocabulary-isolation contract: builtin constants are
+//! Verifies the vocabulary-isolation contract: builtin constants are
 //! never mutated; host commands extend the Schema value only. Tests cover:
-//! - `run_with_schema` recognizes host-declared commands (LP-4)
+//! - `run_with_schema` recognizes host-declared commands
 //! - Without schema extension, host commands are silently parsed as text and
-//!   never appear in the execution log (LP-4 isolation gate)
+//!   never appear in the execution log (isolation gate)
 //! - `NoopPolicyProvider` compiles and satisfies its trait without executor
-//!   wiring (LP-2 no-op contract)
+//!   wiring (no-op contract)
 //! - `InMemoryStorageProvider` round-trips within one invocation and shares
-//!   no state across instances (LP-2 built-in sufficiency, §4.1/§4.11)
+//!   no state across instances (built-in sufficiency)
 //! - `PolicyProvider` gates a `ModelCall` and a `Deferred` effect before it
 //!   runs, non-halting on denial, byte-for-byte unchanged with no policy
-//!   supplied (LP-11, §4.9)
+//!   supplied
 
 use nodus::{
     ast::CommandCall,
@@ -54,7 +54,7 @@ impl SchemaProvider for TestSchemaProvider {
     }
 }
 
-// ─── LP-4 vocabulary extension gate ──────────────────────────────────
+// ─── vocabulary extension gate ──────────────────────────────────
 
 #[test]
 fn host_schema_extends_builtin() {
@@ -89,7 +89,7 @@ fn an_unregistered_command_is_a_validation_error_not_a_silent_skip() {
     // Without schema extension, CUSTOM_CMD is an unknown ALL_CAPS identifier.
     // The parser keeps such a line as raw text, which used to drop it out of
     // the run: the workflow finished `Ok` without ever having done the step.
-    // An unknown command has to fail at validation (NL-1), before anything runs.
+    // An unknown command has to fail at validation, before anything runs.
     let diagnostics = workflows::run(HOST_CMD_WF, "host_cmd_test.nodus", None)
         .expect_err("a workflow using an unregistered command must not run");
 
@@ -118,7 +118,7 @@ fn validation_reports_the_unknown_command_without_running_anything() {
 #[test]
 fn noop_policy_and_schema_compile() {
     // Verify NoopPolicyProvider and BuiltinSchemaProvider satisfy their traits
-    // without any executor wiring. Exercises LP-2: every extension point ships
+    // without any executor wiring. Exercises the seam rule: every extension point ships
     // with a built-in implementation sufficient for in-process use.
     let policy = NoopPolicyProvider;
 
@@ -136,8 +136,8 @@ fn noop_policy_and_schema_compile() {
 
 #[test]
 fn in_memory_storage_round_trips_within_invocation() {
-    // (a) store -> load returns the equal value, satisfying L1 §4.1's
-    // in-memory built-in mandate (LP-15) that NoopStorageProvider could not.
+    // (a) store -> load returns the equal value, satisfying the
+    // in-memory built-in mandate that NoopStorageProvider could not.
     let storage = InMemoryStorageProvider::new();
     storage.store("key", &Value::Text("hello".to_string()));
     assert_eq!(storage.load("key"), Some(Value::Text("hello".to_string())));
@@ -163,14 +163,14 @@ fn in_memory_storage_absent_key_returns_none() {
 #[test]
 fn in_memory_storage_instances_share_no_state() {
     // (d) two separate provider instances are isolated — the property that
-    // makes the built-in safe for in-process testing (LP-2's stated purpose).
+    // makes the built-in safe for in-process testing (its stated purpose).
     let a = InMemoryStorageProvider::new();
     let b = InMemoryStorageProvider::new();
     a.store("key", &Value::Text("only in a".to_string()));
     assert!(b.load("key").is_none());
 }
 
-// ─── LP-8 capability manifest fixtures ───────────────────────────────────────
+// ─── capability manifest fixtures ───────────────────────────────────────
 
 const MANIFEST_WF: &str = r#"§wf:manifest_test v1.0
 §runtime: { core: schema.nodus }
@@ -255,11 +255,11 @@ fn run_with_manifest_runs_when_satisfiable() {
     );
 }
 
-// ─── LP-3 two-host substitution ──────────────────────────────────────────────
+// ─── two-host substitution ──────────────────────────────────────────────
 
 #[test]
 fn manifest_lp3_two_host_substitution() {
-    // The LP-3 reduction: portability ⇔ "does host B satisfy the same manifest
+    // The reduction: portability ⇔ "does host B satisfy the same manifest
     // host A satisfied?"
     let manifest = CapabilityManifest::new().require_role(ExtensionRole::Storage);
 
@@ -344,7 +344,7 @@ fn manifest_rejects_before_side_effects() {
     );
 }
 
-// ─── LP-11 per-effect authorization gate ──────────────────────────────────────
+// ─── per-effect authorization gate ──────────────────────────────────────
 
 const DEFERRED_WF: &str = r#"§wf:deferred_test v1.0
 §runtime: { core: schema.nodus }
@@ -483,11 +483,11 @@ fn no_policy_supplied_is_byte_for_byte_unchanged() {
     assert_eq!(
         via_plain.status,
         Status::Ok,
-        "must remain unaffected by LP-11's addition"
+        "must remain unaffected by the policy gate's addition"
     );
 }
 
-// ─── LP-16 effect risk-class descriptors ──────────────────────────────────────
+// ─── effect risk-class descriptors ──────────────────────────────────────
 
 const RISK_DECORATED_WF: &str = r#"§wf:risk_decorated_test v1.0
 §runtime: { core: schema.nodus }
@@ -601,11 +601,11 @@ fn risk_descriptors_are_inert_without_a_policy_provider() {
     assert_eq!(
         via_plain.status,
         Status::Ok,
-        "must remain unaffected by LP-16's addition"
+        "must remain unaffected by the effect declarations' addition"
     );
 }
 
-// ─── NL-9 uncaught-error handler dispatch ─────────────────────────────────────
+// ─── uncaught-error handler dispatch ─────────────────────────────────────
 
 /// Two declared steps + a real `@err:` handler, so "the second step never ran"
 /// is directly observable in `result.log`.
@@ -857,7 +857,7 @@ fn retry_then_succeed_never_dispatches_err_handler() {
     );
 }
 
-// ─── LP-17 settlement effect seam ─────────────────────────────────────────────
+// ─── settlement effect seam ─────────────────────────────────────────────
 
 const SETTLE_WF: &str = r#"§wf:settle_test v1.0
 §runtime: { core: schema.nodus }
@@ -920,8 +920,8 @@ fn settlement_permits_and_settles() {
 
 #[test]
 fn settlement_gate_receives_positional_args() {
-    // The decide half reuses the LP-11 gate unchanged: context.args must
-    // already carry [payee, amount, purpose] positionally (§4.2 of the spec).
+    // The decide half reuses the gate unchanged: context.args must
+    // already carry [payee, amount, purpose] positionally.
     // run_with_policy defaults the act half to NoopSettlementRail, so the
     // gate permits but the rail never settles — Partial, not Ok — this test
     // is about what reaches the gate, not the settlement outcome.
@@ -1000,7 +1000,7 @@ fn settlement_denied_by_policy_never_settles() {
     );
     assert!(
         result.log.iter().any(|e| e.command == "ESCALATE"),
-        "a Signal-free POLICY_DENIED on SETTLE must reach NL-9 @err: dispatch automatically; log: {:?}",
+        "a Signal-free POLICY_DENIED on SETTLE must reach @err: dispatch automatically; log: {:?}",
         result.log
     );
 }
@@ -1033,7 +1033,7 @@ fn settlement_unaccounted_when_rail_returns_none() {
     );
     assert!(
         result.log.iter().any(|e| e.command == "ESCALATE"),
-        "a Signal-free SETTLEMENT_UNACCOUNTED must reach NL-9 @err: dispatch automatically; log: {:?}",
+        "a Signal-free SETTLEMENT_UNACCOUNTED must reach @err: dispatch automatically; log: {:?}",
         result.log
     );
     assert!(
@@ -1096,11 +1096,11 @@ fn no_settle_step_is_byte_for_byte_unchanged() {
     assert_eq!(
         via_plain.status,
         Status::Ok,
-        "must remain unaffected by LP-17's addition"
+        "must remain unaffected by the settlement gate's addition"
     );
 }
 
-// ─── DG-9/DG-10 memoizable & promotable approval ──────────────────────────────
+// ─── memoizable & promotable approval ──────────────────────────────
 
 /// Always resolves from a (fake) durable prior decision — never re-prompts.
 struct DialogRemembers;
@@ -1219,7 +1219,7 @@ fn pause_timeout_rejected_carry_no_dialog_provenance() {
     .expect("run_with_dialog_and_audit must succeed (non-halting) on rejection");
     // Two StepEnd events: the rejected ASK itself, then the dispatched
     // @err: ESCALATE handler (DEFERRED_WF declares one, and DIALOG_REJECTED
-    // is Signal-free — NL-9 dispatch fires automatically). Neither carries
+    // is Signal-free — handler dispatch fires automatically). Neither carries
     // dialog provenance: the ASK never resolved, and ESCALATE isn't a
     // dialog step at all.
     let provenance = step_end_provenance(&events.lock().unwrap());

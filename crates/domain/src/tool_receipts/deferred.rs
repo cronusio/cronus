@@ -1,6 +1,6 @@
-//! Deferred-action lifecycle (TR-8): an action detached from the current
-//! turn (EG-12) cannot be receipted at dispatch,
-//! because its result — the thing TR-3 requires inside the MAC — does not
+//! Deferred-action lifecycle: an action detached from the current
+//! turn cannot be receipted at dispatch,
+//! because its result — the thing the MAC must cover — does not
 //! exist yet. `Pending` is a distinct state, never a receipt over a
 //! placeholder result: a tag computed over a fabricated result would be a
 //! *valid* receipt for a false claim, which inverts the entire subsystem.
@@ -86,7 +86,7 @@ mod tests {
     /// `resolve_deferred` requires an actual `value` and a `binding` whose
     /// `result_digest` the caller can only have filled after observing the
     /// real outcome — reviewed here by inspection of the function
-    /// signature, the same TR-4-style absence argument `ledger.rs` makes
+    /// signature, the same default-deny-style absence argument `ledger.rs` makes
     /// for its own API surface.
     #[test]
     fn resolving_requires_supplying_both_the_binding_and_the_value() {

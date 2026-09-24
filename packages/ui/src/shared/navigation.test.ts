@@ -33,7 +33,7 @@ const projectFloor: Floor = {
 };
 
 describe("navigation model", () => {
-  it("exposes the canonical two-run sidebar order and rejects reordering (NV-1)", () => {
+  it("exposes the canonical two-run sidebar order and rejects reordering", () => {
     expect(SIDEBAR_PRIMARY[0]).toBe("dashboard");
     expect(SIDEBAR_PRIMARY[SIDEBAR_PRIMARY.length - 1]).toBe("wiki");
     expect(SIDEBAR_UTILITY).toEqual([
@@ -53,7 +53,7 @@ describe("navigation model", () => {
     expect(isCanonicalOrder(reordered)).toBe(false);
   });
 
-  it("freezes both runs — pins cannot mutate them (NV-1)", () => {
+  it("freezes both runs — pins cannot mutate them", () => {
     expect(Object.isFrozen(SIDEBAR_PRIMARY)).toBe(true);
     expect(Object.isFrozen(SIDEBAR_UTILITY)).toBe(true);
     const { pinned, primary, utility } = composeSidebar([
@@ -74,7 +74,7 @@ describe("navigation model", () => {
     ).toBe(true);
   });
 
-  it("resolves the per-subsystem L3 facet catalog (NV-10)", () => {
+  it("resolves the per-subsystem L3 facet catalog", () => {
     expect(L3_FACETS.schedule).toEqual([
       "cron",
       "pulse",
@@ -92,7 +92,7 @@ describe("navigation model", () => {
     expect(hasMechanismNav("chat")).toBe(false);
   });
 
-  it("enforces strict four-layer nesting (NV-6)", () => {
+  it("enforces strict four-layer nesting", () => {
     expect(NAV_LAYERS).toEqual([
       "building",
       "floor",
@@ -105,13 +105,13 @@ describe("navigation model", () => {
     expect(isChildLayer("subsystem", "floor")).toBe(false);
   });
 
-  it("pins the home floor as non-closable and always loaded (NV-9)", () => {
+  it("pins the home floor as non-closable and always loaded", () => {
     expect(isClosable(homeFloor)).toBe(false);
     expect(isClosable(projectFloor)).toBe(true);
     expect(shouldLoad(homeFloor, "proj-1")).toBe(true);
   });
 
-  it("lazy-loads project floors only when active or running (NV-2)", () => {
+  it("lazy-loads project floors only when active or running", () => {
     expect(shouldLoad(projectFloor, "home")).toBe(false);
     expect(shouldLoad(projectFloor, "proj-1")).toBe(true);
     const running = {
@@ -121,13 +121,13 @@ describe("navigation model", () => {
     expect(shouldLoad(running, "home")).toBe(true);
   });
 
-  it("marks inactive idle project floors unloadable but never home (NV-2/NV-9)", () => {
+  it("marks inactive idle project floors unloadable but never home", () => {
     expect(isUnloadable(projectFloor, "home")).toBe(true);
     expect(isUnloadable(projectFloor, "proj-1")).toBe(false);
     expect(isUnloadable(homeFloor, "proj-1")).toBe(false);
   });
 
-  it("routes settings keys to the correct tier (NV-4)", () => {
+  it("routes settings keys to the correct tier", () => {
     expect(settingsTier("appearance")).toBe("global");
     expect(settingsTier("models")).toBe("global");
     expect(settingsTier("office-identity")).toBe("local");

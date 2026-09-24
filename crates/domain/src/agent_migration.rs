@@ -1,4 +1,4 @@
-//! Agent migration (MEM-1/EXT-3/SEC-2): a source-neutral manifest (schema
+//! Agent migration: a source-neutral manifest (schema
 //! `agent-migration.v1`) that lets an agent receive memories, skills,
 //! conversation threads, and archive documents from another agent. Archive
 //! content is searchable-but-not-memory; memory candidates always go through
@@ -16,7 +16,7 @@ use crate::backup::{self, BackupRef};
 
 pub const SCHEMA_VERSION: &str = "agent-migration.v1";
 
-/// The four item kinds a manifest carries (§4.2).
+/// The four item kinds a manifest carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     Memory,
@@ -37,7 +37,7 @@ pub struct MigrationItem {
     pub content: String,
     /// Set by the source adapter when it recognizes the item as credential
     /// material (e.g. an API key read from the source system's config).
-    /// Credential items are always skipped (§4.4 stage 6) regardless of kind.
+    /// Credential items are always skipped regardless of kind.
     pub is_credential: bool,
 }
 
@@ -47,7 +47,7 @@ pub struct MigrationWarning {
     pub message: String,
 }
 
-/// The manifest itself (§4.1).
+/// The manifest itself.
 #[derive(Debug, Clone)]
 pub struct AgentMigrationManifest {
     pub schema_version: String,
@@ -61,7 +61,7 @@ pub struct AgentMigrationManifest {
 #[derive(Debug)]
 pub enum ApplyError {
     /// The manifest's `schema_version` is not `agent-migration.v1` — rejected
-    /// loudly rather than best-effort parsed (§5).
+    /// loudly rather than best-effort parsed.
     UnknownSchemaVersion(String),
     /// The pre-write backup (stage 2) failed; no later stage ran.
     BackupFailed(std::io::Error),
@@ -90,7 +90,7 @@ pub struct DryRunSummary {
 }
 
 /// Summarize a manifest against `already_imported` ids without writing
-/// anything (§4.4 stage 1: "never writes anything").
+/// anything ("never writes anything").
 pub fn dry_run_summary(
     manifest: &AgentMigrationManifest,
     already_imported: &BTreeSet<String>,
@@ -117,7 +117,7 @@ pub fn dry_run_summary(
     summary
 }
 
-// --- Two-layer split (§4.3) ---
+// --- Two-layer split ---
 
 #[derive(Debug, Clone, Default)]
 pub struct SplitItems {
@@ -128,7 +128,7 @@ pub struct SplitItems {
     /// `skill` → extension registry, `discovered`/inactive.
     pub skills: Vec<MigrationItem>,
     pub secrets_skipped: Vec<MigrationItem>,
-    /// Already present by id — never re-applied (identity-based merge, STO-9).
+    /// Already present by id — never re-applied (identity-based merge).
     pub duplicates_skipped: Vec<MigrationItem>,
 }
 
@@ -159,7 +159,7 @@ pub fn split_items(
     split
 }
 
-// --- Staged apply (§4.4) ---
+// --- Staged apply ---
 
 /// Which stage the run reached; also the terminal "everything ran" marker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,7 +185,7 @@ pub trait MemoryReviewQueue {
 }
 
 /// A sink for imported skills; returns `Err(reason)` on a name/category
-/// conflict (§4.4 stage 5) without aborting the rest of the batch.
+/// conflict without aborting the rest of the batch.
 pub trait SkillRegistrySink {
     fn import_discovered(&mut self, item: &MigrationItem) -> Result<(), String>;
 }
@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(split.duplicates_skipped.len(), 1);
         assert!(
             split.memory_candidates.is_empty(),
-            "identity-based merge: never blind-clobbers (STO-9)"
+            "identity-based merge: never blind-clobbers"
         );
     }
 

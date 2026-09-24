@@ -1,5 +1,5 @@
-//! Outbound egress gate (SEC-3): default-deny. A target may leave the device
-//! only if explicitly allowed; denied attempts are recorded for audit (SEC-7).
+//! Outbound egress gate: default-deny. A target may leave the device
+//! only if explicitly allowed; denied attempts are recorded for audit.
 
 use std::collections::HashSet;
 

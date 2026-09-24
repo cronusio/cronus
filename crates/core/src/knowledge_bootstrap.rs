@@ -31,14 +31,14 @@ use cronus_store_local::knowledge::KnowledgeDb;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// A one-shot HTTP/1.1 GET fetcher (KB-5 URL source ingestion), reusing the
+/// A one-shot HTTP/1.1 GET fetcher (URL source ingestion), reusing the
 /// `model-local` transport's own conventions (`FrameReader`-style: send the
 /// request, read the status line, read the body until the server closes the
 /// connection — no `Content-Length`/chunked parsing needed, since the request
 /// always sends `Connection: close`).
 ///
 /// **Disclosed scope:** `http://` only. `https://` (TLS), `robots.txt`
-/// compliance, and rate-limiting (§5.3) are deferred,
+/// compliance, and rate-limiting are deferred,
 /// separately-scoped follow-ups — this proves the fetch mechanics are real
 /// against a hermetic local server, not simulated.
 #[derive(Debug, Default)]
@@ -118,7 +118,7 @@ fn parse_http_url(url: &str) -> Result<(String, u16, String), String> {
 }
 
 /// The default local embedding endpoint — the Ollama convention
-/// (§4.4's federated provider catalog lists it first
+/// (the federated provider catalog lists it first
 /// among local defaults; `nomic-embed-text` is a common local embedding
 /// model). **Disclosed default, not a hardcoded assumption baked in
 /// everywhere:** a different local server/model requires constructing
@@ -169,7 +169,7 @@ impl std::fmt::Display for KnowledgeServiceError {
 
 impl std::error::Error for KnowledgeServiceError {}
 
-/// The assembled knowledge-store service (§4.7): the real
+/// The assembled knowledge-store service: the real
 /// store, embedding backend, and URL fetcher, composed behind the domain-tier
 /// pipeline. What `crates/cli`'s `cronus knowledge` verbs and any future
 /// agent-facing retrieval tool bind to.
@@ -228,7 +228,7 @@ impl KnowledgeService {
             .map_err(|e| KnowledgeServiceError::Store(e.to_string()))
     }
 
-    /// Ingest a plain-text/JSON record (KB-5 `RecordIngester`).
+    /// Ingest a plain-text/JSON record (`RecordIngester`).
     pub fn ingest_record(
         &self,
         document: Document,
@@ -246,7 +246,7 @@ impl KnowledgeService {
         .map_err(KnowledgeServiceError::Ingest)
     }
 
-    /// Ingest a web page (KB-5 `UrlIngester`) via the real `HttpUrlFetcher`
+    /// Ingest a web page (`UrlIngester`) via the real `HttpUrlFetcher`
     /// (`http://` only — see [`HttpUrlFetcher`]'s disclosed scope).
     pub fn ingest_url(
         &self,
@@ -266,9 +266,9 @@ impl KnowledgeService {
         .map_err(KnowledgeServiceError::Ingest)
     }
 
-    /// KB-4-gated hybrid retrieval: authorize `request.collection_ids` for
+    /// Access-gated hybrid retrieval: authorize `request.collection_ids` for
     /// `principal` against `grants`, narrowing to the readable subset (never
-    /// widening), retrieve (KB-11 query-prep left unwired here — `None` — a
+    /// widening), retrieve (query preparation left unwired here — `None` — a
     /// real preparer is a separate, later wiring concern), then
     /// defense-in-depth filter the fused results by collection access once
     /// more.
@@ -279,7 +279,7 @@ impl KnowledgeService {
     /// store-tier realization doesn't exist anywhere yet, matching the
     /// project-wide state of `GatedWiki`, which is equally unwired into any
     /// facade). Passing `KnowledgePrincipal::owner(...)` with a fresh
-    /// `GrantStore::new()` (RS-5: ownership alone authorizes) is the correct
+    /// `GrantStore::new()` (ownership alone authorizes) is the correct
     /// choice for a single-user CLI invocation, matching the `board`/
     /// `memory` CLI modules' own no-multi-tenant-gating precedent.
     pub fn query(
@@ -300,7 +300,7 @@ impl KnowledgeService {
         Ok(gate.filter_results(results))
     }
 
-    /// KB-10: advance a document's curation. `Draft` is agent-free;
+    /// Advance a document's curation. `Draft` is agent-free;
     /// `Reviewed`/`Stable` require `human_auth`.
     pub fn set_curation(
         &self,
@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn kb9_ingesting_over_an_existing_human_document_without_override_still_fails_at_the_store() {
         // The facade's ingest_record always writes with WriteOverride::None
-        // — confirms the KB-9 gate from A01 is still reachable/enforced
+        // — confirms the gate from A01 is still reachable/enforced
         // through the full facade path, not bypassed by the new wiring.
         let svc = service();
         svc.create_collection(&Collection::new("col-1", "user-1", "Docs"))
@@ -459,7 +459,7 @@ mod tests {
         // the caller explicitly constructed as human-origin.
         let ingested = svc.ingest_record(human_doc, "human authored content");
         // A brand-new human-origin document (no prior row) is NOT gated —
-        // KB-9 protects rewriting, not initial ingest (matches A01's
+        // The write gate protects rewriting, not initial ingest (matches A01's
         // documented semantics) — so this succeeds.
         assert!(
             ingested.is_ok(),

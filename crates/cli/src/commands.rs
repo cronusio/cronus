@@ -1255,7 +1255,7 @@ pub(crate) mod ext {
 
         /// Best-effort kind inference from a single imported file's
         /// extension. A real foreign package spans many files classified by
-        /// its own source adapter (§4.4); this binding handles the
+        /// its own source adapter; this binding handles the
         /// single-file case honestly until a directory-walking adapter
         /// exists.
         fn infer_kind(path: &Path) -> ForeignKind {
@@ -1340,7 +1340,7 @@ pub(crate) mod ext {
                 capabilities: Vec::new(),
                 permissions: ExtensionPermissions::default(),
             };
-            // The authoring model call is a seam (§4.4 Notes): this binding
+            // The authoring model call is a seam: this binding
             // lands an honest instruction-only skill from the prompt text
             // until a model adapter exists — no workflow.nd is fabricated.
             let authored = AuthoredSkill {
@@ -1389,7 +1389,7 @@ pub(crate) mod ext {
             }
         }
 
-        /// One skill's reportable status (§4.6: store origin, degradation
+        /// One skill's reportable status (store origin, degradation
         /// flag, pending-review state).
         struct SkillStatusView {
             origin: SkillTier,
@@ -1851,7 +1851,7 @@ pub(crate) mod archetype_cmd {
     }
 
     /// The office's active-archetype marker. A single state-tier file: absent
-    /// (or empty) means the archetype-free default (OA-11).
+    /// (or empty) means the archetype-free default.
     fn active_marker() -> PathBuf {
         state_dir().join("archetype").join("active")
     }
@@ -1974,7 +1974,7 @@ pub(crate) mod archetype_cmd {
             if deviations {
                 // No offices have run under this archetype in this surface yet,
                 // so its prior is unvalidated — reported honestly, never
-                // "correct" by default (OA-9).
+                // "correct" by default.
                 println!("validation: {:?}", ValidationStatus::Unvalidated);
             }
             0
@@ -1992,7 +1992,7 @@ pub(crate) mod archetype_cmd {
             println!("domain: {}", b.domain);
             println!("missing roles: {}", b.missing_roles.join(", "));
             println!(
-                "unblocking: each missing role must clear the ROL-9 gate in a \
+                "unblocking: each missing role must clear the gate in a \
                  separate role-catalog amendment first"
             );
             0
@@ -2116,7 +2116,7 @@ pub(crate) mod dev_office_cmd {
 
     use crate::output::{Context, describe_io_error};
 
-    /// The shipped default (DVO-5): the feedback tier is off. A build/deploy
+    /// The shipped default: the feedback tier is off. A build/deploy
     /// opt-in, not something this CLI exposes as a runtime flag.
     const FEEDBACK_TIER_ENABLED: bool = false;
 
@@ -2160,7 +2160,7 @@ pub(crate) mod dev_office_cmd {
         0
     }
 
-    /// The CLI operator running this command themselves IS the DVO-3 human
+    /// The CLI operator running this command themselves IS the human
     /// principal — a legitimate admission path, distinct from an *agent*
     /// self-granting through a tool call (no such tool call exists).
     pub(crate) fn admit(ctx: &Context) -> i32 {

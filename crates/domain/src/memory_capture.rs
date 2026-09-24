@@ -1,18 +1,18 @@
-//! MI-10/MI-11/MI-12: the write-time content transforms that complete the
-//! capture path an earlier stage deferred. MI-6's own gate/dedup/cross-ref needs
+//! The write-time content transforms that complete the
+//! capture path an earlier stage deferred. The gate/dedup/cross-ref step needs
 //! transactional multi-table writes and lives in the store tier
 //! (`cronus-store-local::memory::capture`) — this module is the zero-I/O
 //! half: pure content shaping, no schema, no DB access, composing with a
-//! generator seam that has no implementor bound this phase (matching MI-1's
-//! `answer` extractive degrade and MC-7's community detection: a documented
+//! generator seam that has no implementor bound this phase (matching the
+//! `answer` extractive degrade and the community detection: a documented
 //! seam, never a fabricated model behavior).
 
-// ── MI-12: raw vs inferred capture mode ─────────────────────────────────────
+// ── Raw vs inferred capture mode ─────────────────────────────────────
 
-/// A per-write mode flag (MI-12). `Inferred` is the default; `Raw` is the
+/// A per-write mode flag. `Inferred` is the default; `Raw` is the
 /// local-first / audit-exact / no-generator escape hatch and MUST function
 /// with no model bound — it never touches the generator seam at all, not
-/// even for MI-10 normalization.
+/// even for normalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CaptureMode {
     #[default]
@@ -20,16 +20,16 @@ pub enum CaptureMode {
     Raw,
 }
 
-/// The one model-dependent seam this module composes with (MI-10
-/// normalization, MI-12 inferred extraction). No implementor is wired this
+/// The one model-dependent seam this module composes with (temporal
+/// normalization, inferred extraction). No implementor is wired this
 /// phase — every caller here exercises [`NoGenerator`], the degrade path
 /// both invariants must prove.
 pub trait ContentGenerator {
-    /// MI-10: rewrite relative temporal expressions in `content` against
+    /// Rewrite relative temporal expressions in `content` against
     /// `observation_instant`. `None` (no generator bound) means the caller
     /// falls back to storing verbatim — never a fabricated date.
     fn normalize_temporal(&self, content: &str, observation_instant: u64) -> Option<String>;
-    /// MI-12 `inferred` mode: extract salient facts. `None` (no generator
+    /// `inferred` mode: extract salient facts. `None` (no generator
     /// bound) means the caller falls back to the input verbatim.
     fn extract_salient(&self, content: &str) -> Option<String>;
 }
@@ -47,8 +47,8 @@ impl ContentGenerator for NoGenerator {
     }
 }
 
-/// MI-10 + MI-12 composed: shape `content` for capture under `mode`. `Raw`
-/// never calls the generator at all (MI-12's own text: raw "MUST function
+/// Temporal normalization and inferred extraction composed: shape `content` for capture under `mode`. `Raw`
+/// never calls the generator at all (the requirement's own text: raw "MUST function
 /// with no model bound," realized here as never *asking* rather than asking
 /// and falling back). `Inferred` normalizes first, then extracts; either
 /// step degrades to its input verbatim when the generator returns `None`.
@@ -69,7 +69,7 @@ pub fn prepare_capture_body(
     }
 }
 
-// ── MI-11: caller capture directives ────────────────────────────────────────
+// ── Caller capture directives ────────────────────────────────────────
 
 /// Optional caller-scoped steering over what capture emphasizes. Absent
 /// (`Default`) is baseline — [`apply_directives`] returns `content`
@@ -105,7 +105,7 @@ fn contains_any(sentence: &str, terms: &[String]) -> bool {
 }
 
 /// The result of applying directives: the steered content plus a plain
-/// description of what happened — MI-11's "recorded as capture provenance."
+/// description of what happened — "recorded as capture provenance."
 /// This function persists nothing itself (domain tier, zero I/O); the
 /// caller decides where `provenance` goes.
 #[derive(Debug, Clone, PartialEq)]
@@ -114,8 +114,8 @@ pub struct DirectiveOutcome {
     pub provenance: String,
 }
 
-/// MI-11: steer emphasis via `include`/`exclude`/`custom_instruction`
-/// without ever lowering the MI-6 honesty floor or suppressing a
+/// Steer emphasis via `include`/`exclude`/`custom_instruction`
+/// without ever lowering the honesty floor or suppressing a
 /// safety-relevant fact — both negative invariants are enforced here, not
 /// left to the caller. `exclude` drops a matching sentence unless it is
 /// also safety-relevant, in which case it is retained regardless.
@@ -186,7 +186,7 @@ pub fn apply_directives(content: &str, directives: &CaptureDirectives) -> Direct
 mod tests {
     use super::*;
 
-    // ── MI-12: raw vs inferred ───────────────────────────────────────────
+    // ── Raw vs inferred ───────────────────────────────────────────
 
     #[test]
     fn raw_mode_never_touches_the_generator_and_is_immediately_usable_with_none_bound() {
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(CaptureMode::default(), CaptureMode::Inferred);
     }
 
-    // ── MI-10: temporal normalization composes through the same seam ────
+    // ── Temporal normalization composes through the same seam ────
 
     struct StubGenerator;
     impl ContentGenerator for StubGenerator {
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(body, "meet next Tuesday");
     }
 
-    // ── MI-11: capture directives ────────────────────────────────────────
+    // ── Capture directives ────────────────────────────────────────
 
     #[test]
     fn absent_directives_is_baseline_unchanged_content() {

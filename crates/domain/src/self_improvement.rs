@@ -1,14 +1,14 @@
-//! Self-improvement brief surface (MEM-6/7/8, §4.1–§4.6): five signal
+//! Self-improvement brief surface: five signal
 //! tables — calibration buckets, a mistake log, should-have-asked gaps,
 //! at-most-one-pending-per-project ask-backs, and reasoning templates — all
 //! joined by one `build_brief` call against the current working context.
 //! Each store is independently optional: a missing/unavailable store yields
 //! an empty section rather than failing the whole brief ("a partial brief is
-//! better than no brief", §2).
+//! better than no brief").
 //!
-//! Scope note: this module covers §4.1–§4.6 of the spec only — calibration,
+//! Scope note: this module covers only the first part of the design: calibration,
 //! mistakes, should-have-asked, ask-backs, templates, and the brief join.
-//! Sections §4.7 onward (advisor-executor handoff, plan backlog lifecycle,
+//! Later sections (advisor-executor handoff, plan backlog lifecycle,
 //! retrospective/milestone formats, behavior gates, spec quality scoring,
 //! decision velocity, the learnings journal, and skill-document training/
 //! evolution) describe a separate, much larger planning/training subsystem
@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-// --- §4.1 Calibration buckets ---
+// --- Calibration buckets ---
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CalibrationBucket {
@@ -49,7 +49,7 @@ pub struct CalibrationWarning {
     pub verified_ratio: f64,
 }
 
-/// Fires when `declared_success >= 5 AND verified_ratio < 0.50` (§4.1 brief gate).
+/// Fires when `declared_success >= 5 AND verified_ratio < 0.50` (brief gate).
 pub fn calibration_warning(bucket: &CalibrationBucket) -> Option<CalibrationWarning> {
     if bucket.declared_success < CALIBRATION_MIN_SAMPLE_FOR_WARN {
         return None;
@@ -66,7 +66,7 @@ pub fn calibration_warning(bucket: &CalibrationBucket) -> Option<CalibrationWarn
     }
 }
 
-/// Keyed by `(task_type, project)`; updates are additive (MEM-6).
+/// Keyed by `(task_type, project)`; updates are additive.
 #[derive(Debug, Default)]
 pub struct CalibrationStore {
     buckets: BTreeMap<(String, String), CalibrationBucket>,
@@ -113,7 +113,7 @@ impl CalibrationStore {
     }
 }
 
-// --- §4.2 Mistake log ---
+// --- Mistake log ---
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mistake {
@@ -132,11 +132,11 @@ pub struct CategoryCount {
     pub category: String,
     pub count: u32,
     pub last_seen: u64,
-    /// Set only in cross-project mode (§4.6.1), tagging a foreign-project row.
+    /// Set only in cross-project mode, tagging a foreign-project row.
     pub source_project: Option<String>,
 }
 
-/// Append-only mistake log (MEM-6).
+/// Append-only mistake log.
 #[derive(Debug, Default)]
 pub struct MistakeLog {
     rows: Vec<Mistake>,
@@ -161,7 +161,7 @@ impl MistakeLog {
     }
 
     /// Top-N mistake categories for `project` whose `files` overlap `files`,
-    /// ordered by count desc (§4.2 brief query).
+    /// ordered by count desc (brief query).
     pub fn top_categories_for_files(
         &self,
         project: &str,
@@ -176,7 +176,7 @@ impl MistakeLog {
         )
     }
 
-    /// Cross-project variant (§4.6.1): rows from other projects also count,
+    /// Cross-project variant: rows from other projects also count,
     /// tagged with their originating project.
     pub fn top_categories_cross_project(
         &self,
@@ -229,7 +229,7 @@ fn top_categories<'a>(
     counts
 }
 
-// --- §4.3 Should-have-asked ---
+// --- Should-have-asked ---
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShouldHaveAsked {
@@ -264,7 +264,7 @@ impl ShouldHaveAskedLog {
     }
 
     /// Distinct triggers for `project` overlapping `files`, most recent first
-    /// (§4.3 brief query).
+    /// (brief query).
     pub fn triggers_for_files(
         &self,
         project: &str,
@@ -318,7 +318,7 @@ impl ShouldHaveAskedLog {
     }
 }
 
-// --- §4.4 Ask-backs ---
+// --- Ask-backs ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AskBackStatus {
@@ -342,7 +342,7 @@ pub struct AskBack {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PendingAskBackExists;
 
-/// At-most-one-pending-per-project (§4.4), enforced here the way the
+/// At-most-one-pending-per-project, enforced here the way the
 /// reference partial UNIQUE INDEX enforces it at the database level: the
 /// insert itself fails immediately when a pending row already exists for
 /// the project.
@@ -403,7 +403,7 @@ impl AskBackStore {
     }
 }
 
-// --- §4.5 Reasoning templates ---
+// --- Reasoning templates ---
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Template {
@@ -421,13 +421,13 @@ pub struct Template {
 }
 
 /// One row per `(task_type, domain)`; re-extraction upserts in place,
-/// accumulating evidence rather than duplicating (§4.5).
+/// accumulating evidence rather than duplicating.
 #[derive(Debug, Default)]
 pub struct TemplateStore {
     templates: BTreeMap<(String, String), Template>,
 }
 
-/// Caller-supplied fields for one extraction/re-extraction (§4.5); `id`,
+/// Caller-supplied fields for one extraction/re-extraction; `id`,
 /// `times_used`, and `created_at` are store-managed bookkeeping, not inputs.
 pub struct TemplateUpsert<'a> {
     pub task_type: &'a str,
@@ -502,7 +502,7 @@ impl TemplateStore {
     }
 }
 
-// --- §4.6 Brief surface ---
+// --- Brief surface ---
 
 pub const BRIEF_TOP_CATEGORIES: usize = 5;
 pub const BRIEF_TOP_ASKS: usize = 5;
@@ -523,7 +523,7 @@ pub struct Brief {
 /// Join all five signals for `(project, files, task_type?, domain?)`. Every
 /// store parameter is optional — an absent store (simulating an open
 /// failure elsewhere) yields an empty section for that signal only, never a
-/// failed brief (§2 "a partial brief is better than no brief").
+/// failed brief ("a partial brief is better than no brief").
 #[allow(clippy::too_many_arguments)]
 pub fn build_brief(
     project: &str,
@@ -567,8 +567,7 @@ pub fn build_brief(
         .unwrap_or_default();
 
     // Calibration and template sections are always project-scoped — they do
-    // not generalize across project boundaries even in cross-project mode
-    // (§4.6.1).
+    // not generalize across project boundaries even in cross-project mode.
     let calibration_warning = match (task_type, calibration) {
         (Some(tt), Some(store)) => store.get(tt, project).and_then(calibration_warning),
         _ => None,

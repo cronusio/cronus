@@ -22,7 +22,7 @@ pub const CORE_IDENTITY: &str = "core";
 const CORE_SOURCE: &str = "core";
 
 /// The general capability a contribution's manifest must declare before it
-/// may register anything at all (EP-7). A point requiring a further,
+/// may register anything at all. A point requiring a further,
 /// specific grant for a security-relevant invocable is a real refinement
 /// this general gate does not yet model — deferred to whichever task wires
 /// up real extension manifests, not silently dropped.
@@ -37,9 +37,9 @@ pub const CONTRIBUTE_GRANT: &str = "invocable:contribute";
 /// `identity` are still distinguishable, and the registry can tell "the same
 /// extension registering more of its own invocables" apart from "two
 /// different extensions colliding on one name". `grants` is what the
-/// registrant's manifest declared (EP-7) — attaching to this registry at
+/// registrant's manifest declared — attaching to this registry at
 /// all requires [`CONTRIBUTE_GRANT`] among them; the core registrant needs
-/// none, being implicitly trusted (EP-12).
+/// none, being implicitly trusted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registrant {
     pub identity: String,
@@ -75,7 +75,7 @@ impl Registrant {
     }
 }
 
-/// Why a descriptor field failed its bound (EP-14). Refused outright — never
+/// Why a descriptor field failed its bound. Refused outright — never
 /// truncated, defaulted, or otherwise repaired — so this always names
 /// exactly what was wrong rather than a declaration silently altered to fit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +92,7 @@ pub enum DescriptorFieldError {
 /// Why a registration was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegistrationError {
-    /// A descriptor field violated its bound (EP-14) — checked before
+    /// A descriptor field violated its bound — checked before
     /// anything about the registrant, since a malformed descriptor is
     /// invalid regardless of who is trying to register it.
     InvalidDescriptor {
@@ -111,7 +111,7 @@ pub enum RegistrationError {
     /// fail this same check rather than a separate one.
     IdentityCollision { identity: String },
     /// The registrant's manifest did not declare the grant this registry
-    /// requires to register anything (EP-7). Never checked for the core
+    /// requires to register anything. Never checked for the core
     /// registrant, which needs no declared grant.
     MissingGrant { identity: String, grant: String },
     /// This exact qualified id is already registered.
@@ -120,7 +120,7 @@ pub enum RegistrationError {
 
 /// One bare-form shadowing event, returned as part of a successful
 /// [`Registration`] when this registration changed who answers
-/// [`InvocableRegistry::resolve_bare`] for a shared tail (EP-4's declared
+/// [`InvocableRegistry::resolve_bare`] for a shared tail (the declared
 /// *contribute* collision rule). `winner` now answers the bare-form lookup;
 /// `loser` remains registered and reachable only by its qualified identity
 /// until `winner` is disposed, at which point `loser` reclaims the slot.
@@ -130,8 +130,8 @@ pub struct Shadow {
     pub loser: InvocableId,
 }
 
-/// The effect that reverses one [`InvocableRegistry::register`] call
-/// (EP-13): disposing it removes exactly the descriptor it registered, and
+/// The effect that reverses one [`InvocableRegistry::register`] call:
+/// disposing it removes exactly the descriptor it registered, and
 /// its claim (winning or shadowed) on its tail's bare form — nothing else.
 /// Consumed by value on disposal, so a handle can be spent only once.
 #[derive(Debug)]
@@ -154,7 +154,7 @@ impl RegistrationHandle {
                 registry.bare.remove(&tail);
             }
         }
-        // Disposal is a mutation too (§4.9) — a verb belonging to a
+        // Disposal is a mutation too — a verb belonging to a
         // deactivated extension must disappear from every live projection
         // at once, which requires the same announcement registration uses.
         registry.notify_observers();
@@ -162,7 +162,7 @@ impl RegistrationHandle {
 }
 
 /// What a successful [`InvocableRegistry::register`] call returns: the
-/// effect that reverses it (EP-13), plus — only when this registration
+/// effect that reverses it, plus — only when this registration
 /// event changed who holds the bare form for a shared tail — the shadowing
 /// notice naming exactly who now wins and who does not. `shadow` is `None`
 /// on the overwhelmingly common path where no other registrant shares this
@@ -185,7 +185,7 @@ fn bare_winner(claimants: &[InvocableId]) -> &InvocableId {
         .unwrap_or(&claimants[0])
 }
 
-/// Bounds-check `invocable`'s own text and shape (EP-14) — refuses outright,
+/// Bounds-check `invocable`'s own text and shape — refuses outright,
 /// naming exactly which field and which bound was violated. `Binder` has no
 /// `description` field, so only `name` is bounded on each; a validation
 /// table entry that also names a binder description predates the field and
@@ -233,8 +233,8 @@ fn validate_text(
 /// [`InvocableRegistry::resolve`] finds any registered invocable by its full
 /// qualified id — always unambiguous. [`InvocableRegistry::resolve_bare`]
 /// finds one by its unqualified tail alone, and resolves to whichever
-/// registrant currently *wins* that tail under the declared collision rule
-/// (EP-4): the core always wins over any contribution, and among
+/// registrant currently *wins* that tail under the declared collision rule:
+/// the core always wins over any contribution, and among
 /// contributions alone the earliest-registered wins. A losing registrant is
 /// **shadowed, not displaced** — it stays registered and reachable by its
 /// qualified id, and reclaims the bare form the moment the winner is
@@ -264,7 +264,7 @@ impl std::fmt::Debug for InvocableRegistry {
     }
 }
 
-/// An observer of registry mutations (§4.9): notified once a mutation is
+/// An observer of registry mutations: notified once a mutation is
 /// already complete — never consulted before it, and never able to veto or
 /// alter it. `on_change` takes `&InvocableRegistry`, not `&mut`, which is
 /// what makes "cannot alter the mutation" a property the type system holds
@@ -294,7 +294,7 @@ impl InvocableRegistry {
         self.observers.push(observer);
     }
 
-    /// Notify every observer that a mutation just completed (§4.9).
+    /// Notify every observer that a mutation just completed.
     /// Observer failures are contained **individually**: a panic caught
     /// here neither undoes the mutation, which already happened, nor
     /// prevents an observer registered after the panicking one from
@@ -311,14 +311,14 @@ impl InvocableRegistry {
     }
 
     /// Register one invocable on behalf of `registrant`. The same function
-    /// serves the core and every contribution alike (EP-12) — there is no
+    /// serves the core and every contribution alike — there is no
     /// separate, privileged registration path.
     ///
-    /// A descriptor's own fields are validated first (EP-14), before
+    /// A descriptor's own fields are validated first, before
     /// anything about the registrant is even consulted — a malformed
     /// descriptor is invalid regardless of who is trying to register it.
     /// `invocable` is moved in by value, never taken by reference, so the
-    /// "normalized owned copy the registrant cannot afterwards reach" EP-14
+    /// "normalized owned copy the registrant cannot afterwards reach" the contract
     /// asks for is a property of that move: there is no aliasing path back
     /// to what the registry now stores.
     pub fn register(
@@ -362,7 +362,7 @@ impl InvocableRegistry {
         // Every registrant contends for its tail's bare form — not core
         // alone — because a contribution must be able to *win* that form
         // when no core entry claims it, and reclaim it later if the core
-        // entry claiming it is disposed (EP-4's declared collision rule).
+        // entry claiming it is disposed (the declared collision rule).
         let tail = invocable.id.tail().to_string();
         let claimants = self.bare.entry(tail).or_default();
         let winner_before = (!claimants.is_empty()).then(|| bare_winner(claimants).clone());
@@ -391,7 +391,7 @@ impl InvocableRegistry {
 
     /// Look up by full qualified id — reaches core and contributed
     /// invocables alike. Returns [`Resolved`], not `Option`, so the
-    /// "genuinely no such invocable" answer (SP-13) is a named domain fact
+    /// "genuinely no such invocable" answer is a named domain fact
     /// a caller matches on, not a generic absence indistinguishable from
     /// any other `None`.
     pub fn resolve(&self, id: &InvocableId) -> Resolved<'_> {
@@ -421,7 +421,7 @@ impl InvocableRegistry {
 }
 
 /// The core-drawn attribution for a contributed invocable, or `None` for a
-/// core one (EP-10). Always derived from the id's own qualifier — which
+/// core one. Always derived from the id's own qualifier — which
 /// [`InvocableRegistry::register`] already validated against the actual
 /// registrant before ever accepting it — so nothing the invocable's *other*
 /// fields say (`name`, `summary`) can alter or suppress it: the projection

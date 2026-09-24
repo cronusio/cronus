@@ -1,9 +1,9 @@
 //! Kanban board — single per-workspace board with file-backed cards.
 //!
 //! Fixed canonical state set: triage → todo → ready → running → blocked → done.
-//! Each transition appends a history entry (KAN-7). Done cards are auto-archived
-//! to `<ws>/kanban/archive/` without deletion (KAN-4). Custom columns and saved
-//! views (KAN-8) extend the canonical backbone as mapped extensions — see
+//! Each transition appends a history entry. Done cards are auto-archived
+//! to `<ws>/kanban/archive/` without deletion. Custom columns and saved
+//! views extend the canonical backbone as mapped extensions — see
 //! [`custom_boards`].
 
 pub mod custom_boards;
@@ -451,7 +451,7 @@ impl Board {
         Self::read_cards(&self.cards_dir())
     }
 
-    /// List archived cards — still readable after archival (KAN-4). An
+    /// List archived cards — still readable after archival. An
     /// archive directory that does not exist yet holds no cards.
     pub fn list_archived_cards(&self) -> Result<Vec<Card>> {
         Self::read_cards(&self.archive_dir())
@@ -489,7 +489,7 @@ impl Board {
         Ok(count)
     }
 
-    /// Load an archived card (still readable after archival, KAN-4).
+    /// Load an archived card (still readable after archival).
     pub fn get_archived_card(&self, id: &str) -> Result<Option<Card>> {
         let path = self.archive_path(id);
         if !path.exists() {

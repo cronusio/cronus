@@ -1,4 +1,4 @@
-//! Multi-user authentication (SEC-1/SEC-2): bcrypt password storage, 7-day
+//! Multi-user authentication: bcrypt password storage, 7-day
 //! session tokens, RFC 6238 TOTP two-factor authentication with single-use
 //! backup codes, per-user privilege maps, and admin promotion/demotion with
 //! privilege stashing. Reserved sentinel usernames are refused at creation so
@@ -9,8 +9,8 @@
 //! Password hashes and TOTP secrets never leave this module except through
 //! the narrow verify/enroll operations; nothing here is ever logged.
 //!
-//! The on-device default for the DN-2 auth and identity provider planes
-//! (§4.2, §4.5). `PrivilegeMap` and `RESERVED_USERNAMES` have no consumer
+//! The on-device default for the auth and identity provider planes.
+//! `PrivilegeMap` and `RESERVED_USERNAMES` have no consumer
 //! outside `AuthStore` (nothing in the domain tier references them), so the
 //! whole module travels together rather than being split across a
 //! tier boundary with nothing on the other side.
@@ -33,7 +33,7 @@ const BCRYPT_COST: u32 = bcrypt::DEFAULT_COST;
 #[cfg(test)]
 const BCRYPT_COST: u32 = 4;
 
-/// Usernames that may never be created or renamed into (§4.3). Any row with
+/// Usernames that may never be created or renamed into. Any row with
 /// a reserved name found on load is dropped fail-closed.
 pub const RESERVED_USERNAMES: &[&str] = &["internal-tool", "api", "demo", "system"];
 
@@ -42,7 +42,7 @@ const TOTP_STEP_SECONDS: u64 = 30;
 const TOTP_VALID_WINDOW: i64 = 1;
 const TOTP_BACKUP_CODE_COUNT: usize = 8;
 
-/// Per-user capability flags and limits (§4.2).
+/// Per-user capability flags and limits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrivilegeMap {
     pub can_use_agent: bool,
@@ -61,7 +61,7 @@ pub struct PrivilegeMap {
 }
 
 impl Default for PrivilegeMap {
-    /// `DEFAULT_PRIVILEGES` (SEC-2 safe defaults): shell access is off for a
+    /// `DEFAULT_PRIVILEGES` (safe defaults): shell access is off for a
     /// new user; the rest of normal chat/research use is on.
     fn default() -> Self {
         Self {
@@ -89,7 +89,7 @@ impl PrivilegeMap {
     }
 }
 
-/// One stored user (§4.1).
+/// One stored user.
 #[derive(Debug, Clone)]
 pub struct UserRecord {
     password_hash: String,
@@ -117,7 +117,7 @@ pub enum AuthError {
     InvalidTotpCode,
 }
 
-/// In-memory user directory. Persistence to `auth.json` (atomic-write, §4.7)
+/// In-memory user directory. Persistence to `auth.json` (atomic-write)
 /// is a host-side concern layered on top of this store.
 #[derive(Debug, Default)]
 pub struct AuthStore {
@@ -232,7 +232,7 @@ impl AuthStore {
         self.users.values().filter(|user| user.is_admin).count()
     }
 
-    /// Promote/demote with privilege stashing (§4.6). Demotion is refused if
+    /// Promote/demote with privilege stashing. Demotion is refused if
     /// it would remove the last remaining admin; the count check and the
     /// flip happen against the same `&mut self` borrow, so no concurrent
     /// caller can observe or race an intermediate state.
@@ -258,7 +258,7 @@ impl AuthStore {
         Ok(())
     }
 
-    // --- TOTP two-factor authentication (§4.5) ---
+    // --- TOTP two-factor authentication ---
 
     /// Begin enrollment: generate a pending secret and return it Base32
     /// encoded (for the `otpauth://` QR URI). Not active until confirmed.
@@ -352,7 +352,7 @@ impl AuthStore {
     }
 }
 
-/// Compose the login flow (§4.4 "Issue"): verify the password, then verify
+/// Compose the login flow: verify the password, then verify
 /// TOTP only if the account has it enabled, then hand back a fresh session.
 pub fn login(
     auth: &mut AuthStore,
@@ -374,7 +374,7 @@ pub fn login(
     Ok(sessions.issue(username))
 }
 
-/// One issued session token (§4.4).
+/// One issued session token.
 #[derive(Debug, Clone)]
 struct SessionRecord {
     username: String,
@@ -383,7 +383,7 @@ struct SessionRecord {
 
 /// Active session tokens. `validate` re-checks the token's owner still
 /// exists in the auth store — a deleted user's sessions die immediately,
-/// not at cookie expiry (the "orphan guard", §4.4).
+/// not at cookie expiry (the "orphan guard").
 #[derive(Debug, Default)]
 pub struct SessionStore {
     tokens: BTreeMap<String, SessionRecord>,
@@ -438,8 +438,8 @@ impl SessionStore {
 
 // ── AuthProvider / IdentityProvider (ports tier) ─────────────────────────────
 //
-// `AuthStore` is the concrete, bcrypt-backed implementation of the DN-2 auth
-// plane (§4.5). Unlike the SQLite-backed memory store, it is pure in-memory
+// `AuthStore` is the concrete, bcrypt-backed implementation of the auth
+// plane. Unlike the SQLite-backed memory store, it is pure in-memory
 // data (`BTreeMap`) with no non-`Sync` interior — the `Send + Sync` bound on
 // `AuthProvider` holds here without needing to be relaxed.
 
@@ -450,7 +450,7 @@ impl cronus_contract::AuthProvider for AuthStore {
     }
 }
 
-/// The DN-2 identity-plane on-device default (§4.5): a single local
+/// The identity-plane on-device default: a single local
 /// principal, no accounts, no multi-tenancy. The principal name is supplied
 /// by the caller (e.g. an OS-username lookup elsewhere) — this type holds
 /// it, it does not discover it, so it has no I/O of its own.
@@ -497,7 +497,7 @@ fn totp_at_step(secret: &[u8], step: u64) -> Option<String> {
 }
 
 /// Verify a 6-digit code within `valid_window` steps of `now_unix` (default
-/// window is 1, per §4.5 enrollment confirmation) to tolerate clock drift.
+/// window is 1.5 enrollment confirmation) to tolerate clock drift.
 fn totp_verify_at(secret: &[u8], now_unix: u64, code: &str, valid_window: i64) -> bool {
     let counter = (now_unix / TOTP_STEP_SECONDS) as i64;
     for delta in -valid_window..=valid_window {

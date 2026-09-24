@@ -1,11 +1,11 @@
-//! Tool-receipts invariant acceptance sweep (TR-1…TR-9) — the closing
+//! Tool-receipts invariant acceptance sweep — the closing
 //! validation for the phase. Each TR invariant maps to one named test,
 //! exercised through the real facade export chain (`cronus_core`'s
 //! re-exports), matching the `dev_office_invariants` /
 //! `knowledge_invariants` precedent — no direct `cronus-domain` dependency
 //! from this file.
 //!
-//! **Honest coverage boundary (INV-9, TR-8):** at the time this phase
+//! **Honest coverage boundary:** at the time this phase
 //! ships, exactly one production path in this codebase routes through
 //! `ReceiptedDispatch` — `dev_office_workspace::run_elevated_action`. There
 //! is no general tool-dispatch surface yet. Nothing in this file, and no
@@ -48,7 +48,7 @@ fn fixed_binding(action_id: u64) -> ActionBinding {
     }
 }
 
-// ── TR-1 Per-action receipt, no call-site opt-out ───────────────────────────
+// ── Per-action receipt, no call-site opt-out ───────────────────────────
 
 #[test]
 fn tr1_allowed_and_blocked_calls_are_both_receipted_with_no_opt_out() {
@@ -80,7 +80,7 @@ fn tr1_allowed_and_blocked_calls_are_both_receipted_with_no_opt_out() {
     );
 }
 
-// ── TR-2 Model-unforgeable ───────────────────────────────────────────────────
+// ── Model-unforgeable ───────────────────────────────────────────────────
 
 #[test]
 fn tr2_a_receipt_minted_under_one_session_does_not_verify_under_another() {
@@ -104,7 +104,7 @@ fn tr2_a_receipt_minted_under_one_session_does_not_verify_under_another() {
     );
 }
 
-// ── TR-3 Result authenticity ─────────────────────────────────────────────────
+// ── Result authenticity ─────────────────────────────────────────────────
 
 #[test]
 fn tr3_substituting_the_observed_result_invalidates_the_receipt() {
@@ -125,7 +125,7 @@ fn tr3_substituting_the_observed_result_invalidates_the_receipt() {
     assert!(!dispatch.verify(&binding, &receipted.receipt));
 }
 
-// ── TR-4 Existence authenticity (default-deny) ───────────────────────────────
+// ── Existence authenticity (default-deny) ───────────────────────────────
 
 #[test]
 fn tr4_an_action_id_never_dispatched_reports_unreceipted_never_a_fact() {
@@ -140,7 +140,7 @@ fn tr4_an_action_id_never_dispatched_reports_unreceipted_never_a_fact() {
     );
 }
 
-// ── TR-5 Ephemeral, isolated secret ──────────────────────────────────────────
+// ── Ephemeral, isolated secret ──────────────────────────────────────────
 
 #[test]
 fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
@@ -151,7 +151,7 @@ fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
     // Fresh entropy per session, not a constant compiled-in key: the same
     // action minted under two independently constructed dispatches must
     // disagree, and cross-session verification must fail (re-asserts
-    // TR-2's property from the ephemerality angle: rotation-on-restart
+    // the unforgeability property from the ephemerality angle: rotation-on-restart
     // means an old session's receipts are unverifiable by construction).
     let (binding, receipted) = first
         .invoke(&policy, "tr5.action", b"x", || Ok::<_, String>(()))
@@ -159,7 +159,7 @@ fn tr5_the_session_key_is_fresh_per_process_and_never_persisted_in_the_open() {
     assert!(!second.verify(&binding, &receipted.receipt));
 }
 
-// ── TR-6 Runtime-verified, not third-party ───────────────────────────────────
+// ── Runtime-verified, not third-party ───────────────────────────────────
 
 #[test]
 fn tr6_verification_is_reachable_only_through_a_live_in_process_session() {
@@ -178,7 +178,7 @@ fn tr6_verification_is_reachable_only_through_a_live_in_process_session() {
     assert!(cronus_core::tool_receipts::verify(&key, &binding, &receipt));
 }
 
-// ── TR-7 Complement, never replacement ───────────────────────────────────────
+// ── Complement, never replacement ───────────────────────────────────────
 
 #[test]
 fn tr7_the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allowed() {
@@ -196,7 +196,7 @@ fn tr7_the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allow
 
     assert!(
         !executed,
-        "TR-7: the gate's Blocked verdict must run first, unchanged, and the action must never execute once blocked"
+        "the gate's Blocked verdict must run first, unchanged, and the action must never execute once blocked"
     );
     assert_eq!(binding.outcome_tag, "blocked");
     // The type carries no allow/deny capability: `Receipted<Result<T,
@@ -205,7 +205,7 @@ fn tr7_the_gate_verdict_is_bound_as_an_input_and_the_action_runs_only_when_allow
     assert!(receipted.value().is_err());
 }
 
-// ── TR-8 Honest coverage boundary ────────────────────────────────────────────
+// ── Honest coverage boundary ────────────────────────────────────────────
 
 #[test]
 fn tr8_pending_deferred_work_is_never_silently_rounded_into_full_coverage() {
@@ -225,7 +225,7 @@ fn tr8_pending_deferred_work_is_never_silently_rounded_into_full_coverage() {
     assert_eq!(coverage.receipted, 1);
 }
 
-// ── TR-9 Tamper-evident auditable record ─────────────────────────────────────
+// ── Tamper-evident auditable record ─────────────────────────────────────
 
 #[test]
 fn tr9_every_mint_and_every_detected_mismatch_are_auditable_events() {
@@ -266,7 +266,7 @@ fn leak_path_debug_formatting_a_key_never_prints_a_key_byte() {
 #[test]
 fn leak_path_redact_pass_over_a_receipt_token_leaves_it_intact() {
     // A scrubbed receipt would be indistinguishable from a missing one,
-    // which would make TR-4 fire on a genuine action — the token must
+    // which would make the existence check fire on a genuine action — the token must
     // survive an ordinary redaction pass over unrelated secrets.
     let key = ReceiptKey::from_bytes([1u8; 32]);
     let receipt = mint(&key, &fixed_binding(1));
@@ -275,6 +275,6 @@ fn leak_path_redact_pass_over_a_receipt_token_leaves_it_intact() {
     let redacted = redact(&text, &["some-unrelated-secret", "another-secret"]);
     assert!(
         redacted.contains(&receipt.token),
-        "a receipt token is not secret material (TR-6) and must not be scrubbed"
+        "a receipt token is not secret material and must not be scrubbed"
     );
 }

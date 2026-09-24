@@ -1,7 +1,7 @@
 //! ModelProvider trait and supporting types.
 //!
 //! `ModelProvider`, `ProviderHealth`, `ProviderTier`, and `TaskType` moved to
-//! `cronus-contract` (§4.2) — the trait signature they
+//! `cronus-contract` — the trait signature they
 //! form is the seam concrete provider backends implement. `ProviderError`,
 //! `RoutingRequest`, and `RouteDecision` stay here: they are router-internal,
 //! never part of the `ModelProvider` trait itself.

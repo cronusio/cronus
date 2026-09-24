@@ -40,7 +40,7 @@ const floors: FloorTab[] = [
 ];
 
 describe("Phase 24 · spec conformance", () => {
-  it("NV-1 — the sidebar is two frozen runs in fixed canonical order", () => {
+  it("the sidebar is two frozen runs in fixed canonical order", () => {
     expect(Object.isFrozen(SIDEBAR_PRIMARY)).toBe(true);
     expect(Object.isFrozen(SIDEBAR_UTILITY)).toBe(true);
     expect(SIDEBAR_TABS).toEqual([
@@ -56,7 +56,7 @@ describe("Phase 24 · spec conformance", () => {
     ).toBe(false);
   });
 
-  it("NV-7 — L0 carries File/Edit/View/Help, the palette and the file-tree dock", () => {
+  it("L0 carries File/Edit/View/Help, the palette and the file-tree dock", () => {
     expect(MENU.map((g) => g.id)).toEqual([
       "file",
       "edit",
@@ -75,7 +75,7 @@ describe("Phase 24 · spec conformance", () => {
     expect(screen.getByTestId("toggle-files")).toBeInTheDocument();
   });
 
-  it("NV-10 — the L3 facet catalog is per-subsystem and earned, not uniform", () => {
+  it("the L3 facet catalog is per-subsystem and earned, not uniform", () => {
     expect(L3_FACETS.schedule).toEqual([
       "cron",
       "pulse",
@@ -85,7 +85,7 @@ describe("Phase 24 · spec conformance", () => {
     expect(screen.getByTestId("mechanism-nav")).toHaveAttribute("data-subsystem", "schedule");
   });
 
-  it("DI-2 — switching mode or scheme is a cosmetic attribute swap, never behavioural", () => {
+  it("switching mode or scheme is a cosmetic attribute swap, never behavioural", () => {
     const a = surfaceAttributes("dark", "default", true);
     const b = surfaceAttributes("light", "default", true);
     expect(a["data-theme"]).not.toBe(b["data-theme"]);
@@ -93,7 +93,7 @@ describe("Phase 24 · spec conformance", () => {
     expect(resolveScheme("dark", "made-up", true).schemeId).toBe("default");
   });
 
-  it("DI-3 — the craft lint rejects a literal visual value outside the token layer", () => {
+  it("the craft lint rejects a literal visual value outside the token layer", () => {
     const dir = mkdtempSync(join(tmpdir(), "conf-"));
     const bad = join(dir, "bad.tsx");
     writeFileSync(bad, 'const x = <div style={{ color: "#123456" }} />;\n');
@@ -123,7 +123,7 @@ describe("Phase 24 · spec conformance", () => {
     expect(CANONICAL_TOKENS.every((t) => t.startsWith("--") && t.length > 3)).toBe(true);
   });
 
-  it("INV-9 — no dead controls: an unbound menu leaf is dropped, surfaces are placeholders", () => {
+  it("no dead controls: an unbound menu leaf is dropped, surfaces are placeholders", () => {
     const reg = createActionRegistry([
       {
         id: "file.open",

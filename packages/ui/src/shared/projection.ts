@@ -1,12 +1,12 @@
 /**
  * A projection — the frontend's cache of one core-owned fact, plus the honest
- * status of the request that produced it (spec §4.2).
+ * status of the request that produced it.
  *
  * A projection store never invents a value. Its snapshot is exactly one of four
  * states, and "loaded but empty" is not the same state as "could not ask": the
  * distinction between *no offices* and *the core did not answer* is preserved all
  * the way to the render, because collapsing it is how a shell starts showing
- * fabricated data (INV-9). There is deliberately no default-empty state.
+ * fabricated data. There is deliberately no default-empty state.
  *
  * This module is the type and the store factory. Nothing fetches here — a core
  * event, delivered over the bridge subscription, drives `request` / `fulfill` /

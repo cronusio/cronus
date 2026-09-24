@@ -1,6 +1,6 @@
 //! The as-it-happens record of a run.
 //!
-//! Realizes `l1-usage-simulation` USM-5: every claim a run makes cites what
+//! Every claim a run makes cites what
 //! the product actually emitted, and observed output is the only evidence.
 //! An [`Entry`] is written the moment its invocation completes — never
 //! reconstructed afterward from the actor's own account of what it did —

@@ -1,7 +1,7 @@
 //! Context router — most-specific-first routing across memory, rules,
 //! and active session context.
 //!
-//! The pivot of the crate-topology migration (§4.6): this module depends on
+//! The pivot of the crate-topology migration: this module depends on
 //! the `MemorySearch` seam, never on a concrete persistence type. Before this
 //! change it held a `&MemoryStore` (SQLite-backed) and called one method on
 //! it — the single edge that chained the entire domain tier to `rusqlite`.

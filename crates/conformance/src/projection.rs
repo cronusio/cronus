@@ -1,4 +1,4 @@
-//! What a surface exposes to the corpus (§4.4/§4.5) — expressed only in
+//! What a surface exposes to the corpus — expressed only in
 //! ports-tier types, so a surface whose entire mechanism is a remote IPC
 //! bridge (the desktop shell, across its process boundary) can register a
 //! projection exactly as directly as one holding a live registry and
@@ -17,9 +17,9 @@ use cronus_contract::{ArgValues, Binder, Dispatched, Invocable, InvocableId};
 pub trait SurfaceProjection {
     /// Every invocable this surface currently exposes on its default,
     /// shipped listing (help, completion, discovery) — already filtered by
-    /// whatever this surface has declared it deliberately does not expose
-    /// (SP-8). Compared against the corpus's canonical shipped set, minus
-    /// the caller's own declared exclusions (§4.4's surface-set family).
+    /// whatever this surface has declared it deliberately does not expose.
+    /// Compared against the corpus's canonical shipped set, minus
+    /// the caller's own declared exclusions (the surface-set family).
     fn exposed(&self) -> Vec<Invocable>;
 
     /// The argument schema this surface currently advertises for `id` —

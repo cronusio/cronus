@@ -7,7 +7,7 @@
 //! `app.rs`'s key handler resolves a key press to the same variant before
 //! dispatching — so the two can never name a different set. What is
 //! deliberately NOT here is which key triggers which action: key bindings
-//! are terminal-surface presentation and stay local to `app.rs` (SP-8's
+//! are terminal-surface presentation and stay local to `app.rs` (the
 //! do-not-unify record already treats input mechanics as legitimately
 //! per-surface); what must not stay local is the action's own declaration.
 //!

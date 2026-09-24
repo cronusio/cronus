@@ -1,4 +1,4 @@
-//! Real macOS activation registration (§4.3).
+//! Real macOS activation registration.
 //!
 //! **Login-scoped:** a `LaunchAgent` plist in `~/Library/LaunchAgents/`,
 //! loaded via `launchctl`.
@@ -9,10 +9,10 @@
 //! `launchd` (not a user session) supervises it. Writing into
 //! `/Library/LaunchDaemons/` needs root; elevated via `sudo`, which prompts
 //! for the user's own password — a real, human-refusable authorization
-//! ceremony (BA-6), though a rougher one than the native macOS
+//! ceremony, though a rougher one than the native macOS
 //! authorization dialog `SMAppService.daemon` would show.
 //!
-//! **Disclosed gap vs. the Stable spec (both modes):** §4.2/§4.3 describe
+//! **Disclosed gap vs. the intended design (both modes):** it describes
 //! `SMAppService`, whose `status` distinguishes `requiresApproval` — a
 //! signal this LaunchAgent/LaunchDaemon+launchctl implementation cannot
 //! produce (that approval gate, and a native authorization prompt in place
@@ -21,8 +21,8 @@
 //! meaningfully larger dependency undertaking deferred to its own follow-up,
 //! and not evaluable at all on the Windows host this was written on, which
 //! has no macOS SDK). This implementation still delivers genuine
-//! login-scoped and system-scoped activation (BA-2); `*_vetoed` always
-//! reports `None` (no veto signal available), which is honest per BA-8 —
+//! login-scoped and system-scoped activation; `*_vetoed` always
+//! reports `None` (no veto signal available), which is honest —
 //! never a fabricated "not vetoed". Pure `std` — no crate: a plist is XML
 //! text (`std::fs`), `launchctl`/`sudo` are ordinary subprocesses
 //! (`std::process::Command`).
@@ -140,7 +140,7 @@ impl SystemCalls for MacosSystemCalls {
         let path = daemon_plist_path();
 
         // `sudo` prompts for the user's own password — a real, refusable
-        // authorization ceremony (BA-6), rougher than the native
+        // authorization ceremony, rougher than the native
         // SMAppService authorization dialog (see module doc).
         let mut child = Command::new("sudo")
             .arg("tee")
@@ -205,7 +205,7 @@ impl SystemCalls for MacosSystemCalls {
     fn uninstall_all(&self) -> Result<(), String> {
         // Every artifact this adapter's own label could occupy on macOS: the
         // LaunchAgent and the LaunchDaemon plists. Nothing else is ever
-        // inspected, so no foreign registration is ever in scope (BA-7).
+        // inspected, so no foreign registration is ever in scope.
         self.remove_login_entry()?;
         self.remove_system_entry()
     }

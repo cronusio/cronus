@@ -1,6 +1,6 @@
 //! The always-on replay lane: every pinned route under `tests/replays/`
 //! runs here, with no agent in the loop. This is the guarding half of
-//! `l1-usage-simulation` USM-7 — discovery is expensive and free-route;
+//! replay — discovery is expensive and free-route;
 //! this is cheap, deterministic, and belongs in the ordinary `cargo test`
 //! gate the whole workspace already runs on every change.
 

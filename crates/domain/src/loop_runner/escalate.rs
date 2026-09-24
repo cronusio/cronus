@@ -1,4 +1,4 @@
-//! The escalation gate (LG-7): the only path by which a *lower* loop's
+//! The escalation gate: the only path by which a *lower* loop's
 //! criteria — or, at Tier 4, its prompt/tools — become mutable. Never a side
 //! effect inside the judged loop; always performed by an *enclosing* loop
 //! with its own separated oracle, external novelty, and held-out proof.
@@ -6,7 +6,7 @@
 use crate::loop_runner::spec::Oracle;
 
 /// A source of novelty external to the loop's own prior output — new tasks,
-/// inputs, or feedback the loop did not generate itself (AFS-13 / LG-7): a
+/// inputs, or feedback the loop did not generate itself: a
 /// self-referential loop with no external novelty narrows into
 /// self-repetition rather than improving.
 pub trait NoveltySource {
@@ -54,7 +54,7 @@ pub struct HeldOutMeasurement {
     pub regression_bound: f64,
 }
 
-/// LG-7: attempt to escalate a change (a criteria change, or at Tier 4 a
+/// Attempt to escalate a change (a criteria change, or at Tier 4 a
 /// self-modification) for a loop governed by `target_oracle`. Both
 /// preconditions are hard gates checked before anything else: a separated
 /// oracle (`target_oracle`'s lineage differs from `actor_lineage`) and an
@@ -144,7 +144,7 @@ mod tests {
         assert_eq!(outcome, EscalationOutcome::Rejected);
     }
 
-    // --- LG-7 hard preconditions: refused, evaluation never runs -----------
+    // --- hard preconditions: refused, evaluation never runs -----------
 
     #[test]
     fn refuses_when_the_oracle_shares_the_actors_lineage_even_with_a_winning_metric() {

@@ -14,19 +14,19 @@ use output::{OutputFormat, json_escape};
 /// Which of the launcher's top-level modes a raw `argv` resolves to,
 /// decided before any composition or I/O runs — a pure function of the
 /// argument list, so the routing decision itself is testable without
-/// spawning a process or a terminal (LH-4's default composition made this
+/// spawning a process or a terminal (the default composition made this
 /// split worth making explicit rather than leaving it as an inline
 /// boolean).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LaunchMode {
-    /// No arguments at all — the default composition (LH-4).
+    /// No arguments at all — the default composition.
     DefaultComposition,
     /// A request addressed to the whole surface (`--help`, `--version`, a
     /// bare `help`, …) — answered from the full composition, never from
-    /// this frontend's own installation grammar (LH-3).
+    /// this frontend's own installation grammar.
     FullSurfaceRequest,
     /// Everything else — tried against the installation half first, with
-    /// no composition at all (LH-1/LH-5).
+    /// no composition at all.
     Verb,
 }
 
@@ -53,22 +53,22 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
 
     match launch_mode(&args) {
-        // A bare invocation is the default composition (LH-4): meeting the
+        // A bare invocation is the default composition: meeting the
         // product by typing its name brings up the terminal UI, exactly as
         // `cronus tui` names the same composition
         // explicitly. Answered with the same zero-composition property
-        // every installation verb already has (LH-1/LH-5) —
+        // every installation verb already has —
         // `cronus_tui::run()` composes its own registry/dispatcher
         // internally the moment it starts, so this launcher never builds
         // one first just to hand off to it.
         LaunchMode::DefaultComposition => return exit_code(installation::launch_tui()),
         // A request addressed to the whole surface falls through to the
         // full composition below — this frontend's own installation
-        // grammar only owns its *own* help (LH-3), not the top-level
+        // grammar only owns its *own* help, not the top-level
         // listing.
         LaunchMode::FullSurfaceRequest => {}
         // Everything else is tried against the installation half first,
-        // with no composition at all (LH-1/LH-5): an installation verb
+        // with no composition at all: an installation verb
         // must stay answerable even when the composition it would
         // configure is exactly what failed to come up.
         LaunchMode::Verb => {
@@ -98,7 +98,7 @@ fn main() -> std::process::ExitCode {
                     // its own `--help`) — never from an unrecognized top-level
                     // name, which is swallowed as an external subcommand
                     // instead. This is therefore always a genuine usage failure
-                    // scoped to this half's own grammar (LH-7): nothing below
+                    // scoped to this half's own grammar: nothing below
                     // this line has run, no session opened, nothing journaled.
                     e.exit();
                 }
@@ -108,10 +108,10 @@ fn main() -> std::process::ExitCode {
 
     // Compose: the shared registry and dispatcher every surface projects,
     // plus this frontend's own installation descriptors registered into the
-    // same catalog (for cross-surface honesty, SP-11 — this is the *other*
+    // same catalog (for cross-surface honesty — this is the *other*
     // consumer of the one declaration above). Structured as a real `Result`
     // rather than an early `expect()`: composition cannot actually fail
-    // today (no I/O, no extension loading yet), but the distinction LH-7
+    // today (no I/O, no extension loading yet), but the distinction the design
     // asks for must be representable now rather than retrofitted the day it
     // can.
     let (registry, dispatcher) = match compose(&installation_refs) {
@@ -132,17 +132,17 @@ fn main() -> std::process::ExitCode {
     // fresh every run — cheap, and the only way a plugin's newly
     // registered verb becomes visible in `--help` without a rebuild.
     // `subcommand_required` is set explicitly here rather than left to
-    // derive-macro inference (INV-9: `Cli` itself declares no subcommand
+    // derive-macro inference (`Cli` itself declares no subcommand
     // field for a compile-time enum to imply it from). `[MODIFIED]` A truly
     // bare invocation no longer reaches this line at all — it is now the
-    // default composition (LH-4), answered above before composition even
+    // default composition, answered above before composition even
     // runs. What this still refuses is the narrower case a bare invocation
     // used to stand in for: a global flag with no verb at all (`cronus
     // --format json`), which stays a genuine usage failure, not a spelling
     // of "launch the default."
     let mut command = cli::Cli::command().subcommand_required(true);
     // One alphabetical list, not two: the installation/semantic split is an
-    // internal build-order distinction (§4.1.1), not something a user reading
+    // internal build-order distinction, not something a user reading
     // `--help` should see as `workspace` … `agent` … `board`.
     let mut all_groups: Vec<Command> = installation_groups
         .into_iter()
@@ -189,7 +189,7 @@ fn main() -> std::process::ExitCode {
     }
 
     // Every verb this launcher can reach is either an installation verb or a
-    // registry-generated semantic one (INV-9: nothing else has a
+    // registry-generated semantic one (nothing else has a
     // descriptor, so nothing else can be shipped) — `subcommand_required`
     // above means `command.get_matches()` itself already refused anything
     // that matched neither before this point could ever be reached. A
@@ -202,7 +202,7 @@ fn main() -> std::process::ExitCode {
 /// The installation half's own pre-composition parser: just enough grammar
 /// to recognize and fully parse its own verbs, with everything it does not
 /// own passed through untouched rather than refused — ownership of an
-/// unrecognized name is not this half's question to answer (LH-5).
+/// unrecognized name is not this half's question to answer.
 fn pre_composition_command(installation_groups: Vec<Command>) -> Command {
     let mut pre = Command::new("cronus")
         .about("Cronus — workflow automation toolkit")

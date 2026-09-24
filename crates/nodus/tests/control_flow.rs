@@ -121,7 +121,7 @@ const SWITCH_NO_MATCH_WF: &str = r#"§wf:switch_nomatch v1.0
   2. LOG(after) → $out
 "#;
 
-// Each arm binds a trailing → $target (NL-10:
+// Each arm binds a trailing → $target (the pipeline rule:
 // "?SWITCH arm actions bind their targets in declaration order"). Two
 // distinct target names prove per-arm binding — not a single shared target
 // aliased across the whole switch — and the later step reading whichever
@@ -278,10 +278,10 @@ fn retry_reruns_failing_step_up_to_bound() {
         "errors: {:?}",
         result.errors
     );
-    // NL-9: exhausted retries leave an uncaught DIALOG_TIMEOUT behind, and
+    // Exhausted retries leave an uncaught DIALOG_TIMEOUT behind, and
     // RETRY_TIMEOUT_WF declares `@err: ESCALATE(human)` — the handler now
     // dispatches, which is the terminal action for the run, so step 2
-    // (`LOG`) no longer executes. This assertion was written before NL-9
+    // (`LOG`) no longer executes. This assertion was written before `@err:`
     // dispatch existed, when "routes to @err:" was still
     // documented-but-unbuilt (the language spec's own ~RETRY:n row always
     // said exhaustion "routes to @err:"); updated to match the real behavior
@@ -320,7 +320,7 @@ fn retry_reruns_failing_step_up_to_bound() {
 }
 
 // ~MAP — transforms a collection element-by-element via the implicit `$it`
-// binding. Validated end-to-end through workflows::run: until the NL-10
+// binding. Validated end-to-end through workflows::run: until the
 // E004 conformance fix, every ~MAP workflow was rejected before it ran.
 const MAP_WF: &str = r#"§wf:map_transform v1.0
 §runtime: { core: schema.nodus }

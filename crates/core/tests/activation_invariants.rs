@@ -1,5 +1,5 @@
-//! Service-activation invariant acceptance sweep (
-//! BA-1…BA-11) — the closing validation for this subsystem. Each testable
+//! Service-activation invariant acceptance sweep —
+//! the closing validation for this subsystem. Each testable
 //! invariant maps to one named test, exercised through the **real facade
 //! export chain**: the domain policy engine (`cronus_core::activation::
 //! enable`/`disable`) driving a registry that implements the
@@ -8,20 +8,20 @@
 //! in isolation.
 //!
 //! **Invariants covered elsewhere, cited rather than duplicated:**
-//! - BA-2 (two modes, one identical engine binary) and BA-9 (supervision
+//! - The two-modes rule (two modes, one identical engine binary) and the supervision rule (supervision
 //!   belongs to the mode; the engine's own recovery is unchanged) are
 //!   structural — nothing was added to the engine's own behavior or
 //!   recovery ladder by this phase — verified by inspection, not a runtime
 //!   assertion a unit test can usefully make.
-//! - BA-4 (structural no-agent-write-path): `crates/domain/src/
+//! - `crates/domain/src/
 //!   sandbox_policy.rs` (`FilesystemPolicy`/`FILESYSTEM_REGISTRATION_LOCATIONS`)
 //!   and `crates/core/tests/tool_security.rs` (`is_activation_tool_name`).
-//! - BA-10's real per-host capability check (non-systemd Linux → `Unsupported`)
+//! - The real per-host capability check (non-systemd Linux → `Unsupported`)
 //!   is unit-tested with the real detection logic in `crates/activation-os/
 //!   src/lib.rs` (`capabilities_reflect_a_real_per_host_check_not_a_hardcoded_yes`);
 //!   this file proves only that the *type* is representable and distinct
 //!   through the facade.
-//! - BA-11 (state-root lock, attach-never-duplicate): `crates/core/src/
+//! - `crates/core/src/
 //!   engine_lock.rs`'s own test module, exercised against a real temp
 //!   directory with real file I/O.
 
@@ -91,7 +91,7 @@ impl ActivationRegistry for FakeRegistry {
     }
 }
 
-// --- BA-1: manual launch is the complete default -----------------------------
+// --- Manual launch is the complete default -----------------------------
 
 #[test]
 fn ba1_a_fresh_registry_reports_inactive_manual_is_the_default() {
@@ -99,7 +99,7 @@ fn ba1_a_fresh_registry_reports_inactive_manual_is_the_default() {
     assert_eq!(registry.observe(), ActivationState::Inactive);
 }
 
-// --- BA-3: at most one activation registration -------------------------------
+// --- At most one activation registration -------------------------------
 
 #[test]
 fn ba3_enabling_a_different_mode_removes_the_prior_one_first() {
@@ -116,7 +116,7 @@ fn ba3_enabling_a_different_mode_removes_the_prior_one_first() {
     );
 }
 
-// --- BA-5: activation is a disclosed autonomy grant, per-mode consent -------
+// --- Activation is a disclosed autonomy grant, per-mode consent -------
 
 #[test]
 fn ba5_consent_for_one_mode_never_authorizes_the_other() {
@@ -139,7 +139,7 @@ fn ba5_consent_for_one_mode_never_authorizes_the_other() {
     ));
 }
 
-// --- BA-6: least privilege — a refused elevation changes nothing ------------
+// --- Least privilege — a refused elevation changes nothing ------------
 
 #[test]
 fn ba6_a_refused_elevation_leaves_the_host_exactly_as_it_was() {
@@ -155,7 +155,7 @@ fn ba6_a_refused_elevation_leaves_the_host_exactly_as_it_was() {
     );
 }
 
-// --- BA-7: reversible and complete -------------------------------------------
+// --- Reversible and complete -------------------------------------------
 
 #[test]
 fn ba7_disable_removes_whatever_is_registered_and_verifies_absence() {
@@ -165,7 +165,7 @@ fn ba7_disable_removes_whatever_is_registered_and_verifies_absence() {
     assert_eq!(registry.observe(), ActivationState::Inactive);
 }
 
-// --- BA-8: observed state, never remembered state ---------------------------
+// --- Observed state, never remembered state ---------------------------
 
 #[test]
 fn ba8_requires_approval_is_never_folded_into_activated() {
@@ -192,7 +192,7 @@ fn ba8_an_unqueryable_facility_reports_unknown_never_active() {
     assert_ne!(state, ActivationState::Active(ActivationMode::Login));
 }
 
-// --- BA-10: spoke hosts refuse activation, visibly, per-mode ----------------
+// --- Spoke hosts refuse activation, visibly, per-mode ----------------
 
 #[test]
 fn ba10_an_unsupported_mode_is_representable_and_distinct_from_supported() {

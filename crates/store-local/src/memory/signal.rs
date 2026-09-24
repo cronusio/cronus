@@ -1,7 +1,7 @@
-//! Derived-signal store (MC-5): the fact-vs-derived boundary. A row here is
+//! Derived-signal store: the fact-vs-derived boundary. A row here is
 //! computed, versioned, and disposable — never authored fact, never written
 //! into `memories`. Absent or version-stale signals degrade to a neutral
-//! multiplier (MC-8) rather than blocking or erroring, so a cold corpus with
+//! multiplier rather than blocking or erroring, so a cold corpus with
 //! no signals computed yet is a fully supported state, not a failure mode.
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -14,11 +14,11 @@ use cronus_contract::MemoryId;
 /// algorithm that produced rows of that kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignalKind {
-    /// Graph in-degree over the fact-layer edges (MC-3 edges → MC-8 factor).
+    /// Graph in-degree over the fact-layer edges (edges → ranking factor).
     Centrality,
-    /// Topic-cluster membership from community detection (MC-7 → MC-8 factor).
+    /// Topic-cluster membership from community detection (community detection → ranking factor).
     Cluster,
-    /// Recency, decayed with age and cushioned by centrality (MC-6 archive → MC-8 factor).
+    /// Recency, decayed with age and cushioned by centrality (archive → ranking factor).
     Recency,
 }
 
@@ -33,7 +33,7 @@ impl SignalKind {
 
     /// The algorithm version this build computes for this kind. A stored row
     /// whose `version` differs was computed by a since-changed algorithm and
-    /// is treated as absent (MC-5) rather than trusted.
+    /// is treated as absent rather than trusted.
     fn current_version(self) -> i64 {
         match self {
             SignalKind::Centrality => 1,
@@ -44,7 +44,7 @@ impl SignalKind {
 }
 
 /// The neutral multiplier substituted for an absent or version-stale signal
-/// (MC-5/MC-8) — ranking degrades gracefully, it never blocks or errors.
+///  — ranking degrades gracefully, it never blocks or errors.
 pub const NEUTRAL_FACTOR: f64 = 1.0;
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
@@ -90,10 +90,10 @@ pub(crate) fn write(
 
 /// Read a derived signal's ranking factor. Returns [`NEUTRAL_FACTOR`] when the
 /// row is absent OR its stored `version` no longer matches this build's
-/// `current_version()` (MC-5) — never an error, never a hot-path block. No
+/// `current_version()` — never an error, never a hot-path block. No
 /// warning is logged here: absence is the expected, fully-supported
-/// cold-start state, not an anomaly, and this stays on the recall hot path
-/// (MEM-2), so it does no more than one indexed point lookup.
+/// cold-start state, not an anomaly, and this stays on the recall hot path,
+/// so it does no more than one indexed point lookup.
 pub(crate) fn factor(conn: &Connection, item_id: &MemoryId, kind: SignalKind) -> Result<f64> {
     let row: Option<(f64, i64)> = conn
         .query_row(
@@ -109,7 +109,7 @@ pub(crate) fn factor(conn: &Connection, item_id: &MemoryId, kind: SignalKind) ->
     })
 }
 
-/// Remove every signal for an item (e.g. before a merge discards it, MC-6).
+/// Remove every signal for an item (e.g. before a merge discards it).
 pub(crate) fn clear(conn: &Connection, item_id: &MemoryId) -> Result<()> {
     conn.execute(
         "DELETE FROM memory_signal WHERE item_id = ?1",

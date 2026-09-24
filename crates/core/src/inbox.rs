@@ -1,8 +1,8 @@
 //! Inter-actor inbox — SQLite-backed send/drain pipeline with GC and bus events.
 //!
 //! `BusEvent`, the `BusSender` trait, and its stub implementations moved to
-//! `cronus-contract` (§4.2); the SQLite-backed pipeline moved to
-//! `cronus-store-local` (§4.6). Re-exported here so every existing call site
+//! `cronus-contract`; the SQLite-backed pipeline moved to
+//! `cronus-store-local`. Re-exported here so every existing call site
 //! is unaffected.
 
 pub use cronus_contract::{BusEvent, BusSender, CaptureBusSender, NoOpBusSender};

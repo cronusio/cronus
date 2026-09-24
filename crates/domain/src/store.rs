@@ -1,10 +1,10 @@
 //! Durable, restartable state — the persistence seam.
 //!
 //! This defines the `StateStore` contract plus a std-only file-backed default,
-//! enough to prove durability and restartable load (STO-2 / INV-5). The
+//! enough to prove durability and restartable load. The
 //! SQLite + sqlite-vec backend is provided by the memory store in a later phase.
 //!
-//! `StateStore` moved to `cronus-contract` (§4.2); the
+//! `StateStore` moved to `cronus-contract`; the
 //! implementation (`FileStore`) stays here, in the domain tier.
 
 use std::collections::BTreeMap;

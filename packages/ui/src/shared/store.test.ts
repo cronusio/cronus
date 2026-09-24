@@ -46,7 +46,7 @@ const make = (): Store<CounterState, CounterAction> =>
   );
 
 describe("createStore — the reactive substrate", () => {
-  it("dispatch is the only mutation path and notifies every subscriber (AS-1)", () => {
+  it("dispatch is the only mutation path and notifies every subscriber", () => {
     const store = make();
     const seen: number[] = [];
     store.subscribe(() => seen.push(store.snapshot().count));
@@ -65,7 +65,7 @@ describe("createStore — the reactive substrate", () => {
     ]);
   });
 
-  it("subscribe returns a deregister function that stops notifications (AS-4)", () => {
+  it("subscribe returns a deregister function that stops notifications", () => {
     const store = make();
     const listener = vi.fn();
     const off = store.subscribe(listener);
@@ -98,7 +98,7 @@ describe("createStore — the reactive substrate", () => {
 });
 
 describe("useStore — scoped selector subscription", () => {
-  it("re-renders only when the selected slice changes (AS-3)", () => {
+  it("re-renders only when the selected slice changes", () => {
     const store = make();
     let renders = 0;
     const { result } = renderHook(() => {
@@ -164,7 +164,7 @@ describe("useStore — scoped selector subscription", () => {
     });
   });
 
-  it("unmounting the hook deregisters its store subscription (AS-4)", () => {
+  it("unmounting the hook deregisters its store subscription", () => {
     const inner = make();
     let active = 0;
     const store: Store<CounterState, CounterAction> = {

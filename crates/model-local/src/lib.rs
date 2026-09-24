@@ -1,6 +1,6 @@
 //! `cronus-model-local` — the streaming REST transport realizing
 //! Endpoint profiles over the federated local provider
-//! catalog (technology-stack §4.4), the streaming generate call,
+//! catalog, the streaming generate call,
 //! plus (in a later phase task) embed/describe/pull and failure mapping.
 //!
 //! This module's scope so far: the endpoint-profile model, its reachability
@@ -15,8 +15,8 @@
 //! cooperative-cancellation contract (poll a short read timeout, check the
 //! `CancelHandle`, retry) does not map cleanly onto a higher-level client's
 //! whole-body timeout model — so the streaming call below drives a raw
-//! `TcpStream` directly. A real HTTP+TLS client (the dependency `l2-
-//! model-runtime` §2 sanctions) is deferred to the remote/egress-gated
+//! `TcpStream` directly. A real HTTP+TLS client
+//! is deferred to the remote/egress-gated
 //! profile path, where TLS is genuinely required; adding it before that
 //! path exists would be an unused dependency.
 
@@ -33,11 +33,11 @@ use cronus_contract::{
     ResidencyHint, StreamEvent,
 };
 
-/// The stack §4.4 probe discipline: no probe blocks longer than this by
+/// The stack's probe discipline: no probe blocks longer than this by
 /// default. Tests override via `probe_with_timeout`.
 pub const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 
-/// Which request/response shape a provider speaks (§4.3).
+/// Which request/response shape a provider speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolFamily {
     /// OpenAI-compatible `/v1/...` surface (llama.cpp, MLX, vLLM, LM Studio,
@@ -47,7 +47,7 @@ pub enum ProtocolFamily {
     Native,
 }
 
-/// Capability flags an endpoint declares (MR-2/MR-6/MR-9) — data, not a
+/// Capability flags an endpoint declares — data, not a
 /// promise: a capability absent here is reported to the caller as absent,
 /// never silently emulated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -65,20 +65,20 @@ pub enum ProfileError {
     /// `api_base` did not parse into a connectable host[:port].
     InvalidAddress(String),
     /// The host is not loopback, and `EndpointProfile::new` is loopback-only
-    /// by default (MR-1) — a remote endpoint must be built with
+    /// by default — a remote endpoint must be built with
     /// [`EndpointProfile::new_remote`], which requires an [`EgressGrant`].
     NotLoopback(String),
     /// The host is a wildcard bind address (`0.0.0.0` / `::`), never a
-    /// valid connect target (stack §4.4).
+    /// valid connect target.
     WildcardAddress(String),
     /// A remote profile's [`EgressGrant`] authorized a different endpoint
     /// than the one being constructed — the grant is endpoint-scoped and is
-    /// not a blanket egress permit (SEC-8).
+    /// not a blanket egress permit.
     GrantEndpointMismatch { granted: String, requested: String },
 }
 
 /// Resolves the credential for a remote endpoint **at call time**, so the
-/// secret is never cached in the profile or in config (§4.4, INV-7). The
+/// secret is never cached in the profile or in config. The
 /// concrete implementation wraps the secret store; the transport only calls
 /// `resolve` when it is about to build a request and forgets the result
 /// immediately after attaching it. `None` means "no credential available"
@@ -89,9 +89,9 @@ pub trait CredentialResolver: Send + Sync {
     fn resolve(&self, endpoint: &str) -> Option<String>;
 }
 
-/// Proof that the security egress gate (SEC-8) authorized reaching a
+/// Proof that the security egress gate authorized reaching a
 /// specific remote endpoint. Minted by the security layer that owns the
-/// egress decision — **never** by the transport itself (SEC-10: the agent's
+/// egress decision — **never** by the transport itself (the agent's
 /// execution plane cannot self-authorize egress). Requiring one to build a
 /// remote profile makes "no remote call without an egress grant" a
 /// compile-time property: [`EndpointProfile::new_remote`] cannot be called
@@ -116,7 +116,7 @@ impl EgressGrant {
     }
 }
 
-/// Outcome of a reachability probe (§4.3, mirrors technology-stack §4.4).
+/// Outcome of a reachability probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProbeOutcome {
     Reachable,
@@ -125,7 +125,7 @@ pub enum ProbeOutcome {
     InvalidAddress,
 }
 
-/// How to talk to one catalog provider (§4.3) — data, not code. The address
+/// How to talk to one catalog provider — data, not code. The address
 /// (`api_base`) is supplied by the caller (the router's policy); this
 /// profile adds only the how-to-talk layer, never a parallel address
 /// registry.
@@ -133,7 +133,7 @@ pub enum ProbeOutcome {
 /// Not `PartialEq`/`Eq`: a remote profile carries a credential resolver
 /// (`Arc<dyn CredentialResolver>`) that has no meaningful equality, and
 /// comparing profiles is not a use this crate needs. `Debug` is hand-written
-/// to redact the resolver — a secret source must never reach a log (INV-7).
+/// to redact the resolver — a secret source must never reach a log.
 #[derive(Clone)]
 pub struct EndpointProfile {
     api_base: String,
@@ -160,7 +160,7 @@ impl fmt::Debug for EndpointProfile {
 }
 
 impl EndpointProfile {
-    /// Construct a loopback-only profile — the default per MR-1. Rejects a
+    /// Construct a loopback-only profile — the default. Rejects a
     /// non-loopback host and a wildcard bind address; a remote profile is a
     /// distinct, egress-gated construction path ([`Self::new_remote`]).
     pub fn new(
@@ -191,11 +191,11 @@ impl EndpointProfile {
     }
 
     /// Construct a **remote** (non-loopback-permitted) profile. Requires an
-    /// [`EgressGrant`] scoped to this exact `api_base` (SEC-8) — the type
+    /// [`EgressGrant`] scoped to this exact `api_base` — the type
     /// makes "no remote profile without an egress grant" a compile-time
     /// guarantee. The credential is not passed here: a [`CredentialResolver`]
-    /// is stored and invoked per call so the secret is never cached
-    /// (§4.4, INV-7). A wildcard bind address is still rejected.
+    /// is stored and invoked per call so the secret is never cached.
+    /// A wildcard bind address is still rejected.
     pub fn new_remote(
         api_base: impl Into<String>,
         protocol: ProtocolFamily,
@@ -263,8 +263,8 @@ impl EndpointProfile {
         }
     }
 
-    /// Stream a generation call with the default bounded channel capacity
-    /// (MR-8). Blocking pull-iterator: a worker thread owns the HTTP
+    /// Stream a generation call with the default bounded channel capacity.
+    /// Blocking pull-iterator: a worker thread owns the HTTP
     /// connection; the caller drives it by advancing the returned
     /// `StreamReceiver`.
     pub fn generate_stream(
@@ -289,7 +289,7 @@ impl EndpointProfile {
         let request = request.clone();
         // Resolve the credential now (at call time), never earlier: the
         // profile caches only the resolver, and the resolved secret lives
-        // only for this call's worker (§4.4, INV-7).
+        // only for this call's worker.
         let auth_header = self.resolve_auth_header();
         thread::spawn(move || {
             run_generate_worker(&api_base, protocol, &request, auth_header, &cancel, &tx)
@@ -309,9 +309,9 @@ impl EndpointProfile {
             .map(|secret| format!("Bearer {secret}"))
     }
 
-    /// Embed `input` with `model` (MR-8). Capability-gated: a profile whose
-    /// `embeddings` flag is unset reports `Unsupported` rather than emulating
-    /// (MR-9). One request, no retry.
+    /// Embed `input` with `model`. Capability-gated: a profile whose
+    /// `embeddings` flag is unset reports `Unsupported` rather than emulating.
+    /// One request, no retry.
     pub fn embed(&self, model: &str, input: &str) -> Result<Vec<f32>, InferenceError> {
         if !self.capabilities.embeddings {
             return Err(InferenceError::Unsupported);
@@ -349,7 +349,7 @@ impl EndpointProfile {
         Ok(vec)
     }
 
-    /// Describe `model` (MR-3/MR-12): surface whatever static facts the
+    /// Describe `model`: surface whatever static facts the
     /// serving backend reports (name/digest/size/parameters), missing fields
     /// left `None` rather than fabricated. One request, no retry.
     pub fn describe(&self, model: &str) -> Result<ModelDescriptor, InferenceError> {
@@ -383,7 +383,7 @@ impl EndpointProfile {
         })
     }
 
-    /// Set a residency hint for `model` (MR-6). Capability-gated: a profile
+    /// Set a residency hint for `model`. Capability-gated: a profile
     /// without `residency_control` reports `Unsupported` rather than
     /// pretending. When supported, maps to a native keep-alive request.
     pub fn set_residency(&self, model: &str, hint: ResidencyHint) -> Result<(), InferenceError> {
@@ -399,7 +399,7 @@ impl EndpointProfile {
         Ok(())
     }
 
-    /// Acquire `model` by name, progress-streamed (MR-4). Capability-gated:
+    /// Acquire `model` by name, progress-streamed. Capability-gated:
     /// a profile without `pull` yields a single `Error(Unsupported)`.
     pub fn pull(&self, model: &str) -> PullReceiver {
         if !self.capabilities.pull {
@@ -422,7 +422,7 @@ impl EndpointProfile {
     }
 
     /// A single non-streaming HTTP request/response over a raw `TcpStream`,
-    /// with the full wire-failure taxonomy and **no internal retry** (§4.5).
+    /// with the full wire-failure taxonomy and **no internal retry**.
     /// Returns the status code and the full body bytes for 2xx; a non-2xx
     /// status maps to `ClientError`/`ServerError`.
     fn http_call(
@@ -461,7 +461,7 @@ impl EndpointProfile {
     }
 }
 
-/// A blocking pull-iterator over a model-acquisition call (MR-4).
+/// A blocking pull-iterator over a model-acquisition call.
 pub struct PullReceiver {
     rx: Receiver<PullProgress>,
     terminated: bool,
@@ -517,17 +517,17 @@ impl InferenceBackend for EndpointProfile {
     }
 }
 
-/// The stack §4.4 discipline applied to the streaming call: how often the
+/// The stack's discipline applied to the streaming call: how often the
 /// worker's blocking read wakes up to check `CancelHandle` — bounds
 /// cancellation latency without busy-spinning.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Default bounded-channel capacity (MR-8 backpressure): the worker blocks
+/// Default bounded-channel capacity (backpressure): the worker blocks
 /// on `send` once this many events are buffered and unconsumed, rather than
 /// growing memory without limit for a slow consumer.
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 32;
 
-/// A blocking pull-iterator over a `generate_stream` call (MR-8). Yields
+/// A blocking pull-iterator over a `generate_stream` call. Yields
 /// events in order; the first `Done` or `Error` is terminal — no further
 /// polling of the underlying channel occurs after it.
 pub struct StreamReceiver {
@@ -1213,7 +1213,7 @@ mod tests {
 
     #[test]
     fn accepts_the_real_default_localhost_endpoints() {
-        // The stack §4.4 catalog's actual defaults use the literal
+        // The stack catalog's actual defaults use the literal
         // hostname "localhost", not a numeric loopback IP.
         for api_base in [
             "http://localhost:11434", // Ollama
@@ -1775,7 +1775,7 @@ mod tests {
 
         let profile = EndpointProfile::new(api_base, ProtocolFamily::OpenAiCompatible, caps())
             .expect("loopback profile");
-        // Exercise via the trait object — proves the MR-2 InferenceBackend
+        // Exercise via the trait object — proves the InferenceBackend
         // impl wires to the same real transport as the inherent method.
         let backend: &dyn InferenceBackend = &profile;
         let events: Vec<StreamEvent> = backend

@@ -9,7 +9,7 @@ import { SubsystemSidebar } from "./subsystem-sidebar";
 
 const noop = () => {};
 
-describe("L0 BuildingFrame + application menu (NV-7, INV-9)", () => {
+describe("L0 BuildingFrame + application menu", () => {
   const fullRegistry = createActionRegistry(
     [
       "file.open",
@@ -73,7 +73,7 @@ describe("L0 BuildingFrame + application menu (NV-7, INV-9)", () => {
     expect(screen.getByTestId("menu-leaf-edit.select-all")).toHaveTextContent("Select All");
   });
 
-  it("an unbound leaf is absent — never a dead control (INV-9)", () => {
+  it("an unbound leaf is absent — never a dead control", () => {
     const partial = createActionRegistry([
       {
         id: "file.open",
@@ -116,7 +116,7 @@ describe("L0 BuildingFrame + application menu (NV-7, INV-9)", () => {
   });
 });
 
-describe("L1 FloorTabBar (NV-2, NV-3, NV-8, NV-9)", () => {
+describe("L1 FloorTabBar", () => {
   const floors: FloorTab[] = [
     {
       id: "home",
@@ -163,7 +163,7 @@ describe("L1 FloorTabBar (NV-2, NV-3, NV-8, NV-9)", () => {
   });
 });
 
-describe("L2 SubsystemSidebar + expanded catalog (NV-1)", () => {
+describe("L2 SubsystemSidebar + expanded catalog", () => {
   it("renders the primary run and a visually-separated foot utility group", () => {
     render(<SubsystemSidebar active="dashboard" />);
     for (const tab of SIDEBAR_PRIMARY) {
@@ -227,7 +227,7 @@ describe("L2 SubsystemSidebar + expanded catalog (NV-1)", () => {
   });
 });
 
-describe("L3 MechanismNav (NV-10)", () => {
+describe("L3 MechanismNav", () => {
   it("renders the facet strip for a subsystem with facets", () => {
     render(<MechanismNav subsystem="schedule" />);
     const strip = screen.getByTestId("mechanism-nav");

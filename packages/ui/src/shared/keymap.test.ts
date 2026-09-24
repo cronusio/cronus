@@ -208,7 +208,7 @@ describe("resolve — the pure keymap resolver", () => {
   });
 });
 
-describe("mergeKeymap — three deterministic layers (AS-8)", () => {
+describe("mergeKeymap — three deterministic layers", () => {
   const base: BindingLayer = {
     name: "base",
     bindings: [

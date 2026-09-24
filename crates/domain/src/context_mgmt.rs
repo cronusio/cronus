@@ -2,7 +2,7 @@
 //! LLM-compaction seam, and tool-output truncation.
 //!
 //! `TrimPriority`, `ContextEntry`, and the `Compactor` trait moved to
-//! `cronus-contract` (§4.2); the trim cascade and the
+//! `cronus-contract`; the trim cascade and the
 //! no-op default stay here, in the domain tier.
 
 pub use cronus_contract::{Compactor, ContextEntry, TrimPriority};

@@ -324,7 +324,7 @@ fn schedule_list_exits_0() {
 
 /// `budget` has no persistent store yet — every verb answers
 /// `Unavailable` honestly rather than a silent success stub, matching
-/// `loop evolve`'s established INV-9 pattern.
+/// `loop evolve`'s established honest-unavailable pattern.
 #[test]
 fn budget_show_is_honestly_unavailable() {
     let output = bin()
@@ -344,7 +344,7 @@ fn budget_show_is_honestly_unavailable() {
 
 /// `exec` has no persistent store yet — every verb answers
 /// `Unavailable` honestly rather than a silent success stub, matching
-/// `loop evolve`'s established INV-9 pattern.
+/// `loop evolve`'s established honest-unavailable pattern.
 #[test]
 fn exec_list_is_honestly_unavailable() {
     let output = bin()
@@ -424,7 +424,7 @@ fn activation_help_exits_0() {
 }
 
 /// `tui` is answerable pre-composition like every other installation verb
-/// (LH-1/LH-5) — `--help` never actually launches the interactive session,
+///  — `--help` never actually launches the interactive session,
 /// which would block a subprocess test on a raw-mode terminal it does not
 /// have.
 #[test]
@@ -481,7 +481,7 @@ fn activation_enable_without_acknowledgement_refuses_when_noninteractive() {
     // `status`/`observe` reads the real OS (read-only, harmless); `enable`
     // mutates real activation state, so this test never lets it proceed —
     // stdin is explicitly nulled (deterministically non-interactive
-    // regardless of how the test runner itself was invoked), so the BA-5
+    // regardless of how the test runner itself was invoked), so the consent
     // gate must refuse before `default_activation_registry()` is ever
     // touched.
     use std::process::Stdio;
@@ -536,7 +536,7 @@ fn loop_run_over_a_file_that_already_exists_reaches_done_and_its_ledger_is_inspe
 
     // Extract the run id the command printed, then prove `log`/`show` read
     // back the SAME persisted state through the CLI/library-shared facade
-    // call (INV-3 parity) — not divergent logic.
+    // call (parity) — not divergent logic.
     let run_id = stdout
         .trim()
         .strip_prefix("loop ")
@@ -587,7 +587,7 @@ fn loop_run_over_a_file_that_never_appears_stops_at_the_ceiling() {
 
 #[test]
 fn loop_evolve_is_marked_unavailable_not_a_silent_success() {
-    // INV-9 shipped-surface honesty: no harness registry exists yet, so
+    // Shipped-surface honesty: no harness registry exists yet, so
     // this must refuse clearly rather than fake a result.
     let output = bin()
         .args(["loop", "evolve", "some-harness"])
@@ -666,7 +666,7 @@ fn archetype_set_then_clear_both_exit_0() {
 
 #[test]
 fn there_is_no_archetype_hire_subcommand() {
-    // OA / §4.8: hiring belongs to `role` and the manager, never to an
+    // Hiring belongs to `role` and the manager, never to an
     // archetype command — an `archetype hire` verb would put the prior on the
     // wrong side of the decision boundary. clap must reject it.
     let output = bin()
@@ -681,7 +681,7 @@ fn there_is_no_archetype_hire_subcommand() {
 
 #[test]
 fn workspace_create_refuses_the_reserved_dev_office_id() {
-    // DVO-1: `WorkspaceKind::Developer` is not creatable through the
+    // `WorkspaceKind::Developer` is not creatable through the
     // ordinary project-creation flow — the reserved id is refused before
     // any real workspace row is written.
     let output = bin()
@@ -747,7 +747,7 @@ fn dev_status_admit_revoke_round_trip_through_the_real_gate() {
 
 #[test]
 fn workspace_delete_refuses_the_reserved_dev_office_id() {
-    // DVO-1: non-deletable through the ordinary flow, symmetric with create.
+    // Non-deletable through the ordinary flow, symmetric with create.
     let output = bin()
         .args(["workspace", "delete", "dev-office"])
         .output()

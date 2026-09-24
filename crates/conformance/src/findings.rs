@@ -119,7 +119,7 @@ pub fn seed_inventory() -> Vec<Finding> {
             // the harness. The only reports that run produced are the two
             // already-accepted F-5 outcome-family fixtures (the
             // empty-secret-list residual every surface carries), unrelated
-            // to this finding. All four SP-4 conditions now hold: the
+            // to this finding. All four repayment conditions now hold: the
             // mirror constant and its self-comparing parity test were
             // already deleted (`copies_deleted`) and pinned
             // (`deletion_pinned`); the surface-set/schema/outcome families
@@ -145,7 +145,7 @@ pub fn seed_inventory() -> Vec<Finding> {
             // through the harness with a zero-report surface-set/schema
             // result (the only reports that run produced were the two
             // already-accepted F-5 outcome-family fixtures, unrelated to
-            // this finding). All four SP-4 conditions now hold: the table
+            // this finding). All four repayment conditions now hold: the table
             // was already deleted (`copies_deleted`) and pinned
             // (`deletion_pinned`) before this phase's code work began; the
             // surface-set family is its fixture (`fixture_landed`); and the
@@ -255,7 +255,7 @@ pub struct Tombstone {
     pub location: &'static str,
 }
 
-/// Append-only (SP-5). A location named here must never reappear — kept
+/// Append-only. A location named here must never reappear — kept
 /// boringly literal on purpose, since cleverness here produces a check
 /// nobody trusts and everybody bypasses.
 pub fn tombstones() -> Vec<Tombstone> {
@@ -290,7 +290,7 @@ pub struct AcceptedDebt {
     pub reason: &'static str,
 }
 
-/// Shrink-only (SP-5). An entry leaving this list is ordinary progress; an
+/// Shrink-only. An entry leaving this list is ordinary progress; an
 /// entry arriving is a change that must say so — enforced by the baseline
 /// comparison in this module's own tests, which requires an entry's arrival
 /// or departure to be a deliberate edit to the checked-in baseline, not an
@@ -299,11 +299,11 @@ pub fn accepted_debt() -> Vec<AcceptedDebt> {
     vec![
         AcceptedDebt {
             finding: "F-5",
-            reason: "unmasked output is preserved through convergence and corrected as a separate, disclosed change (SP-10) — the empty secret list is deliberately not yet populated",
+            reason: "unmasked output is preserved through convergence and corrected as a separate, disclosed change — the empty secret list is deliberately not yet populated",
         },
         AcceptedDebt {
             finding: "F-6",
-            reason: "the output-format flag and unescaped structured output are known-wrong behaviors preserved through convergence and corrected separately (SP-10), not fixed inside the migration that would hide them as a refactor",
+            reason: "the output-format flag and unescaped structured output are known-wrong behaviors preserved through convergence and corrected separately, not fixed inside the migration that would hide them as a refactor",
         },
     ]
 }
@@ -318,7 +318,7 @@ pub fn accepted_debt() -> Vec<AcceptedDebt> {
 ///
 /// **To accept a ledger change**: edit this module's literals to match
 /// [`tombstones`]/[`accepted_debt`] in the same commit that changes them.
-/// That edit is the "must say so" SP-5 requires — visible in the diff,
+/// That edit is the "must say so" rule requires — visible in the diff,
 /// never incidental.
 #[cfg(test)]
 mod ledger_baseline {
@@ -353,11 +353,11 @@ mod ledger_baseline {
         vec![
             AcceptedDebt {
                 finding: "F-5",
-                reason: "unmasked output is preserved through convergence and corrected as a separate, disclosed change (SP-10) — the empty secret list is deliberately not yet populated",
+                reason: "unmasked output is preserved through convergence and corrected as a separate, disclosed change — the empty secret list is deliberately not yet populated",
             },
             AcceptedDebt {
                 finding: "F-6",
-                reason: "the output-format flag and unescaped structured output are known-wrong behaviors preserved through convergence and corrected separately (SP-10), not fixed inside the migration that would hide them as a refactor",
+                reason: "the output-format flag and unescaped structured output are known-wrong behaviors preserved through convergence and corrected separately, not fixed inside the migration that would hide them as a refactor",
             },
         ]
     }
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn at_least_two_findings_are_preemptive() {
-        // An inventory with no preemptive entries has given up on SP-9:
+        // An inventory with no preemptive entries has given up on extracting early:
         // extracting before the second implementation exists is the only
         // cheap point on the ladder, and it only shows up as a class here.
         let preemptive = seed_inventory()
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn exactly_f1_f2_f3_and_f7_read_as_repaid_after_the_desktop_shells_own_registration() {
-        // Repayment requires all four SP-4 conditions. F-3's one named site
+        // Repayment requires all four repayment conditions. F-3's one named site
         // is the command line's own table, deleted and pinned before this
         // phase's code work began — its remaining condition
         // (`consumer_registered`) closed the moment the command line ran

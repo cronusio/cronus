@@ -1,4 +1,4 @@
-//! Transport-backed context compaction (§4.1 consumer).
+//! Transport-backed context compaction.
 //!
 //! `cronus-domain` ships `NoOpCompactor` — the inert default that returns the
 //! fixed `"[context compacted]"` placeholder because no model was reachable.

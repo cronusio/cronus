@@ -1,6 +1,6 @@
 //! The `@test:` runner holds a workflow to the same gate an ordinary run passes,
 //! and a block that names something that cannot exist fails the file before any
-//! block runs (NT-9) instead of running on a default it never meant.
+//! block runs instead of running on a default it never meant.
 
 use nodus::{Error, workflows};
 
@@ -74,7 +74,7 @@ fn the_tag_filtered_entry_point_does_not_judge_the_file_name() {
     workflows::test_with_tags(CLEAN, &[]).expect("valid under the name it declares");
 }
 
-// ─── NT-9: names that cannot exist ───────────────────────────────────────────
+// ─── Names that cannot exist ───────────────────────────────────────────
 
 #[test]
 fn an_input_key_the_workflow_does_not_declare_is_an_error_not_a_silent_default() {

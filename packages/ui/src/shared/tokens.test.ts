@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const readTier = (rel: string) => readFileSync(join(here, rel), "utf8");
 const readRoot = (rel: string) => readFileSync(join(here, "..", rel), "utf8");
 
-describe("design token contract (DI-3)", () => {
+describe("design token contract", () => {
   it("the safe fallback set defines every canonical token", () => {
     const css = readTier("tokens.css");
     for (const token of CANONICAL_TOKENS) {

@@ -1,4 +1,4 @@
-//! Secret access (SEC-1/2): read from the environment first, then the
+//! Secret access: read from the environment first, then the
 //! state-tier `.env`. Secret values are never logged; callers must pass values
 //! through `crate::redact` before rendering.
 

@@ -1,6 +1,6 @@
 /**
  * The keymap surface — every action with its effective binding and the layer it
- * came from, so a user can see *why* a key does what it does (AS-8).
+ * came from, so a user can see *why* a key does what it does.
  *
  * Presentation only: it renders a merged binding table; it neither merges nor
  * persists one. Merging is the runtime's; persisting the user layer is the

@@ -1,11 +1,10 @@
-//! State-root lock (§4.7, BA-11): exactly one engine
+//! State-root lock: exactly one engine
 //! owns a durable-state root at a time. A frontend that cannot take the lock
 //! attaches to the running engine's endpoint instead of starting a second
-//! one — the local instance of the architecture's own hub-and-spoke relation
-//! (INV-4), independent of which activation mode (if any) started the
+//! one — the local instance of the architecture's own hub-and-spoke relation,
+//! independent of which activation mode (if any) started the
 //! engine holding it. This is facade-tier, not domain: taking a real
-//! exclusive file lock is I/O, which the no-I/O domain tier may not hold
-//! (§4.3).
+//! exclusive file lock is I/O, which the no-I/O domain tier may not hold.
 
 use std::fs;
 use std::io::{self, Write};
@@ -54,9 +53,9 @@ pub enum EngineLockOutcome {
 /// A held state-root lock. Dropping it releases the lock (removes the file)
 /// — an engine that exits normally (even via a panic that unwinds) does not
 /// leave a stale lock behind. A hard crash (process killed, power loss)
-/// leaves the file in place; that is the stale-lock case §4.7 hands to the
-/// *existing* liveness/crash-recovery reclamation (WL-5 stranded-work
-/// reconciliation, CR-1 unclean-shutdown detection) via the `is_alive` check
+/// leaves the file in place; that is the stale-lock case that is handed to the
+/// *existing* liveness/crash-recovery reclamation (stranded-work
+/// reconciliation, unclean-shutdown detection) via the `is_alive` check
 /// passed to [`acquire`] — this module introduces no second reclamation
 /// mechanism of its own.
 #[derive(Debug)]
@@ -96,7 +95,7 @@ fn resolve_existing(
 
     let Some(existing) = LockRecord::parse(&content) else {
         // Corrupt/unreadable content: cannot confirm the holder is dead, and
-        // BA's fail-closed posture (cf. BA-8: Unknown, never Active) means we
+        // The activation fail-closed posture (Unknown, never Active) means we
         // never guess — refuse rather than silently reclaim or attach.
         return EngineLockOutcome::Failed {
             reason: "lock file exists but is unreadable/corrupt — refusing to guess".to_string(),
@@ -115,7 +114,7 @@ fn resolve_existing(
             }
         }
     } else {
-        // Stale lock (WL-5/CR-1 reclamation): the holder is confirmed dead —
+        // Stale lock (reclamation): the holder is confirmed dead —
         // remove and retry the exclusive create once.
         if let Err(e) = fs::remove_file(path) {
             return EngineLockOutcome::Failed {
@@ -134,17 +133,17 @@ fn resolve_existing(
     }
 }
 
-/// Try to become the engine for `state_root` (BA-11). `is_alive` checks
+/// Try to become the engine for `state_root`. `is_alive` checks
 /// whether a PID still denotes a live process — injected so the state
 /// machine (create / attach / fail / reclaim) is fully testable without a
 /// real OS process table.
 ///
-/// **Disclosed scope note (FR-6):** [`conservative_is_alive`] is the only
+/// **Disclosed scope note:** [`conservative_is_alive`] is the only
 /// `is_alive` implementation this module ships — it always reports "alive"
 /// (never wrongly reclaims a live engine's lock), deferring a real per-OS
 /// process check to the platform-adapter work (Track D). A real crash's
 /// stale lock is still recoverable through the existing liveness/crash-
-/// recovery path this spec explicitly defers to (WL-5/CR-1) — that path is
+/// recovery path this spec explicitly defers to — that path is
 /// what supplies a truthful `is_alive` once it exists.
 pub fn acquire(
     state_root: &Path,

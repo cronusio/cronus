@@ -2,10 +2,10 @@
 //! commit boundary, and Conventional Commits generation.
 //!
 //! The virtual staging area is the execution-workspace worktree (a seam here); this
-//! module implements the policy layered over it: who may perform which git op
-//! (VC-1/VC-5), the quality gate that must pass before a commit is produced (VC-2),
-//! the one-card commit boundary + mandatory footer (VC-3), and all-or-nothing
-//! staging atomicity (VC-4). Non-git versioning is out of scope (VC-6).
+//! module implements the policy layered over it: who may perform which git op,
+//! the quality gate that must pass before a commit is produced,
+//! the one-card commit boundary + mandatory footer, and all-or-nothing
+//! staging atomicity. Non-git versioning is out of scope.
 
 /// A role whose git authority is governed by the office policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub enum GitOp {
 }
 
 /// Whether `role` may perform `op`. Push to a protected branch is governed
-/// separately by [`can_push`] — no role may push `main`/`trunk` directly (VC-5).
+/// separately by [`can_push`] — no role may push `main`/`trunk` directly.
 pub fn authorized(role: Role, op: GitOp) -> bool {
     use GitOp::*;
     use Role::*;
@@ -51,10 +51,10 @@ pub fn authorized(role: Role, op: GitOp) -> bool {
 }
 
 /// Whether `role` may push to a branch, given whether it is the protected
-/// main/trunk. VC-5 is unconditional: no role pushes main/trunk directly.
+/// main/trunk. This is unconditional: no role pushes main/trunk directly.
 pub fn can_push(role: Role, target_is_main: bool) -> bool {
     if target_is_main {
-        return false; // VC-5 — unconditional, no autonomy level overrides it
+        return false; // Unconditional, no autonomy level overrides it
     }
     authorized(role, GitOp::PushBranch)
 }
@@ -99,9 +99,9 @@ impl CommitType {
 /// Errors from commit production.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VcError {
-    /// Quality gate failed; the worktree is discarded, no commit written (VC-2/VC-4).
+    /// Quality gate failed; the worktree is discarded, no commit written.
     QualityGateFailed,
-    /// A commit must bind to exactly one card (VC-3).
+    /// A commit must bind to exactly one card.
     NoCardBoundary,
     /// The role may not commit.
     Unauthorized,
@@ -128,7 +128,7 @@ pub struct Commit {
 }
 
 /// Generate a Conventional Commits message with a mandatory card-reference footer
-/// (VC-3 traceability).
+/// (traceability).
 pub fn conventional_commit(kind: CommitType, scope: &str, summary: &str, card_id: &str) -> String {
     format!(
         "{}({}): {}\n\nRefs: #{}",
@@ -139,9 +139,9 @@ pub fn conventional_commit(kind: CommitType, scope: &str, summary: &str, card_id
     )
 }
 
-/// Produce a commit from the virtual staging area. The quality gate must pass
-/// (VC-2); a fail discards the worktree with no partial flush (VC-4). The commit
-/// must bind to exactly one card (VC-3), and the role must be authorized (VC-1).
+/// Produce a commit from the virtual staging area. The quality gate must pass;
+/// a fail discards the worktree with no partial flush. The commit
+/// must bind to exactly one card, and the role must be authorized.
 #[allow(clippy::too_many_arguments)]
 pub fn produce_commit(
     role: Role,
@@ -156,7 +156,7 @@ pub fn produce_commit(
     }
     let card = card_id.ok_or(VcError::NoCardBoundary)?;
     if !quality_passed {
-        return Err(VcError::QualityGateFailed); // VC-4 — worktree discarded, no commit
+        return Err(VcError::QualityGateFailed); // Worktree discarded, no commit
     }
     Ok(Commit {
         message: conventional_commit(kind, scope, summary, card),
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn authority_table_enforces_roles() {
-        // VC-1: workers commit on their branch but cannot push or merge.
+        // Workers commit on their branch but cannot push or merge.
         assert!(authorized(Role::Worker, GitOp::Commit));
         assert!(!authorized(Role::Worker, GitOp::PushBranch));
         assert!(!authorized(Role::Worker, GitOp::Merge));
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn no_role_pushes_main_directly() {
-        // VC-5: unconditional — even a Release Manager cannot push main directly.
+        // Unconditional — even a Release Manager cannot push main directly.
         for role in [
             Role::Worker,
             Role::Orchestrator,
@@ -199,7 +199,6 @@ mod tests {
 
     #[test]
     fn commit_requires_quality_gate_and_card() {
-        // VC-2 + VC-3 + VC-4.
         let ok = produce_commit(
             Role::Worker,
             true,
@@ -212,7 +211,7 @@ mod tests {
         assert!(ok.message.contains("feat(kanban): add custom columns"));
         assert!(ok.message.contains("Refs: #card-42"));
 
-        // Quality fail -> discarded, no commit (VC-2/VC-4).
+        // Quality fail -> discarded, no commit.
         assert_eq!(
             produce_commit(
                 Role::Worker,
@@ -224,12 +223,12 @@ mod tests {
             ),
             Err(VcError::QualityGateFailed)
         );
-        // No card boundary (VC-3).
+        // No card boundary.
         assert_eq!(
             produce_commit(Role::Worker, true, None, CommitType::Fix, "x", "y"),
             Err(VcError::NoCardBoundary)
         );
-        // Unauthorized role (VC-1).
+        // Unauthorized role.
         assert_eq!(
             produce_commit(Role::Manager, true, Some("c1"), CommitType::Fix, "x", "y"),
             Err(VcError::Unauthorized)

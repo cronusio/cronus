@@ -185,7 +185,7 @@ fn a_failed_generation_is_a_typed_error_not_a_short_answer() {
 #[test]
 fn a_failed_generation_reaches_the_declared_error_handler() {
     let result = run_on(FailingModel, GEN_WF);
-    // NL-9: the handler ran (step 2 did not) and `$error` names the failure.
+    // The handler ran (step 2 did not) and `$error` names the failure.
     assert!(
         result.flags.iter().any(|f| f.starts_with("ESCALATE:")),
         "the @err handler ran: {:?}",

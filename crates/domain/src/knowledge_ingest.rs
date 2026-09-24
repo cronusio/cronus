@@ -1,12 +1,12 @@
-//! Knowledge-store ingestion pipeline (§4.2, KB-3/KB-5/KB-6).
+//! Knowledge-store ingestion pipeline.
 //!
 //! Chunk a source document, embed each chunk, and write the whole set
 //! transactionally through the [`KnowledgeStore`] seam. Domain-logic-first:
 //! chunking is a pure function; embedding is abstracted behind
 //! [`EmbeddingBackend`] so the pipeline is testable against a deterministic
 //! fake without a live model (the generator-optional precedent from
-//! `wiki_regen`). File/Record source extraction lives here too (KB-5); the
-//! URL adapter is a later task (§4.2's third source type).
+//! `wiki_regen`). File/Record source extraction lives here too; the
+//! URL adapter is a later task (the third source type).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -41,16 +41,16 @@ impl EmbeddingBackend for InferenceEmbeddingBackend {
 }
 
 /// A failure at any ingestion stage. The document is left in `Error` status
-/// with a diagnostic message rather than losing its prior chunks (l2-
-/// knowledge-store §4.4: "the collection remains queryable from its prior
-/// state").
+/// with a diagnostic message rather than losing its prior chunks:
+/// "the collection remains queryable from its prior
+/// state".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IngestError {
-    /// Source text could not be extracted (KB-5).
+    /// Source text could not be extracted.
     Extract(String),
     /// The embedding backend refused or failed on a chunk.
     Embed(String),
-    /// The knowledge store rejected the write (e.g. KB-9 read-only zone).
+    /// The knowledge store rejected the write (e.g. a read-only zone).
     Store(String),
 }
 
@@ -66,7 +66,7 @@ impl std::fmt::Display for IngestError {
 
 impl std::error::Error for IngestError {}
 
-/// Chunking parameters (§4.2 defaults: 512 tokens / 64
+/// Chunking parameters (defaults: 512 tokens / 64
 /// overlap, approximated by whitespace-word count — see [`chunk_text`]).
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkParams {
@@ -149,7 +149,7 @@ fn split_into_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
-/// Extracts plain text from an uploaded file (KB-5).
+/// Extracts plain text from an uploaded file.
 pub struct FileIngester;
 
 impl FileIngester {
@@ -169,7 +169,7 @@ impl FileIngester {
     }
 }
 
-/// Extracts plain text from a plain-text or JSON record (KB-5). A record is
+/// Extracts plain text from a plain-text or JSON record. A record is
 /// already textual, so this is a passthrough; flattening structured JSON
 /// into prose (if ever needed) is the caller's concern, not ingestion's.
 pub struct RecordIngester;
@@ -188,7 +188,7 @@ pub trait UrlFetcher {
     fn fetch(&self, url: &str) -> Result<String, String>;
 }
 
-/// Extracts plain text from a fetched web page (KB-5).
+/// Extracts plain text from a fetched web page.
 pub struct UrlIngester;
 
 impl UrlIngester {
@@ -196,7 +196,7 @@ impl UrlIngester {
     ///
     /// **Disclosed scope:** the production `fetcher` performs a plain
     /// HTTP/1.1 GET — `https://` (TLS), `robots.txt` compliance, and
-    /// rate-limiting (§5.3) are deferred, separately-
+    /// rate-limiting are deferred, separately-
     /// scoped follow-ups. This proves the fetch→extract mechanics are real
     /// against a hermetic local server, not simulated.
     pub fn extract(fetcher: &dyn UrlFetcher, url: &str) -> Result<String, IngestError> {
@@ -292,7 +292,7 @@ pub struct IngestReport {
     pub chunks_written: usize,
 }
 
-/// Run the KB-3 incremental-reindex ingestion pipeline for one document:
+/// Run the incremental-reindex ingestion pipeline for one document:
 /// mark `indexing`, chunk + embed the source text, atomically replace the
 /// document's chunk set (`KnowledgeStore::reindex_chunks` — a safe no-op
 /// clear-and-reinsert on a first-time ingest with no prior chunks), then mark
@@ -300,7 +300,7 @@ pub struct IngestReport {
 /// embedding failure never touches the store at all; a store-level failure
 /// leaves the prior chunk set intact (the store's own transactional
 /// guarantee) — either way the document lands in `Error` with a diagnostic
-/// message, never a half-updated state (§4.4).
+/// message, never a half-updated state.
 pub fn ingest_document(
     store: &dyn KnowledgeStore,
     embedder: &dyn EmbeddingBackend,
@@ -341,7 +341,7 @@ pub fn ingest_document(
     document.status = DocumentStatus::Ready;
     document.error_msg = None;
     document.updated_at = now_secs();
-    // Index-state-only transition (never KB-9-gated): the content row was
+    // Index-state-only transition (never write-gated): the content row was
     // already authorized by the write above (or a pre-existing row's own
     // prior authorization); flipping `status` is system bookkeeping, not a
     // fresh authorship act, so it must not re-trigger the human-zone gate

@@ -1,7 +1,7 @@
 //! Canonical skill package model and manifest validation.
 //!
 //! A package in canonical form has no `scripts/` directory and no material
-//! outside the closed set §4.2 defines, except under `origin/` — imported
+//! outside the closed set defined for packages, except under `origin/` — imported
 //! originals preserved verbatim for audit, whose contents are never
 //! classified or scanned (they are never executed either way). This module
 //! validates a package's file listing and its `extension.json` manifest
@@ -10,7 +10,7 @@
 
 use crate::extensions::{self, ExtensionKind, ExtensionManifest};
 
-/// The canonical top-level entries §4.2 permits. Anything else outside
+/// The canonical top-level entries permitted. Anything else outside
 /// `origin/` — most notably a `scripts/` directory — is unknown material.
 const CANONICAL_TOP_LEVEL: &[&str] = &[
     "SKILL.md",
@@ -24,10 +24,10 @@ const CANONICAL_TOP_LEVEL: &[&str] = &[
     "origin",
 ];
 
-/// Present in every canonical package, imported or authored (§4.2).
+/// Present in every canonical package, imported or authored.
 const REQUIRED_TOP_LEVEL: &[&str] = &["SKILL.md", "extension.json"];
 
-/// `origin/` contents are audit-only and are never classified (§4.2, EXT-8).
+/// `origin/` contents are audit-only and are never classified.
 const EXEMPT_TOP_LEVEL: &str = "origin";
 
 /// A package's file listing, relative to `<pack>/<name>/` — what a directory
@@ -58,7 +58,7 @@ fn top_level(path: &str) -> &str {
 pub enum PackageError {
     MissingRequiredEntry(&'static str),
     /// A `scripts/` directory, or any other entry outside the canonical
-    /// allow-list and outside `origin/` (§4.2).
+    /// allow-list and outside `origin/`.
     UnknownMaterial(String),
     InvalidManifest(String),
 }
@@ -84,15 +84,15 @@ impl std::error::Error for PackageError {}
 pub struct SkillPackage {
     pub listing: PackageListing,
     pub manifest: ExtensionManifest,
-    /// Whether the package carries a `workflow.nd` procedure (§4.2's optional
+    /// Whether the package carries a `workflow.nd` procedure (the optional
     /// workflow pair; `workflow.md` is its generated human rendering).
     pub has_workflow: bool,
 }
 
 /// Validate a package's file listing and manifest against the canonical
-/// shape (§4.2). Rejects a `scripts/` directory or any other entry outside
+/// shape. Rejects a `scripts/` directory or any other entry outside
 /// the allow-list and outside `origin/`; requires an `extension.json`
-/// manifest declaring `kind: skill` (EXT-9).
+/// manifest declaring `kind: skill`.
 pub fn validate_package(
     listing: PackageListing,
     manifest: ExtensionManifest,

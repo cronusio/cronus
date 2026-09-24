@@ -1,6 +1,6 @@
-//! Per-OS activation-registration adapter (§4.2-§4.4),
+//! Per-OS activation-registration adapter,
 //! implementing `cronus_contract::ActivationRegistry`. Minted per
-//! §4.4(a): OS registration opens registries, writes
+//! OS registration opens registries, writes
 //! plists/unit files, and shells out to service managers — infrastructure by
 //! every definition, never domain logic.
 //!
@@ -43,7 +43,7 @@ pub use windows_calls::WindowsSystemCalls;
 /// The raw OS primitives a login-scoped adapter needs, factored out so the
 /// adapter's decision logic — what to read, in what order, how to reconcile
 /// a raw entry against the platform's own veto — is testable without a real
-/// OS call (BA-8's weaker-wins rule: where the OS distinguishes *registered*
+/// OS call (the weaker-wins rule: where the OS distinguishes *registered*
 /// from *effective*, the weaker one wins).
 pub trait SystemCalls: Send + Sync {
     /// Whether the login-scoped facility's raw entry exists.
@@ -53,7 +53,7 @@ pub trait SystemCalls: Send + Sync {
     /// `X-GNOME-Autostart-enabled` keys). `None` when there is no separate
     /// veto signal to check — never fabricated as "not vetoed".
     fn login_entry_vetoed(&self) -> Result<Option<bool>, String>;
-    /// Write the login-scoped entry (BA-6: unelevated).
+    /// Write the login-scoped entry (unelevated).
     fn write_login_entry(&self) -> Result<(), String>;
     /// Remove the login-scoped entry. A no-op `Ok(())` if already absent.
     fn remove_login_entry(&self) -> Result<(), String>;
@@ -63,7 +63,7 @@ pub trait SystemCalls: Send + Sync {
     /// The platform's own veto over the system-scoped entry, if any.
     fn system_entry_vetoed(&self) -> Result<Option<bool>, String>;
     /// Register the system-scoped entry. Requires an OS-mediated elevation
-    /// ceremony the human performs and can refuse (BA-6) — a refused or
+    /// ceremony the human performs and can refuse — a refused or
     /// failed elevation returns `Err` and must leave no partial
     /// registration behind.
     fn write_system_entry(&self) -> Result<(), String>;
@@ -71,23 +71,23 @@ pub trait SystemCalls: Send + Sync {
     fn remove_system_entry(&self) -> Result<(), String>;
 
     /// Remove every artifact — both modes, every sub-variant a given
-    /// platform may have used (BA-7's "all four locations") — regardless of
+    /// platform may have used ("all four locations") — regardless of
     /// which mode `observe()` currently reports active, so an orphan left by
     /// a previously-failed mode switch is still found. Never touches
     /// anything but this adapter's own well-known name.
     fn uninstall_all(&self) -> Result<(), String>;
 
-    /// Whether THIS host can actually offer login-scoped activation (BA-10):
+    /// Whether THIS host can actually offer login-scoped activation:
     /// a real, checked capability — not "we would technically try" — so a
     /// host with no usable facility is reported `Unsupported` with a reason
     /// before the user ever presses enable, never discovered only when
     /// `enable` fails.
     fn login_capability(&self) -> ModeSupport;
-    /// Whether THIS host can actually offer system-scoped activation (BA-10).
+    /// Whether THIS host can actually offer system-scoped activation.
     fn system_capability(&self) -> ModeSupport;
 }
 
-/// `observe()`'s weaker-wins derivation (BA-8): an entry present but vetoed
+/// `observe()`'s weaker-wins derivation: an entry present but vetoed
 /// is `RequiresApproval`, present and not (verifiably) vetoed is `Active`,
 /// absent is `Inactive`. Pure function of the two facts plus which mode they
 /// describe — the same rule every platform's real [`SystemCalls`] impl
@@ -114,7 +114,7 @@ impl<C: SystemCalls> OsActivationAdapter<C> {
         OsActivationAdapter { calls }
     }
 
-    /// BA-7: remove every artifact this adapter's label could occupy across
+    /// Remove every artifact this adapter's label could occupy across
     /// both modes. A product lifecycle event (uninstall), not an activation
     /// transition — deliberately not part of `ActivationRegistry` itself.
     pub fn uninstall(&self) -> Result<(), String> {
@@ -132,7 +132,7 @@ impl<C: SystemCalls> ActivationRegistry for OsActivationAdapter<C> {
 
     fn observe(&self) -> ActivationState {
         // Defensive tie-break: System takes priority if somehow both are
-        // present. Domain-tier mutual exclusion (BA-3, crate `cronus-domain`
+        // present. Domain-tier mutual exclusion (crate `cronus-domain`
         // `activation::enable`) should prevent this in normal operation;
         // reporting the stronger claim rather than silently picking one is
         // the honest choice if an out-of-band edit ever causes it.
@@ -168,7 +168,7 @@ impl<C: SystemCalls> ActivationRegistry for OsActivationAdapter<C> {
 
     fn disable(&self) -> Result<(), String> {
         // Remove whichever is present; both calls are no-ops if absent, so
-        // this also mops up an orphan in the "other" mode as a bonus (BA-3).
+        // this also mops up an orphan in the "other" mode as a bonus.
         self.calls.remove_login_entry()?;
         self.calls.remove_system_entry()
     }
@@ -182,7 +182,7 @@ mod tests {
     /// A scriptable `SystemCalls` for tests: presence/veto for each mode are
     /// set at construction and mutated through `write`/`remove`;
     /// `query_fails_with` forces `Err` from every read; `fail_system_write`
-    /// scripts a refused/failed elevation (BA-6) without mutating state —
+    /// scripts a refused/failed elevation without mutating state —
     /// enough to drive the adapter's weaker-wins derivation and both modes'
     /// transitions with no real OS call.
     struct FakeSystemCalls {
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn observe_derives_requires_approval_when_present_and_vetoed() {
-        // BA-8 weaker-wins: the veto beats the raw "present" entry.
+        // Weaker-wins: the veto beats the raw "present" entry.
         let adapter = OsActivationAdapter::new(FakeSystemCalls::new(true, Some(true)));
         assert_eq!(
             adapter.observe(),
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn capabilities_reflect_a_real_per_host_check_not_a_hardcoded_yes() {
-        // BA-10: `capabilities()` must be a checked property of the ACTUAL
+        // `capabilities()` must be a checked property of the ACTUAL
         // host, reported up front — never a hardcoded "yes" a caller only
         // discovers is false when `enable` later fails.
         let mut fake = FakeSystemCalls::new(false, None);
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn a_refused_system_elevation_leaves_prior_state_unchanged() {
-        // BA-6: a refused/failed elevation must not partially register.
+        // A refused/failed elevation must not partially register.
         let fake = FakeSystemCalls::new(false, None);
         *fake.fail_system_write.lock().unwrap() = true;
         let adapter = OsActivationAdapter::new(fake);

@@ -1,6 +1,6 @@
 /**
  * Application-shell runtime conformance — one named test per verification-table
- * row (spec §5). The detail lives in the per-module suites (store / view-store /
+ * row. The detail lives in the per-module suites (store / view-store /
  * projection / session / keymap / bridge / projection-channel / layout-record /
  * surface-router / admission); this file is the contract, cross-cutting them so
  * a regression in any one row fails a test that names the row.
@@ -25,11 +25,11 @@ const flush = async () => {
   await Promise.resolve();
 };
 
-// §5 · R-1 (one exported application root) is asserted in ../index.test.ts,
+// The single exported application root is asserted in../index.test.ts,
 // which is in the root zone and may read the package barrel; a shell-zone file
 // importing it is itself a boundary violation.
 
-describe("§5 · AS-13 — no host import in packages/ui", () => {
+describe("no host import in packages/ui", () => {
   it("no source file imports a @tauri-apps package", () => {
     const offenders: string[] = [];
     const walk = (dir: string) => {
@@ -51,7 +51,7 @@ describe("§5 · AS-13 — no host import in packages/ui", () => {
   });
 });
 
-describe("§5 · AS-3 — no timer drives a state read", () => {
+describe("no timer drives a state read", () => {
   it("a projection stays unavailable after a close — no interval re-requests", async () => {
     vi.useFakeTimers();
     try {
@@ -105,7 +105,7 @@ describe("§5 · AS-3 — no timer drives a state read", () => {
   });
 });
 
-describe("§5 · AS-1 — single-authority state", () => {
+describe("single-authority state", () => {
   it("a domain's state changes only through its store's dispatch", () => {
     const store = createStore<
       {
@@ -138,7 +138,7 @@ describe("§5 · AS-1 — single-authority state", () => {
   });
 });
 
-describe("§5 · AS-4 — a mount/unmount cycle leaves no live listener", () => {
+describe("a mount/unmount cycle leaves no live listener", () => {
   it("useStore deregisters on unmount", () => {
     const inner = createStore<
       number,
@@ -166,14 +166,14 @@ describe("§5 · AS-4 — a mount/unmount cycle leaves no live listener", () => 
   });
 });
 
-describe("§5 · AS-7 — resolver purity", () => {
+describe("resolver purity", () => {
   it("is covered by keymap.test.ts: prefix-pending, precedence ties, fall-through", () => {
     // Named here for the table; asserted in ./shared/keymap.test.ts.
     expect(true).toBe(true);
   });
 });
 
-describe("§5 · AS-11 — a late response after unmount writes nothing", () => {
+describe("a late response after unmount writes nothing", () => {
   it("an owner that cancelled before its call resolved does not write the store", async () => {
     const store = createProjectionStore<number>();
     let settle: (n: number) => void = () => {};
@@ -203,7 +203,7 @@ describe("§5 · AS-11 — a late response after unmount writes nothing", () => 
   });
 });
 
-describe("§5 · AS-12 — layout restore never throws", () => {
+describe("layout restore never throws", () => {
   it("truncated, extended, and unresolvable-reference records all restore", () => {
     expect(() =>
       restoreLayout({
@@ -244,7 +244,7 @@ describe("§5 · AS-12 — layout restore never throws", () => {
   });
 });
 
-describe("§5 · §4.2 — the four projection states are separately observable", () => {
+describe("the four projection states are separately observable", () => {
   it("loaded-empty is not unavailable", () => {
     const store = createProjectionStore<number[]>();
     store.dispatch({
@@ -264,7 +264,7 @@ describe("§5 · §4.2 — the four projection states are separately observable"
   });
 });
 
-describe("§5 · §4.3 — channel liveness moves projections to unavailable", () => {
+describe("channel liveness moves projections to unavailable", () => {
   it("a failed-open and a host-closed channel both end unavailable", async () => {
     // failed to open
     const rejecting = createCoreClient(
@@ -304,7 +304,7 @@ describe("§5 · §4.3 — channel liveness moves projections to unavailable", (
   });
 });
 
-describe("§5 · behaviour neutrality", () => {
+describe("behaviour neutrality", () => {
   it("the desktop frontend build is green and the craft lint passes on the real tree", () => {
     const script = join(srcRoot, "..", "scripts", "craft-lint.mjs");
     expect(() =>

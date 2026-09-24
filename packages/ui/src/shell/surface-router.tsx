@@ -1,7 +1,7 @@
 /**
  * Surface router — maps the active subsystem tab to a surface.
  *
- * In this slice every subsystem resolves to an explicit placeholder (INV-9:
+ * In this slice every subsystem resolves to an explicit placeholder (no dead controls:
  * a control renders real content only when bound to a shipped capability; until
  * then it is a named placeholder, never fabricated data). The two already-built
  * panels (Office, Dashboard) render real content only from a *loaded* projection;
@@ -30,7 +30,7 @@ export interface SurfaceRouterProps {
 }
 
 /**
- * The explicit "not real content here" surface (INV-9). Never shows fabricated
+ * The explicit "not real content here" surface. Never shows fabricated
  * data. `state` distinguishes *unrequested* / *pending* / *unavailable* in the
  * DOM (`data-state`), and `reason` carries the unavailable cause (`data-reason`);
  * neither is emitted when absent, so an unbound surface is byte-identical to

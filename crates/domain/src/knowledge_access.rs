@@ -1,18 +1,18 @@
-//! Access-gated knowledge-collection reads (§3, KB-4).
+//! Access-gated knowledge-collection reads.
 //!
 //! The client never touches [`cronus_contract::KnowledgeStore`] retrieval
 //! directly on a shared collection — it goes through [`GatedKnowledge`],
 //! which runs the uniform `access-grants` check
 //! (`has_access(Knowledge, collection_id, Read)`) **before every query** and
-//! only then delegates. This is the `GatedWiki` precedent (project-wiki
-//! §4.4, PW-7) applied to the same uniform grant model.
+//! only then delegates. This is the `GatedWiki` precedent
+//! applied to the same uniform grant model.
 
 use cronus_contract::{KnowledgeStore, RetrievedChunk};
 
 use crate::resource_sharing::{GrantStore, Permission, ResourceKind};
 
-/// The caller's identity for a knowledge query (KB-4). `is_owner`
-/// short-circuits the grant lookup (RS-5: the owner always reads their own
+/// The caller's identity for a knowledge query. `is_owner`
+/// short-circuits the grant lookup (the owner always reads their own
 /// collection); `groups` are the caller's pre-resolved group memberships.
 #[derive(Debug, Clone)]
 pub struct KnowledgePrincipal {
@@ -42,7 +42,7 @@ impl KnowledgePrincipal {
 /// A query that was refused or failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KnowledgeAccessError {
-    /// The caller holds no `Read` grant on this collection (KB-4). Distinct
+    /// The caller holds no `Read` grant on this collection. Distinct
     /// from "empty result" so a denial is never silently indistinguishable
     /// from a genuine no-match.
     Denied {
@@ -64,7 +64,7 @@ impl std::fmt::Display for KnowledgeAccessError {
 
 impl std::error::Error for KnowledgeAccessError {}
 
-/// An access-gated view over a [`KnowledgeStore`] (KB-4). Checks the `Read`
+/// An access-gated view over a [`KnowledgeStore`]. Checks the `Read`
 /// grant for **every** requested `collection_id` before delegating; a
 /// collection the caller cannot read is dropped from the query rather than
 /// failing the whole request — so a multi-collection query partially
@@ -123,7 +123,7 @@ impl<'a> GatedKnowledge<'a> {
     /// The read-scoped `collection_ids` this principal may query — the
     /// primitive `knowledge_retrieval::retrieve` should be called with.
     /// Empty when the principal is authorized for none of the requested ids
-    /// (KB-4: never search collections implicitly, never leak via a partial
+    /// (never search collections implicitly, never leak via a partial
     /// grant on an unrelated id).
     pub fn authorize_collections(
         &self,

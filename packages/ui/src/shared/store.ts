@@ -1,19 +1,19 @@
 /**
  * The reactive substrate — a hand-rolled subscribable store, no state library.
  *
- * The application shell holds no domain state (INV-2): every store built here
+ * The application shell holds no domain state: every store built here
  * caches a projection of core state, or the frame's own view state. What that
  * needs is a subscribable value with a single mutation path — not the selectors,
  * middleware, and devtools a state-management dependency brings. A dependency
  * whose main value is managing complex client state is also an invitation to
  * grow some, which this package must not.
  *
- * `createStore` is the single authority for one domain (AS-1): `dispatch` is the
- * only way its state changes, `subscribe` hands back the deregister function
- * (AS-4), and `snapshot` is referentially stable while the state is unchanged so
+ * `createStore` is the single authority for one domain: `dispatch` is the
+ * only way its state changes, `subscribe` hands back the deregister function,
+ * and `snapshot` is referentially stable while the state is unchanged so
  * a `useSyncExternalStore` reader never re-renders on identity churn.
  *
- * `useStore` is the scoped subscription (AS-3): a component re-renders only when
+ * `useStore` is the scoped subscription: a component re-renders only when
  * the slice its selector returns actually changes, compared with `Object.is` by
  * default or a caller-supplied equality.
  */
@@ -30,9 +30,9 @@ export type Reducer<S, A> = (state: S, action: A) => S;
 export interface Store<S, A> {
   /** Current state. Referentially stable until a `dispatch` changes it. */
   snapshot(): S;
-  /** Register a listener; the returned function deregisters it (AS-4). */
+  /** Register a listener; the returned function deregisters it. */
   subscribe(listener: () => void): () => void;
-  /** The only way state changes (AS-1). A reducer returning the same reference is a no-op. */
+  /** The only way state changes. A reducer returning the same reference is a no-op. */
   dispatch(action: A): void;
 }
 
@@ -68,8 +68,8 @@ const strictEqual = <T>(a: T, b: T): boolean => Object.is(a, b);
  * changes under `isEqual` (default `Object.is`). The selection is memoized
  * against the store's stable snapshot: an unrelated dispatch that leaves the
  * slice equal returns the previous reference, so `useSyncExternalStore` does not
- * re-render (AS-3). The subscription is owned by the calling component and is
- * torn down on unmount (AS-4).
+ * re-render. The subscription is owned by the calling component and is
+ * torn down on unmount.
  */
 export function useStore<S, A, T>(
   store: Store<S, A>,

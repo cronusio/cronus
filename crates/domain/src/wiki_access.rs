@@ -1,4 +1,4 @@
-//! Access-gated project-wiki reads (§4.4, PW-7).
+//! Access-gated project-wiki reads.
 //!
 //! The client never touches [`cronus_contract::WikiReadSurface`] directly on a
 //! shared office — it goes through [`GatedWiki`], which runs the uniform
@@ -12,14 +12,14 @@
 //! ports-tier [`WikiReadSurface`]; the grant algebra is this crate's
 //! [`GrantStore`]. Neither knows about the other — `GatedWiki` is the single
 //! place they meet, so the enforcement lives in one auditable spot rather than
-//! being sprinkled through the read paths (RS-1's uniform-primitive intent).
+//! being sprinkled through the read paths (the uniform-primitive intent).
 
 use cronus_contract::{WikiChangelogEntry, WikiPage, WikiReadSurface};
 
 use crate::resource_sharing::{GrantStore, Permission, ResourceKind};
 
-/// The caller's identity for a wiki read (PW-7). `is_owner` short-circuits the
-/// grant lookup (RS-5: the owner always reads their own office's wiki);
+/// The caller's identity for a wiki read. `is_owner` short-circuits the
+/// grant lookup (the owner always reads their own office's wiki);
 /// `groups` are the caller's group memberships, pre-resolved once per request
 /// as the grant model expects.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl WikiPrincipal {
         }
     }
 
-    /// The office owner — reads pass by ownership alone, no grant needed (RS-5).
+    /// The office owner — reads pass by ownership alone, no grant needed.
     pub fn owner(user_id: impl Into<String>) -> Self {
         WikiPrincipal {
             user_id: user_id.into(),
@@ -52,7 +52,7 @@ impl WikiPrincipal {
 /// A wiki read that was refused or failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WikiAccessError {
-    /// The caller holds no `Read` grant on this office's wiki (PW-7). Distinct
+    /// The caller holds no `Read` grant on this office's wiki. Distinct
     /// from "not found" so a denial is never silently indistinguishable from an
     /// empty result.
     Denied { office_id: String },
@@ -73,7 +73,7 @@ impl std::fmt::Display for WikiAccessError {
 
 impl std::error::Error for WikiAccessError {}
 
-/// An access-gated view over a [`WikiReadSurface`] (PW-7). Every method runs
+/// An access-gated view over a [`WikiReadSurface`]. Every method runs
 /// the `Read` gate for the requested office before delegating; a denied read
 /// never reaches the store. Bound by borrow to a read surface, a grant store,
 /// and one principal — construct it per request/session.
@@ -96,7 +96,7 @@ impl<'a> GatedWiki<'a> {
         }
     }
 
-    /// The PW-7 gate: `has_access(Wiki, office_id, Read)`. Owner-wins is folded
+    /// The gate: `has_access(Wiki, office_id, Read)`. Owner-wins is folded
     /// in by `has_access` via `is_owner`.
     fn authorize(&self, office_id: &str) -> Result<(), WikiAccessError> {
         let allowed = self.grants.has_access(
@@ -126,7 +126,7 @@ impl<'a> GatedWiki<'a> {
     }
 
     /// The direct children of `parent_id` (or the roots when `None`), for the
-    /// navigation tree (PW-6) — gated on `office_id` (PW-7).
+    /// navigation tree — gated on `office_id`.
     pub fn children(
         &self,
         office_id: &str,
@@ -138,7 +138,7 @@ impl<'a> GatedWiki<'a> {
             .map_err(WikiAccessError::Store)
     }
 
-    /// Full-text search within the office (PW-6), gated on `office_id` (PW-7).
+    /// Full-text search within the office, gated on `office_id`.
     pub fn search(
         &self,
         office_id: &str,
@@ -151,7 +151,7 @@ impl<'a> GatedWiki<'a> {
             .map_err(WikiAccessError::Store)
     }
 
-    /// Change history newest-first (PW-5), gated on `office_id` (PW-7).
+    /// Change history newest-first, gated on `office_id`.
     pub fn changelog(
         &self,
         office_id: &str,
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_read_without_the_read_grant_is_denied() {
-        // PW-7: a non-owner with no grant is refused on every read method.
+        // A non-owner with no grant is refused on every read method.
         let reader = reader();
         let grants = GrantStore::new();
         let gate = GatedWiki::new(&reader, &grants, WikiPrincipal::member("stranger", vec![]));
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn the_owner_reads_without_an_explicit_grant() {
-        // RS-5: ownership alone authorizes, no grant row needed.
+        // Ownership alone authorizes, no grant row needed.
         let reader = reader();
         let grants = GrantStore::new();
         let gate = GatedWiki::new(&reader, &grants, WikiPrincipal::owner("alice"));

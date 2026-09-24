@@ -1,5 +1,5 @@
 //! Developer-office workspace registration and elevated-action confinement/
-//! audit/receipt wiring (DVO-1, DVO-6, DVO-7). Composition over
+//! audit/receipt wiring. Composition over
 //! already-shipped subsystems: the `store-local` workspace registry,
 //! tool-security's authority gate, and the receipts facade — no new
 //! authority mechanism here, only a thin binding scoped to the dev office.
@@ -8,7 +8,7 @@
 //! production call site this codebase routes through
 //! [`crate::receipts_bootstrap::ReceiptedDispatch`] — there is no general
 //! tool-dispatch surface yet, so this is exactly one receipted path, not
-//! project-wide coverage (`l1-tool-receipts` TR-8/INV-9). Every future call
+//! project-wide coverage. Every future call
 //! site adopts receipts by construction, since `Receipted<T>` is the only
 //! way `invoke` returns a value.
 
@@ -21,7 +21,7 @@ use cronus_store_local::workspace::{
 };
 
 /// The reserved, well-known id of the sole `WorkspaceKind::Developer`
-/// instance (DVO-1). Never accepted by the ordinary `workspace create`/
+/// instance. Never accepted by the ordinary `workspace create`/
 /// `delete` CLI flow (guarded there, the `RESERVED_USERNAMES` precedent) —
 /// only [`register_dev_workspace`], called solely on an `Elevated` gate
 /// resolution, ever writes this row.
@@ -30,7 +30,7 @@ pub const DEV_OFFICE_WORKSPACE_ID: &str = "dev-office";
 /// Whether `id` is the reserved developer-workspace id — the check the
 /// ordinary workspace create/delete CLI flow guards against, so
 /// `WorkspaceKind::Developer` is not creatable or deletable through the
-/// ordinary project-creation flow (DVO-1).
+/// ordinary project-creation flow.
 pub fn is_reserved_dev_workspace_id(id: &str) -> bool {
     id == DEV_OFFICE_WORKSPACE_ID
 }
@@ -55,7 +55,7 @@ pub fn register_dev_workspace(
 }
 
 /// Run one elevated dev-office action through the confinement/audit/receipt
-/// chain (DVO-7, TR-1, TR-7): the tool-security authority gate first,
+/// chain: the tool-security authority gate first,
 /// unchanged; a receipt binding the gate's verdict always second — allowed
 /// *and* blocked attempts are both receipted, because an audit trail that
 /// only remembers successes isn't one. If the audit write itself fails,
@@ -65,7 +65,7 @@ pub fn register_dev_workspace(
 ///
 /// Nothing here reaches the workspace registry at all — an elevated action
 /// has no parameter or capability that could touch another workspace's
-/// store (the INV-8 boundary assertion), by plain absence, not a runtime
+/// store (the boundary assertion), by plain absence, not a runtime
 /// check that could be bypassed.
 pub fn run_elevated_action(
     dispatch: &mut ReceiptedDispatch,

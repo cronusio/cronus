@@ -61,7 +61,7 @@ describe("public API freeze", () => {
     expect(Object.keys(ui).sort()).toEqual(PUBLIC_API);
   });
 
-  it("declares exactly one application root (R-1)", () => {
+  it("declares exactly one application root", () => {
     const roots = Object.keys(ui).filter((name) => /^(App|Workbench|BuildingShell)$/.test(name));
     expect(roots).toEqual([
       "BuildingShell",

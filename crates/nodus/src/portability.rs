@@ -2,19 +2,19 @@
 //!
 //! Provides the vocabulary-extension seam ([`SchemaProvider`]), a built-in
 //! in-memory implementation of the storage seam ([`StorageProvider`] /
-//! [`InMemoryStorageProvider`] — its executor wiring stays pending LP-3),
+//! [`InMemoryStorageProvider`] — its executor wiring stays pending),
 //! and the per-effect authorization gate ([`PolicyProvider`] / [`EffectClass`]
-//! / [`effect_class_of`], wired into `Executor::execute_command`, LP-11). Each
+//! / [`effect_class_of`], wired into `Executor::execute_command`). Each
 //! trait ships with a built-in implementation sufficient for in-process use
-//! without I/O, matching the LP-2 pattern established by
+//! without I/O, matching the pattern established by
 //! [`crate::executor::StubProvider`] and [`crate::observability::NoopAuditProvider`].
 //!
-//! It also defines the LP-8 capability manifest ([`CapabilityManifest`]) and the
+//! It also defines the capability manifest ([`CapabilityManifest`]) and the
 //! pre-run satisfiability gate ([`validate_manifest`]): a workflow declares the
 //! extension roles, host commands, and named capabilities it needs, and the
 //! runtime rejects fail-fast — before any step runs — when the active host
 //! cannot satisfy them. The same manifest is the machine-checkable two-host
-//! portability contract (LP-3).
+//! portability contract.
 
 use crate::ast::{CommandCall, Conditional, Stmt, WorkflowFile};
 use crate::executor::Value;
@@ -51,11 +51,11 @@ impl SchemaProvider for BuiltinSchemaProvider {
     }
 }
 
-// ─── StorageProvider (wiring pending LP-3) ───────────────────────────────────
+// ─── StorageProvider (wiring pending) ───────────────────────────────────
 
 /// Durable key/value store for cross-invocation state.
 ///
-/// This interface is specified but executor integration is deferred until LP-3
+/// This interface is specified but executor integration is deferred until the graduation condition
 /// is satisfied (two independent hosts require durable cross-invocation state).
 pub trait StorageProvider {
     /// Persist a named value. `key` is host-defined; the runtime treats it as
@@ -105,12 +105,12 @@ impl StorageProvider for InMemoryStorageProvider {
     }
 }
 
-// ─── PolicyProvider (LP-11) ───────────────────────────────────────────────────
+// ─── PolicyProvider ───────────────────────────────────────────────────
 
 /// Runtime policy evaluation for host-defined gates.
 ///
 /// Gates every `ModelCall`/`Deferred` effect ([`EffectClass`]) in
-/// `Executor::execute_command` before the effect happens (LP-11) — see
+/// `Executor::execute_command` before the effect happens — see
 /// [`effect_class_of`]. The `evaluate` contract is boolean permit/deny only;
 /// spend tracking and approval workflows are host-side concerns.
 pub trait PolicyProvider {
@@ -132,9 +132,9 @@ impl PolicyProvider for NoopPolicyProvider {
     }
 }
 
-// ─── SettlementRail (LP-17) ──────────────────────────────────────────────────
+// ─── SettlementRail ──────────────────────────────────────────────────
 
-/// The act half of the LP-17 settlement seam: attempt to settle a
+/// The act half of the settlement seam: attempt to settle a
 /// gate-permitted `SETTLE` and return proof.
 ///
 /// The decide half needs no new trait — it is an ordinary [`PolicyProvider`]
@@ -144,14 +144,14 @@ impl PolicyProvider for NoopPolicyProvider {
 pub trait SettlementRail {
     /// Attempt to settle a permitted payment. `cmd.args` carries
     /// `[payee, amount, purpose]` raw, exactly as declared — nodus parses
-    /// none of them (LP-1/LP-2). `None` means unaccounted (VS-7): the rail
+    /// none of them. `None` means unaccounted: the rail
     /// could not produce a verifiable receipt, and the payment MUST NOT be
     /// treated as settled.
     fn settle(&self, cmd: &CommandCall) -> Option<Value>;
 }
 
 /// No-op settlement rail: no rail is wired, so every settlement is
-/// unaccounted (VS-8: cannot pay without a real rail).
+/// unaccounted (cannot pay without a real rail).
 pub struct NoopSettlementRail;
 
 impl SettlementRail for NoopSettlementRail {
@@ -160,10 +160,9 @@ impl SettlementRail for NoopSettlementRail {
     }
 }
 
-// ─── ConfigProvider (NL-20) ──────────────────────────────────────────────────
+// ─── ConfigProvider ──────────────────────────────────────────────────
 
-/// The outcome of a host reviewing a shape-checked `§config` candidate set
-/// (NL-20 / DC-3 / DC-4).
+/// The outcome of a host reviewing a shape-checked `§config` candidate set.
 #[derive(Debug, Clone)]
 pub enum ConfigOutcome {
     /// The host approved the candidate set.
@@ -173,8 +172,8 @@ pub enum ConfigOutcome {
     Rejected(Vec<crate::validator::ConfigViolation>),
 }
 
-/// Host acceptance authority over a shape-checked `§config` candidate
-/// (LP-2/LP-10): a workflow reads its configuration but can never author,
+/// Host acceptance authority over a shape-checked `§config` candidate:
+/// a workflow reads its configuration but can never author,
 /// widen, or self-grant it — acceptance is the host's decision alone.
 pub trait ConfigProvider {
     /// Decide whether to accept a candidate that already passed the pure
@@ -187,7 +186,7 @@ pub trait ConfigProvider {
 }
 
 /// Built-in host acceptance: accepts the shape-checked candidate as-is. No
-/// I/O, no store, no UI — matching the [`NoopPolicyProvider`] LP-2 built-in
+/// I/O, no store, no UI — matching the [`NoopPolicyProvider`] built-in
 /// precedent.
 pub struct DefaultConfigProvider;
 
@@ -201,13 +200,13 @@ impl ConfigProvider for DefaultConfigProvider {
     }
 }
 
-// ─── Capability Manifest (LP-8) ──────────────────────────────────────────────
+// ─── Capability Manifest ──────────────────────────────────────────────
 
 /// Model-backed commands — those the executor dispatches to its
 /// [`crate::executor::ModelProvider`]. A workflow invoking any of them requires
 /// the [`ExtensionRole::Model`] role from its host.
 ///
-/// `pub(crate)`: read directly by `validator.rs`'s DG-11 authoring advisories
+/// `pub(crate)`: read directly by `validator.rs`'s dialog-authoring advisories
 /// — a produced-artifact reference (`W017`) needs
 /// the same model-command classification this module already owns.
 pub(crate) const MODEL_COMMANDS: &[&str] = &["GEN", "ANALYZE"];
@@ -215,19 +214,19 @@ pub(crate) const MODEL_COMMANDS: &[&str] = &["GEN", "ANALYZE"];
 /// Dialog commands — those the executor dispatches to its [`crate::executor::DialogProvider`].
 /// A workflow invoking one without a `+default` requires the [`ExtensionRole::Dialog`] role.
 ///
-/// `pub(crate)`: read directly by `validator.rs`'s DG-11 authoring advisories
+/// `pub(crate)`: read directly by `validator.rs`'s dialog-authoring advisories
 /// — placement (`W016`) and payload (`W017`) both
 /// need the same dialog-command classification this module already owns.
 pub(crate) const DIALOG_COMMANDS: &[&str] = &["ASK", "CONFIRM"];
 
 /// Settlement commands — those the executor dispatches to its
 /// [`crate::executor::SettlementRail`]. A workflow invoking one always
-/// requires the [`ExtensionRole::Settlement`] role (LP-17).
+/// requires the [`ExtensionRole::Settlement`] role.
 const SETTLEMENT_COMMANDS: &[&str] = &["SETTLE"];
 
-// ─── Effect Classification (LP-11) ───────────────────────────────────────────
+// ─── Effect Classification ───────────────────────────────────────────
 
-/// The class of an effectful step, for the [`PolicyProvider`] gate (LP-11).
+/// The class of an effectful step, for the [`PolicyProvider`] gate.
 ///
 /// Realized narrower than the two-role taxonomy above might suggest: a fourth
 /// `ToolUse` class is deliberately absent. Every `tool`-shaped builtin command
@@ -240,7 +239,7 @@ pub enum EffectClass {
     ModelCall,
     /// A deferred/external completion (`ASK`, `CONFIRM`) — see [`DIALOG_COMMANDS`].
     Deferred,
-    /// An outbound value transfer (`SETTLE`) — see [`SETTLEMENT_COMMANDS`] (LP-17).
+    /// An outbound value transfer (`SETTLE`) — see [`SETTLEMENT_COMMANDS`].
     Settlement,
 }
 
@@ -275,9 +274,9 @@ pub fn effect_class_of(command: &str) -> Option<EffectClass> {
     }
 }
 
-/// An LP-2 extension-point role a workflow may require from its host.
+/// An extension-point role a workflow may require from its host.
 ///
-/// Roles name *capabilities*, never concrete host types (LP-1). They mirror the
+/// Roles name *capabilities*, never concrete host types. They mirror the
 /// extension-point taxonomy: model inference, audit tracing, durable storage,
 /// policy evaluation, and host vocabulary extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -302,10 +301,10 @@ pub enum ExtensionRole {
     Settlement,
 }
 
-/// What a workflow declares it needs from its host to execute (LP-8).
+/// What a workflow declares it needs from its host to execute.
 ///
 /// Expressed only in terms of the extension-point taxonomy ([`ExtensionRole`])
-/// and named schema capabilities — never a concrete host type (LP-1). An empty
+/// and named schema capabilities — never a concrete host type. An empty
 /// manifest is satisfied by any host, so manifest-free and model-only workflows
 /// stay runnable against the built-in in-process host without host wiring.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -373,7 +372,7 @@ impl CapabilityManifest {
     /// they are never derived here — a caller requires them explicitly via
     /// [`CapabilityManifest::require_role`] (`run_with_environment` does this
     /// for `Environment` on every call, since calling it is itself the need
-    /// declaration, NE-10).
+    /// declaration).
     pub fn from_workflow(ast: &WorkflowFile) -> Self {
         let mut calls: Vec<&CommandCall> = Vec::new();
         for step in &ast.steps {
@@ -462,8 +461,8 @@ fn collect_from_conditional<'a>(cond: &'a Conditional, out: &mut Vec<&'a Command
 }
 
 /// What a host actually provides — the resolution surface a manifest is checked
-/// against (LP-8). Hosts are built explicitly so the same struct serves both the
-/// built-in in-process configuration and host-substitution tests (LP-3).
+/// against. Hosts are built explicitly so the same struct serves both the
+/// built-in in-process configuration and host-substitution tests.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostCapabilities {
     roles: BTreeSet<ExtensionRole>,
@@ -548,7 +547,7 @@ pub enum Missing {
 }
 
 /// Resolve a manifest against a host: return every capability the host fails to
-/// provide (LP-8). An empty result means the manifest is fully satisfiable and
+/// provide. An empty result means the manifest is fully satisfiable and
 /// the workflow may run; a non-empty result is the fail-fast rejection set. The
 /// order is stable (roles, then commands, then capabilities, each sorted).
 pub fn validate_manifest(manifest: &CapabilityManifest, host: &HostCapabilities) -> Vec<Missing> {
@@ -655,7 +654,7 @@ mod tests {
         assert!(p.evaluate("any_gate", &Value::Null));
     }
 
-    // ── LP-8 capability manifest ────────────────────────────────────────────
+    // ── capability manifest ────────────────────────────────────────────
 
     #[test]
     fn manifest_default_is_empty() {
@@ -685,9 +684,9 @@ mod tests {
 
     #[test]
     fn builtin_host_provides_environment_but_not_dialog() {
-        // Environment: StubEnvironment is a complete trivial world (NE-10).
+        // Environment: StubEnvironment is a complete trivial world.
         // Dialog: the default resolver only handles `+default` dialogs, so
-        // builtin deliberately does NOT provide it (DG-8).
+        // builtin deliberately does NOT provide it.
         let host = HostCapabilities::builtin();
         assert!(host.provides(ExtensionRole::Environment));
         assert!(!host.provides(ExtensionRole::Dialog));
@@ -696,7 +695,7 @@ mod tests {
     #[test]
     fn builtin_host_does_not_provide_settlement() {
         // NoopSettlementRail never settles anything, so builtin deliberately
-        // does NOT provide Settlement (LP-17) — same shape as Dialog.
+        // does NOT provide Settlement — same shape as Dialog.
         let host = HostCapabilities::builtin();
         assert!(!host.provides(ExtensionRole::Settlement));
     }
@@ -792,7 +791,7 @@ mod tests {
         );
     }
 
-    // ── ConfigProvider / ExtensionRole::Config (NL-20) ──────────────────────
+    // ── ConfigProvider / ExtensionRole::Config ──────────────────────
 
     #[test]
     fn default_config_provider_accepts_candidate() {

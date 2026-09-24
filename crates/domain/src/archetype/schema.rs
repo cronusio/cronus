@@ -1,27 +1,27 @@
-//! The archetype definition and its closed-schema validator (OA-2, OA-4, OA-10).
+//! The archetype definition and its closed-schema validator.
 //!
 //! The schema is *closed*: the only recognized keys are the archetype's
 //! identity (`id`, `domain`) and its four content fields (`pool`, `shape`,
 //! `seed`, `norms`). An unrecognized key — `permissions`, `budget`,
 //! `autonomy`, anything — is a validation failure, not an ignored extra. That
-//! is how OA-4 (an archetype carries no authority) is made *unrepresentable*
+//! is how the rule that an archetype carries no authority is made *unrepresentable*
 //! rather than merely told-not-to: there is no key in which authority could be
 //! smuggled.
 
 use crate::roles::catalog::PRESET_CATALOG;
 
 /// The complete set of keys a well-formed archetype definition may carry:
-/// identity (`id`, `domain`) + the four content fields (OA-1). Any other key
-/// fails validation (OA-4).
+/// identity (`id`, `domain`) + the four content fields. Any other key
+/// fails validation.
 pub const ALLOWED_KEYS: &[&str] = &["id", "domain", "pool", "shape", "seed", "norms"];
 
-/// Cap on `seed` entries (OA-2): a seed seats specialists before the first
+/// Cap on `seed` entries: a seed seats specialists before the first
 /// sentence is spoken, so it is bounded and each entry must justify itself.
 pub const SEED_CAP: usize = 2;
 
 /// The org shape an archetype expects — named layers and the condition under
 /// which the manager introduces one. `grow_when` is a condition, not a
-/// structure to build: nothing here instantiates a department (OA-1).
+/// structure to build: nothing here instantiates a department.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shape {
     pub departments: Vec<String>,
@@ -29,7 +29,7 @@ pub struct Shape {
 }
 
 /// One seeded role — a specialist seated at office instantiation — with the
-/// first-contact work it performs (OA-2: the justification is mandatory).
+/// first-contact work it performs (the justification is mandatory).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeedEntry {
     pub role: String,
@@ -38,7 +38,7 @@ pub struct SeedEntry {
 
 /// A complete archetype definition. Constructed either from an embedded
 /// program-tier constant (the shipped archetypes) or by a loader that has
-/// already passed the raw key set through `validate_definition_keys` (OA-4).
+/// already passed the raw key set through `validate_definition_keys`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchetypeDefinition {
     pub id: String,
@@ -53,10 +53,10 @@ pub struct ArchetypeDefinition {
 /// a caller can report precisely what to fix.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArchetypeError {
-    /// A key outside the closed schema was present (OA-4).
+    /// A key outside the closed schema was present.
     UnknownKey(String),
     /// A `pool` or `seed` role identifier does not resolve against the role
-    /// catalog (OA-10) — the reason the two non-technical archetypes are
+    /// catalog — the reason the two non-technical archetypes are
     /// blocked rather than shipped.
     UnknownRole(String),
     /// An archetype *preset* id (`archetype create --from <id>`) does not
@@ -65,9 +65,9 @@ pub enum ArchetypeError {
     /// failure that was actually about the archetype-preset catalog
     /// mis-described which lookup failed.
     UnknownPreset(String),
-    /// More than `SEED_CAP` seed entries (OA-2).
+    /// More than `SEED_CAP` seed entries.
     SeedTooLarge(usize),
-    /// A seed entry carries an empty justification (OA-2).
+    /// A seed entry carries an empty justification.
     MissingJustification(String),
     /// A state-tier read/write failed (e.g. persisting a custom archetype).
     Io(String),
@@ -98,7 +98,7 @@ impl std::fmt::Display for ArchetypeError {
 
 impl std::error::Error for ArchetypeError {}
 
-/// OA-4: the closed-schema gate applied at the parse boundary. A loader that
+/// The closed-schema gate applied at the parse boundary. A loader that
 /// reads a raw archetype definition (e.g. a state-tier `archetype.json`) passes
 /// its key set here *before* building an `ArchetypeDefinition`; any key outside
 /// `ALLOWED_KEYS` is rejected. Reads no values — it cannot be subverted by
@@ -118,19 +118,19 @@ fn role_exists(id: &str) -> bool {
 }
 
 impl ArchetypeDefinition {
-    /// Validate a built definition's content (OA-2, OA-10). The key-set check
-    /// (OA-4) is `validate_definition_keys`, run earlier at the parse boundary;
+    /// Validate a built definition's content. The key-set check
+    ///  is `validate_definition_keys`, run earlier at the parse boundary;
     /// a definition built in code from the closed struct cannot express an
     /// unknown key, so this method covers the value-level invariants.
     pub fn validate(&self) -> Result<(), ArchetypeError> {
-        // OA-10: every pool identifier resolves against the role catalog.
+        // Every pool identifier resolves against the role catalog.
         for role in &self.pool {
             if !role_exists(role) {
                 return Err(ArchetypeError::UnknownRole(role.clone()));
             }
         }
-        // OA-2: seed is capped and every entry justifies itself; its roles
-        // resolve too (a seeded role is also a hire, OA-10).
+        // Seed is capped and every entry justifies itself; its roles
+        // resolve too (a seeded role is also a hire).
         if self.seed.len() > SEED_CAP {
             return Err(ArchetypeError::SeedTooLarge(self.seed.len()));
         }
@@ -194,7 +194,7 @@ mod tests {
         }
     }
 
-    // --- OA-4: the closed schema rejects a fifth key ------------------------
+    // --- The closed schema rejects a fifth key ------------------------
 
     #[test]
     fn a_definition_carrying_an_unrecognized_key_fails_validation() {
@@ -231,7 +231,7 @@ mod tests {
         ));
     }
 
-    // --- OA-10: every role id resolves against the catalog ------------------
+    // --- Every role id resolves against the catalog ------------------
 
     #[test]
     fn the_shipped_software_engineering_pool_resolves_fully_today() {
@@ -250,7 +250,7 @@ mod tests {
         );
     }
 
-    // --- OA-2: seed cap + mandatory justification ---------------------------
+    // --- Seed cap + mandatory justification ---------------------------
 
     #[test]
     fn a_seed_over_the_cap_of_two_fails() {

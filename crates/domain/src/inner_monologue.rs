@@ -1,11 +1,11 @@
 //! Inner monologue — the heartbeat-gated background reflection cycle.
 //!
 //! The cycle fires only when the office is running (Active/Idle) and the foreground
-//! is idle (IM-1), and never when the Pulse subsystem is individually paused (IM-5).
+//! is idle, and never when the Pulse subsystem is individually paused.
 //! It parses reflection output into typed intentions, logs every intention —
-//! including NoAction — to the Pulse log *before* any dispatch (IM-2), and stays
-//! within a declared token budget (IM-3). Intentions route through standard
-//! subsystem APIs; this module never writes a store directly (IM-4).
+//! including NoAction — to the Pulse log *before* any dispatch, and stays
+//! within a declared token budget. Intentions route through standard
+//! subsystem APIs; this module never writes a store directly.
 //!
 //! The reflection prompt (a nodus step) and the inbox-backed Pulse log are seams;
 //! the gating, typing, and log-before-dispatch algebra are implemented here.
@@ -32,7 +32,7 @@ impl Intention {
 pub struct PulseEntry {
     pub cycle_id: String,
     pub intentions: Vec<Intention>,
-    /// True if the token budget cut the cycle short (IM-3).
+    /// True if the token budget cut the cycle short.
     pub truncated: bool,
 }
 
@@ -67,12 +67,12 @@ pub struct CycleGate {
     pub office_running: bool,
     /// The foreground session has no blocking work (turn state Waiting/Idle).
     pub foreground_idle: bool,
-    /// The Heartbeat/Pulse subsystem is individually paused (OC §4.4).
+    /// The Heartbeat/Pulse subsystem is individually paused.
     pub pulse_paused: bool,
 }
 
 impl CycleGate {
-    /// Whether the cycle may fire (IM-1 + IM-5).
+    /// Whether the cycle may fire.
     pub fn should_fire(&self) -> bool {
         self.office_running && self.foreground_idle && !self.pulse_paused
     }
@@ -81,7 +81,7 @@ impl CycleGate {
 /// Errors surfaced by dispatch attempts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MonologueError {
-    /// A dispatch was attempted for an intention that was never logged (IM-2).
+    /// A dispatch was attempted for an intention that was never logged.
     UnloggedDispatch,
 }
 
@@ -89,7 +89,7 @@ pub enum MonologueError {
 #[derive(Debug, Default)]
 pub struct InnerMonologue {
     log: PulseLog,
-    /// Cycle ids whose intentions have been logged and may be dispatched (IM-2).
+    /// Cycle ids whose intentions have been logged and may be dispatched.
     logged: std::collections::HashSet<String>,
 }
 
@@ -104,10 +104,10 @@ impl InnerMonologue {
 
     /// Run one cycle if the gate permits. Reflection output arrives as `intentions`
     /// (produced by the nodus reflection step within the token budget). Returns the
-    /// logged entry, or `None` if the gate suppressed the cycle (IM-1/IM-5).
+    /// logged entry, or `None` if the gate suppressed the cycle.
     ///
-    /// ALL intentions are logged before any dispatch (IM-2). Budget exhaustion
-    /// marks the entry truncated (IM-3).
+    /// ALL intentions are logged before any dispatch. Budget exhaustion
+    /// marks the entry truncated.
     pub fn run_cycle(
         &mut self,
         cycle_id: &str,
@@ -133,8 +133,8 @@ impl InnerMonologue {
     }
 
     /// Dispatch the actionable intentions of a logged cycle through subsystem APIs
-    /// (IM-4 — the monologue proposes; the caller routes). Fails if the cycle was
-    /// never logged (IM-2). Returns the intentions to route (NoAction excluded).
+    /// (the monologue proposes; the caller routes). Fails if the cycle was
+    /// never logged. Returns the intentions to route (NoAction excluded).
     pub fn dispatch(&self, cycle_id: &str) -> Result<Vec<Intention>, MonologueError> {
         if !self.logged.contains(cycle_id) {
             return Err(MonologueError::UnloggedDispatch);
@@ -168,7 +168,6 @@ mod tests {
 
     #[test]
     fn cycle_suppressed_unless_running_idle_and_unpaused() {
-        // IM-1 + IM-5.
         assert!(open_gate().should_fire());
         assert!(
             !CycleGate {
@@ -211,7 +210,7 @@ mod tests {
 
     #[test]
     fn all_intentions_logged_before_dispatch() {
-        // IM-2: NoAction is logged too; dispatch returns only actionable ones.
+        // NoAction is logged too; dispatch returns only actionable ones.
         let mut im = InnerMonologue::new();
         im.run_cycle(
             "c1",
@@ -233,7 +232,7 @@ mod tests {
 
     #[test]
     fn dispatch_of_unlogged_cycle_is_refused() {
-        // IM-2: an action with no prior log entry is a protocol violation.
+        // An action with no prior log entry is a protocol violation.
         let im = InnerMonologue::new();
         assert_eq!(im.dispatch("ghost"), Err(MonologueError::UnloggedDispatch));
     }
@@ -248,7 +247,6 @@ mod tests {
 
     #[test]
     fn budget_exhaustion_marks_entry_truncated() {
-        // IM-3.
         let mut im = InnerMonologue::new();
         let entry = im
             .run_cycle("c1", open_gate(), vec![Intention::NoAction], true)

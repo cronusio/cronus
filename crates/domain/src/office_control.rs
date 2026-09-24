@@ -6,7 +6,7 @@
 //! and per-subsystem pause toggles. The cooperative worker drain is modeled as a
 //! recorded checkpoint here; real wiring to the orchestration drain bus, the
 //! session-checkpoint store, and the model-router substitution is deferred — the
-//! substitution *decision* is resolved by the caller (OC-3 delegates entirely to
+//! substitution *decision* is resolved by the caller (delegated entirely to
 //! the model-router) and handed in.
 
 use std::collections::HashSet;
@@ -40,7 +40,7 @@ impl OfficeState {
     }
 }
 
-/// A state-change event. Emitted before a transition is considered complete (OC-5).
+/// A state-change event. Emitted before a transition is considered complete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateChange {
     pub office_id: String,
@@ -89,7 +89,7 @@ pub enum Subsystem {
     Heartbeat,
 }
 
-/// The outcome of handling a quota-exhaustion signal (OC-3).
+/// The outcome of handling a quota-exhaustion signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HibernationOutcome {
     /// A viable substitute model was available; the office stayed running.
@@ -103,16 +103,16 @@ pub enum HibernationOutcome {
 ///
 /// Emitted `StateChange` events accumulate in an in-process sink standing in for
 /// the event mesh; a host drains them via [`OfficeControl::take_events`]. Every
-/// committed transition pushes its event to the sink *before* mutating the state
-/// (OC-5), so an observer never sees a state the machine did not announce.
+/// committed transition pushes its event to the sink *before* mutating the state,
+/// so an observer never sees a state the machine did not announce.
 #[derive(Debug)]
 pub struct OfficeControl {
     office_id: String,
     state: OfficeState,
-    /// Whether a drain checkpoint exists to restore from (OC-1/OC-2). A frozen
+    /// Whether a drain checkpoint exists to restore from. A frozen
     /// state always has one; resume clears it after restore.
     checkpoint: bool,
-    /// Subsystems the user has individually paused (OC §4.4). Survive a master
+    /// Subsystems the user has individually paused. Survive a master
     /// resume; the master switch only resumes subsystems not in this set.
     paused_subsystems: HashSet<Subsystem>,
     events: Vec<StateChange>,
@@ -165,7 +165,7 @@ impl OfficeControl {
     }
 
     /// The single state mutator. Runs the guard, performs drain/restore side
-    /// effects, emits the `StateChange` **before** committing (OC-5), then commits.
+    /// effects, emits the `StateChange` **before** committing, then commits.
     ///
     /// A rejected transition returns `Err` and performs no side effects.
     pub fn transition(&mut self, to: OfficeState, at: u64) -> Result<(), TransitionRejected> {
@@ -179,15 +179,15 @@ impl OfficeControl {
             });
         }
 
-        // Side effects at the boundary: freezing drains to a checkpoint (OC-1);
-        // leaving a frozen state restores and clears it (OC-2).
+        // Side effects at the boundary: freezing drains to a checkpoint;
+        // leaving a frozen state restores and clears it.
         if to.is_frozen() && !self.state.is_frozen() {
             self.checkpoint = true;
         } else if self.state.is_frozen() && !to.is_frozen() {
             self.checkpoint = false;
         }
 
-        // Emit before commit — no silent transition (OC-5).
+        // Emit before commit — no silent transition.
         self.events.push(StateChange {
             office_id: self.office_id.clone(),
             from: self.state,
@@ -231,7 +231,7 @@ impl OfficeControl {
         }
     }
 
-    /// Handle a model quota-exhaustion signal (OC-3). The substitution decision is
+    /// Handle a model quota-exhaustion signal. The substitution decision is
     /// resolved by the caller via the model-router (`substitute_available`); this
     /// service holds no substitution logic. A viable substitute keeps the office
     /// running; otherwise it drains and hibernates.
@@ -256,7 +256,7 @@ impl OfficeControl {
         }
     }
 
-    /// Handle a resource-recovery signal for a hibernation-causing resource (OC-4).
+    /// Handle a resource-recovery signal for a hibernation-causing resource.
     /// A `Hibernating` office auto-resumes with no user action. Inert otherwise.
     pub fn on_quota_recovered(&mut self, workload: Workload, at: u64) -> bool {
         if self.state != OfficeState::Hibernating {
@@ -271,7 +271,7 @@ impl OfficeControl {
         true
     }
 
-    /// Individually pause a subsystem (OC §4.4). Persists across a master resume.
+    /// Individually pause a subsystem. Persists across a master resume.
     pub fn pause_subsystem(&mut self, subsystem: Subsystem) {
         self.paused_subsystems.insert(subsystem);
     }
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn pause_drains_to_checkpoint_and_freezes() {
-        // OC-1: freezing writes a checkpoint.
+        // Freezing writes a checkpoint.
         let mut oc = active_office();
         oc.pause(10).unwrap();
         assert_eq!(oc.state(), OfficeState::Paused);
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn resume_restores_exact_state_by_workload() {
-        // OC-2: resume restores; queued -> Active, empty -> Idle; checkpoint cleared.
+        // Resume restores; queued -> Active, empty -> Idle; checkpoint cleared.
         let mut queued = active_office();
         queued.pause(10).unwrap();
         queued.resume(Workload::Queued, 20).unwrap();
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn every_transition_emits_before_commit() {
-        // OC-5: no silent transition — each committed transition emits its event.
+        // No silent transition — each committed transition emits its event.
         let mut oc = OfficeControl::new("office-1");
         oc.transition(OfficeState::Active, 1).unwrap();
         oc.pause(2).unwrap();
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn quota_exhausted_with_substitute_stays_running() {
-        // OC-3: a viable substitute keeps the office running — no hibernation.
+        // A viable substitute keeps the office running — no hibernation.
         let mut oc = active_office();
         let outcome = oc.on_quota_exhausted(true, 10);
         assert_eq!(outcome, Some(HibernationOutcome::Substituted));
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn quota_exhausted_without_substitute_hibernates() {
-        // OC-3: no substitute within budget -> drain + hibernate + checkpoint.
+        // No substitute within budget -> drain + hibernate + checkpoint.
         let mut oc = active_office();
         let outcome = oc.on_quota_exhausted(false, 10);
         assert_eq!(outcome, Some(HibernationOutcome::Hibernated));
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn quota_recovered_auto_wakes_from_hibernation() {
-        // OC-4: recovery auto-resumes with no user action; checkpoint cleared.
+        // Recovery auto-resumes with no user action; checkpoint cleared.
         let mut oc = active_office();
         oc.on_quota_exhausted(false, 10);
         oc.take_events();
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn individually_paused_subsystem_survives_master_resume() {
-        // OC §4.4: a subsystem paused individually stays paused after master resume.
+        // A subsystem paused individually stays paused after master resume.
         let mut oc = active_office();
         oc.pause_subsystem(Subsystem::Scheduler);
         assert!(oc.is_subsystem_paused(Subsystem::Scheduler));

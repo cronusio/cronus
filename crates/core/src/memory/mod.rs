@@ -7,7 +7,7 @@
 //! sqlite-vec in a later phase.
 //!
 //! The SQLite-backed store, its Bellman-propagation/trust-scoring helpers,
-//! and at-rest encryption moved to `cronus-store-local` (§4.2, §4.6) — the
+//! and at-rest encryption moved to `cronus-store-local` — the
 //! adapter implementing the `MemorySearch`/`UserDataStore` seam. Re-exported
 //! here so every existing call site (`crate::memory::MemoryStore`,
 //! `cronus_core::memory::MemoryStore`, …) is unaffected. `consolidation` has no
@@ -23,7 +23,7 @@ pub use cronus_store_local::memory::{
 // ── Shared with the ports tier ───────────────────────────────────────────────
 //
 // MemoryId/MemoryKind/MemorySource/VerificationState/MemoryEntry moved to
-// `cronus-contract` (§4.2) — `MemorySearch`/`UserDataStore`
+// `cronus-contract` — `MemorySearch`/`UserDataStore`
 // carry `MemoryEntry` across the domain/adapter boundary, so its shape lives
 // where both sides can see it. Re-exported here so every existing call site
 // (`crate::memory::MemoryEntry`, `cronus_core::memory::MemoryEntry`, …) is unaffected.

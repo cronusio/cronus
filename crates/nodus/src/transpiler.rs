@@ -290,7 +290,7 @@ impl Transpiler {
             lines.push("}".to_string());
         }
 
-        // @macro: blocks (NL-6 — previously never emitted at all). Shares
+        // @macro: blocks (previously never emitted at all). Shares
         // MacroBlock's raw_lines shape and the same collect_braced_raw_lines
         // parser helper as @test:, so it reuses the same renderer rather than
         // forking a second one. The normative corpus's own macro_expand.nodus
@@ -312,7 +312,7 @@ impl Transpiler {
             }
         }
 
-        // `;; HUMAN MODE` block (NL-6 — previously never emitted at all).
+        // `;; HUMAN MODE` block (previously never emitted at all).
         // Emitted LAST and deliberately: the parser routes a comment
         // containing "HUMAN MODE" into collect_comment_block(), which
         // greedily consumes every following Comment token — any
@@ -690,7 +690,7 @@ impl Transpiler {
     /// ordinary command-call rendering.
     /// Render a `raw_lines` token stream (shared by `@test:` and `@macro:`
     /// bodies — `collect_braced_raw_lines` backs both) back to source text.
-    /// §10.4(a)/(b): `raw_lines` is a `Vec<String>` of already-lexed token
+    /// `raw_lines` is a `Vec<String>` of already-lexed token
     /// *values*, with no type information, so this cannot distinguish a
     /// separator from a value that happens to look like one — it can only
     /// name the two token values (`{`, `}`) that must stay unquoted.
@@ -765,7 +765,7 @@ impl Transpiler {
         parts.join(" ")
     }
 
-    // ─── §config: round-trip (NL-20) ────────────────────────────────────────
+    // ─── §config: round-trip ────────────────────────────────────────
 
     /// Render a [`ConfigDecl`] back to its compact `§config:` NODUS form.
     ///
@@ -1134,7 +1134,7 @@ mod tests {
         assert_eq!(Transpiler::humanize_error("LOG($error)"), "LOG($error)");
     }
 
-    // ── §config: round-trip (NL-20) ─────────────────────────────────────────
+    // ── §config: round-trip ─────────────────────────────────────────
 
     #[test]
     fn config_round_trips_through_nodus() {
@@ -1203,10 +1203,10 @@ level : str
         assert_eq!(comp.args, vec!["$url"]);
     }
 
-    // ─── compact-form control-flow round-trip (NL-6) ────────
+    // ─── compact-form control-flow round-trip ────────
     //
     // Each asserts `parse(src).steps == parse(to_nodus(parse(src))).steps` —
-    // the AST-equality NL-6 actually mandates, never source-text equality.
+    // the AST-equality the language actually mandates, never source-text equality.
 
     fn steps_round_trip(src: &str) {
         let ast = Parser::parse(src).expect("fixture must parse");
@@ -1290,12 +1290,12 @@ level : str
         );
     }
 
-    // ─── @test: block round-trip (§10.4) ────────
+    // ─── @test: block round-trip ────────
     //
     // Asserts `parse(src).tests == parse(to_nodus(parse(src))).tests` — the
-    // AST-equality NL-6 mandates, not source-text equality. `TestBlock`
-    // includes `raw_lines`, so this exercises §10.4(a) (raw_lines is the
-    // emission source) and §10.4(b) (re-quoting) together.
+    // AST-equality the language mandates, not source-text equality. `TestBlock`
+    // includes `raw_lines`, so this exercises the emission-source rule (raw_lines is the
+    // emission source) and re-quoting together.
 
     fn tests_round_trip(src: &str) {
         let ast = Parser::parse(src).expect("fixture must parse");
@@ -1324,7 +1324,7 @@ level : str
 
     #[test]
     fn test_block_whitespace_and_hyphen_values_round_trip() {
-        // The two corpus shapes that corrupted before §10.4: a value
+        // The two corpus shapes that corrupted before the fix: a value
         // containing whitespace and one containing a token-splitting
         // character, both of which the pre-fix emitter split on reparse.
         tests_round_trip(
@@ -1332,7 +1332,7 @@ level : str
         );
     }
 
-    // ─── @macro: and human_mode round-trip (NL-6) ───────────────
+    // ─── @macro: and human_mode round-trip ───────────────
 
     #[test]
     fn macro_block_round_trips() {

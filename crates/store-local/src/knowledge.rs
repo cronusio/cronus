@@ -1,8 +1,8 @@
-//! SQLite-backed knowledge store (§4): named,
+//! SQLite-backed knowledge store: named,
 //! access-controlled document collections with hybrid semantic (sqlite-vec
 //! ANN) + keyword (FTS5) retrieval. Rows are written only through this
-//! module's write seam, which is where KB-9 (authorship zones) and KB-10
-//! (curation lifecycle) are enforced — never by caller convention.
+//! module's write seam, which is where the authorship-zone and curation
+//! lifecycle rules are enforced — never by caller convention.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -16,7 +16,7 @@ use cronus_contract::{
 };
 
 /// The embedding vector dimension every `knowledge_chunk_vec` row must match.
-/// One dimension system-wide (§5.1): a model change
+/// One dimension system-wide: a model change
 /// requires full re-indexing of the collection, never a mixed-dimension table.
 pub const EMBEDDING_DIM: usize = 768;
 
@@ -26,11 +26,11 @@ pub enum KnowledgeError {
     /// A stored row held data the type system rejects (unknown origin/
     /// curation/status, or malformed source_ref JSON) — a corrupt row.
     Corrupt(String),
-    /// KB-9: a write into an `Origin::Human` row with no override.
+    /// A write into an `Origin::Human` row with no override.
     ReadOnlyZone {
         document_id: String,
     },
-    /// KB-10: a curation advance to `Reviewed`/`Stable` with no human auth.
+    /// A curation advance to `Reviewed`/`Stable` with no human auth.
     HumanApprovalRequired {
         document_id: String,
         target: Curation,
@@ -188,9 +188,9 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    // -- Documents (KB-9/KB-10 write-gated) --------------------------------
+    // -- Documents (write-gated) --------------------------------
 
-    /// KB-9 enforcement point: refuses to overwrite an existing
+    /// Authorship enforcement point: refuses to overwrite an existing
     /// `Origin::Human` row unless `override_` is `HumanDirected`. A brand-new
     /// document (no existing row by this id) is never gated here — the gate
     /// protects *rewriting* human material, not its initial ingest.
@@ -227,7 +227,7 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    /// Update only `status`/`error_msg` — never KB-9-gated (index-state
+    /// Update only `status`/`error_msg` — never write-gated (index-state
     /// bookkeeping, not authored content). See the trait doc for why.
     pub fn update_document_status(
         &self,
@@ -261,7 +261,7 @@ impl KnowledgeDb {
             .transpose()
     }
 
-    /// KB-10: `Draft` is agent-free; `Reviewed`/`Stable` require `human_auth`.
+    /// `Draft` is agent-free; `Reviewed`/`Stable` require `human_auth`.
     pub fn set_curation(&self, id: &str, next: Curation, human_auth: Option<&str>) -> Result<()> {
         if !matches!(next, Curation::Draft) && human_auth.is_none() {
             return Err(KnowledgeError::HumanApprovalRequired {
@@ -282,7 +282,7 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    /// KB-8: mark deleted — excluded from retrieval immediately.
+    /// Mark deleted — excluded from retrieval immediately.
     pub fn soft_delete_document(&self, id: &str) -> Result<()> {
         let now = now_secs() as i64;
         self.conn.execute(
@@ -292,7 +292,7 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    /// KB-8: physically remove documents soft-deleted more than
+    /// Physically remove documents soft-deleted more than
     /// `older_than_secs` ago, plus their chunk/FTS/vector rows.
     pub fn gc(&self, older_than_secs: u64) -> Result<u64> {
         let cutoff = now_secs().saturating_sub(older_than_secs) as i64;
@@ -316,9 +316,9 @@ impl KnowledgeDb {
         Ok(doc_ids.len() as u64)
     }
 
-    // -- Chunks (KB-3 incremental re-index) --------------------------------
+    // -- Chunks (incremental re-index) --------------------------------
 
-    /// KB-3 re-index precondition: delete every chunk (+ FTS + vector rows)
+    /// Re-index precondition: delete every chunk (+ FTS + vector rows)
     /// for `document_id` before fresh ones are inserted.
     pub fn delete_chunks(&self, document_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
@@ -342,7 +342,7 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    /// KB-3, transactionally: replace every chunk for `document_id` with
+    /// Transactionally: replace every chunk for `document_id` with
     /// `chunks` as one all-or-nothing unit. Every embedding is validated
     /// *before* the transaction opens, so a malformed batch never touches the
     /// store at all — the prior chunks stay intact, never a half-deleted,
@@ -365,13 +365,13 @@ impl KnowledgeDb {
         Ok(())
     }
 
-    // -- Retrieval primitives (KB-1-scoped) --------------------------------
+    // -- Retrieval primitives (collection-scoped) --------------------------------
 
     /// Vector nearest-neighbour candidates among `ready`, non-deleted
     /// documents in `collection_ids`, ascending by distance (closest first).
     /// The `vec0` index is not collection-partitioned, so this over-fetches
     /// from `vec0` and filters by collection/status in a second step
-    /// (§2: "post-ANN filtering").
+    /// ("post-ANN filtering").
     pub fn ann_search(
         &self,
         collection_ids: &[String],
@@ -467,8 +467,8 @@ impl KnowledgeDb {
         Ok(out)
     }
 
-    /// Hydrate chunk ids into full [`RetrievedChunk`]s (KB-6), applying the
-    /// `min_curation` floor (KB-10). `score` is left at `0.0` — the caller
+    /// Hydrate chunk ids into full [`RetrievedChunk`]s, applying the
+    /// `min_curation` floor. `score` is left at `0.0` — the caller
     /// (domain-tier RRF fusion) sets it.
     pub fn hydrate_chunks(
         &self,
@@ -520,7 +520,7 @@ impl KnowledgeDb {
                 })
                 .transpose()?;
 
-            // KB-10: human-origin (no curation) is always eligible; otherwise
+            // Human-origin (no curation) is always eligible; otherwise
             // the stored curation must meet the requested floor.
             let eligible = match (origin, curation, min_curation) {
                 (Origin::Human, _, _) => true,
@@ -1121,10 +1121,10 @@ mod schema {
 
         // A pure index-state transition on a human-origin row, with NO
         // override supplied — must succeed, unlike a `write_document` rewrite
-        // of the same row (which IS gated). Proves the KB-9/index-state
+        // of the same row (which IS gated). Proves the write-gate/index-state
         // separation directly at the store tier.
         db.update_document_status("doc-1", DocumentStatus::Ready, None)
-            .expect("status-only updates are never KB-9-gated");
+            .expect("status-only updates are never write-gated");
 
         let got = db.get_document("doc-1").unwrap().unwrap();
         assert_eq!(got.status, DocumentStatus::Ready);

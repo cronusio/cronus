@@ -1,5 +1,5 @@
-//! Multi-user authentication — moved wholesale to `cronus-auth-local` (§4.2,
-//! §4.6): every operation touches `bcrypt`/`hmac`/`sha1`/`getrandom`, and
+//! Multi-user authentication — moved wholesale to `cronus-auth-local`:
+//! every operation touches `bcrypt`/`hmac`/`sha1`/`getrandom`, and
 //! nothing in the domain tier references `PrivilegeMap`/`RESERVED_USERNAMES`
 //! directly (only frontends, through this facade re-export).
 

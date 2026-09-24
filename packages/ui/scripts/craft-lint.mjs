@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Craft lint — the mechanically-enforced must-fix subset of the design-identity
- * craft bar (DI-3 / DI-5): every visual value in a component derives from a
+ * craft bar: every visual value in a component derives from a
  * token, never a literal. Advisory craft rules are surfaced separately and do
  * not fail the run; the auto-vs-advisory split is the config below, not code.
  *

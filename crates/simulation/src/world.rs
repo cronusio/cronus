@@ -1,6 +1,6 @@
 //! Disposable worlds: the place a simulated run of the real product happens.
 //!
-//! Realizes `l1-usage-simulation` USM-2 — real surfaces, real effects, inside
+//! Real surfaces, real effects, inside
 //! a world built for one run and destroyed after it. Containment here is
 //! **environmental**: a world never lands inside this repository's working
 //! tree, and its child processes never inherit the ambient `CRONUS_*`
@@ -29,7 +29,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub enum WorldError {
     /// The resolved root would land inside a repository's working tree.
-    /// USM-2 is a hard boundary: a world that cannot be shown to be outside
+    /// This is a hard boundary: a world that cannot be shown to be outside
     /// the repository is refused, never built and hoped about.
     Containment {
         attempted: PathBuf,
@@ -77,7 +77,7 @@ pub struct World {
     /// this world was built (`None` when no repository ancestor is found —
     /// contamination cannot be checked, and callers must not treat that
     /// absence as "clean"). Compared against a later digest to detect a run
-    /// that wrote into tracked files instead of only into its world (USM-12).
+    /// that wrote into tracked files instead of only into its world.
     pub repo_dirty_digest: Option<String>,
 }
 
@@ -316,7 +316,7 @@ fn canonical_or_self(path: &Path) -> PathBuf {
 }
 
 /// A digest of the repository's tracked-file dirtiness, so a later call can
-/// detect whether a run left tracked files changed (USM-12 contamination
+/// detect whether a run left tracked files changed (contamination
 /// check). Uses `git status --porcelain` output verbatim as the digest
 /// rather than hashing it — small, human-diffable when a contamination
 /// finding is reported, and avoids pulling in a hashing crate for a value

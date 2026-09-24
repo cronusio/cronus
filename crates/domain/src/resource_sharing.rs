@@ -1,16 +1,16 @@
 //! Resource sharing — the uniform access-grant model shared by every resource type.
 //!
-//! One grant primitive over all resource kinds (RS-1); three principal types
-//! user/group/public (RS-2); read/write with write-implies-read (RS-3); absence of
-//! any grant means private (RS-4); the owner always wins, checked first (RS-5);
-//! grants are additive with no precedence (RS-6); every grant change emits an audit
-//! event (RS-7); the resource kind is a compile-time enum (RS-8).
+//! One grant primitive over all resource kinds; three principal types
+//! user/group/public; read/write with write-implies-read; absence of
+//! any grant means private; the owner always wins, checked first;
+//! grants are additive with no precedence; every grant change emits an audit
+//! event; the resource kind is a compile-time enum.
 //!
 //! In-memory here (SQLite-backed `access_grant` table in production); the DB layer
 //! and the audit-log transport are seams. The resolution algebra is implemented and
 //! tested here.
 
-/// A resource kind — the compile-time enumeration of shareable entities (RS-8).
+/// A resource kind — the compile-time enumeration of shareable entities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceKind {
     Knowledge,
@@ -20,13 +20,13 @@ pub enum ResourceKind {
     Channel,
     File,
     Prompt,
-    /// The client-facing project wiki, scoped per office (PW-7). The
+    /// The client-facing project wiki, scoped per office. The
     /// `resource_id` is the `office_id`; a shared office gates every wiki read
     /// through `has_access(Wiki, office_id, Read)`.
     Wiki,
 }
 
-/// A principal type (RS-2).
+/// A principal type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrincipalKind {
     User,
@@ -35,7 +35,7 @@ pub enum PrincipalKind {
     Public,
 }
 
-/// A permission level (RS-3). `Write` implies `Read` via the `Ord` derivation
+/// A permission level. `Write` implies `Read` via the `Ord` derivation
 /// (Read < Write), so a `Write` grant satisfies a `Read` requirement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Permission {
@@ -43,7 +43,7 @@ pub enum Permission {
     Write,
 }
 
-/// A single access grant row (RS-1).
+/// A single access grant row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessGrant {
     pub resource_type: ResourceKind,
@@ -54,7 +54,7 @@ pub struct AccessGrant {
     pub permission: Permission,
 }
 
-/// An audit event emitted on every grant change (RS-7).
+/// An audit event emitted on every grant change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GrantAudit {
     Added(AccessGrant),
@@ -68,7 +68,7 @@ pub enum GrantAudit {
 pub const PUBLIC_ID: &str = "*";
 
 /// The access-grant store. In-memory stand-in for the `access_grant` SQLite table;
-/// records audit events for every change (RS-7).
+/// records audit events for every change.
 #[derive(Debug, Default)]
 pub struct GrantStore {
     grants: Vec<AccessGrant>,
@@ -129,7 +129,7 @@ impl GrantStore {
 
     /// Whether `user_id` holds at least `required` permission on the resource.
     /// Resolution order: owner → direct user grant → group grant → public grant
-    /// (RS-5 first, then additive RS-6). Absence of any grant = private (RS-4).
+    /// Owner first, then additive grants. Absence of any grant = private.
     pub fn has_access(
         &self,
         user_id: &str,
@@ -139,14 +139,14 @@ impl GrantStore {
         required: Permission,
         groups: &[String],
     ) -> bool {
-        // RS-5: owner always wins, checked before any grant lookup.
+        // Owner always wins, checked before any grant lookup.
         if is_owner {
             return true;
         }
         self.get_grants(resource_type, resource_id)
             .into_iter()
             .any(|g| {
-                // RS-3: write implies read (Permission: Read < Write).
+                // Write implies read (Permission: Read < Write).
                 if g.permission < required {
                     return false;
                 }
@@ -175,7 +175,6 @@ mod tests {
 
     #[test]
     fn absence_of_grant_is_private() {
-        // RS-4.
         let store = GrantStore::new();
         assert!(!store.has_access(
             "u1",
@@ -189,7 +188,6 @@ mod tests {
 
     #[test]
     fn owner_always_wins_before_grant_lookup() {
-        // RS-5.
         let store = GrantStore::new(); // no grants at all
         assert!(store.has_access(
             "owner",
@@ -225,7 +223,7 @@ mod tests {
 
     #[test]
     fn write_implies_read() {
-        // RS-3: a write grant satisfies a read requirement, not vice versa.
+        // A write grant satisfies a read requirement, not vice versa.
         let mut store = GrantStore::new();
         store.add(grant(PrincipalKind::User, "u1", Permission::Write));
         assert!(store.has_access(
@@ -259,7 +257,7 @@ mod tests {
 
     #[test]
     fn group_and_public_grants_are_additive() {
-        // RS-2 + RS-6: group and public grants each authorize independently.
+        // Group and public grants each authorize independently.
         let mut store = GrantStore::new();
         store.add(grant(PrincipalKind::Group, "g-eng", Permission::Read));
         assert!(store.has_access(
@@ -293,7 +291,6 @@ mod tests {
 
     #[test]
     fn grant_changes_emit_audit_events() {
-        // RS-7.
         let mut store = GrantStore::new();
         store.add(grant(PrincipalKind::User, "u1", Permission::Read));
         store.delete_for_resource(ResourceKind::Note, "note-1");
@@ -331,7 +328,7 @@ mod tests {
 
     #[test]
     fn grants_are_kind_scoped() {
-        // RS-1/RS-8: a grant on a Note does not authorize the same id as a File.
+        // A grant on a Note does not authorize the same id as a File.
         let mut store = GrantStore::new();
         store.add(grant(PrincipalKind::User, "u1", Permission::Read));
         assert!(!store.has_access(

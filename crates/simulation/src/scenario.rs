@@ -1,13 +1,13 @@
 //! Parsing and validating usage-simulation scenario files.
 //!
-//! Realizes `l1-usage-simulation` USM-1 (intent fixed, route never
-//! prescribed — the format has no field a command can be written into) and
-//! USM-11 (an obligation that cannot fail is not an obligation — the
+//! Two rules govern the format: intent is fixed and the route is never
+//! prescribed — the format has no field a command can be written into — and
+//! an obligation that cannot fail is not an obligation: the
 //! validator refuses a scenario whose obligation set could never produce a
-//! failing run, at parse time, as an error rather than a silent skip).
+//! failing run, at parse time, as an error rather than a silent skip.
 //!
-//! A scenario file is Markdown with a TOML frontmatter block (`l2-simulation-
-//! suite` §4.2): a `---`-delimited TOML header carrying every
+//! A scenario file is Markdown with a TOML frontmatter block:
+//! a `---`-delimited TOML header carrying every
 //! machine-checkable field, followed by Markdown prose (persona, goal,
 //! notes) this module treats as an opaque body — compressing a persona into
 //! typed fields is exactly what would turn it back into a script.
@@ -18,7 +18,7 @@ use std::fmt;
 use serde::Deserialize;
 
 /// A scenario file structure or content error. Refused, never silently
-/// skipped — USM-11's whole point is that an obligation set which cannot
+/// skipped — the whole point is that an obligation set which cannot
 /// fail is not an obligation set, and a parser that let one through would
 /// be the thing failing to fail.
 #[derive(Debug)]
@@ -30,7 +30,7 @@ pub enum ScenarioError {
     /// is missing a required field (including a missing `bound` table) —
     /// `toml`/`serde`'s own error already names the offending key.
     Parse(String),
-    /// The frontmatter parsed, but its obligations fail one of USM-11's
+    /// The frontmatter parsed, but its obligations fail one of the
     /// falsifiability checks.
     Validation(String),
 }
@@ -145,19 +145,19 @@ pub struct Scenario {
     pub bound: Bound,
     pub perturbations: Vec<Perturbation>,
     pub obligations: Vec<Obligation>,
-    /// Everything after the closing `---` delimiter, verbatim. USM-1
+    /// Everything after the closing `---` delimiter, verbatim. The format
     /// deliberately leaves the persona/goal/notes prose unstructured.
     pub body: String,
 }
 
 impl Scenario {
-    /// USM-6: a scenario declaring no perturbation is a smoke test, and
+    /// A scenario declaring no perturbation is a smoke test, and
     /// must be labelled as one rather than counted as simulation coverage.
     pub fn is_smoke(&self) -> bool {
         self.perturbations.is_empty()
     }
 
-    /// USM-11: the disclosed judged-to-runnable ratio of this scenario's
+    /// The disclosed judged-to-runnable ratio of this scenario's
     /// obligation set.
     pub fn judged_ratio(&self) -> f64 {
         if self.obligations.is_empty() {
@@ -174,7 +174,7 @@ impl Scenario {
 
 /// Parse and validate a scenario file's text. Refuses (never skips) a
 /// structurally malformed file, a frontmatter with an unknown or missing
-/// field, or an obligation set that fails USM-11's falsifiability checks.
+/// field, or an obligation set that fails the falsifiability checks.
 pub fn parse(text: &str) -> Result<Scenario, ScenarioError> {
     let (frontmatter, body) = split_frontmatter(text)?;
     let raw: RawScenario =

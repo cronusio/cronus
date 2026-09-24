@@ -33,7 +33,7 @@ const SWITCH_DISPATCH: &str = include_str!("fixtures/switch_dispatch.nodus");
 const RETRY_BOUNDED: &str = include_str!("fixtures/retry_bounded.nodus");
 const HALT_PAUSE: &str = include_str!("fixtures/halt_pause.nodus");
 
-/// The normative fixture corpus swept by the NL-6 AST-equality harness
+/// The normative fixture corpus swept by the AST-equality harness
 /// — every well-formed fixture above, excluding the three
 /// deliberately-invalid `lint_*` fixtures (they exist to trigger a specific
 /// validator diagnostic, not to represent round-trippable content).
@@ -393,7 +393,7 @@ mod transpilation {
         );
     }
 
-    /// The NL-6 mandate ("compact → human →
+    /// The mandate ("compact → human →
     /// compact must produce an AST-equal result") verified over the **whole**
     /// `WorkflowFile`, for the entire normative corpus. The runtime contract
     /// once placed this test in `workflows.rs`; it lives here instead,
@@ -406,15 +406,15 @@ mod transpilation {
     /// `x` on the FIRST parse, `mode` defaults to `production` during parsing
     /// if absent, `@err:` raw text is already space-joined by
     /// `consume_rest_of_line` before this test ever sees it) — a string-equal
-    /// assertion would fail on all three for reasons unrelated to NL-6.
+    /// assertion would fail on all three for reasons unrelated to the round-trip contract.
     ///
     /// This assertion was first scoped to `.steps` because three fields did
-    /// not yet round-trip: `tests` (fixed per §10 —
+    /// not yet round-trip: `tests` (fixed —
     /// `raw_lines` is now the emission source, with values re-quoted so they
     /// re-lex to the single token they came from) and `macros`/`human_mode`
     /// (previously never emitted at all). Widening
     /// this assertion to the whole file is the decisive acceptance
-    /// signal (§10.5): it is unreachable unless all
+    /// signal: it is unreachable unless all
     /// three are actually fixed, so a regression in any one fails it here.
     #[test]
     fn full_corpus_ast_equal_after_compact_round_trip() {
@@ -427,7 +427,7 @@ mod transpilation {
             });
             assert_eq!(
                 ast1, ast2,
-                "{name}: the whole WorkflowFile must be unchanged by a compact round-trip (NL-6)\ncompact:\n{compact}"
+                "{name}: the whole WorkflowFile must be unchanged by a compact round-trip\ncompact:\n{compact}"
             );
         }
     }

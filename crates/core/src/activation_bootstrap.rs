@@ -1,7 +1,7 @@
 //! Facade wiring for the activation adapter: picks
 //! the right per-OS `SystemCalls` implementation and wraps it as a full
 //! `ActivationRegistry` — the platform-dispatch decision frontends should
-//! never need to make themselves (INV-2: no domain/platform logic in
+//! never need to make themselves (no domain/platform logic in
 //! frontends). Lives here, not in `cronus-domain`, because it reaches into
 //! the adapter crate `cronus-activation-os` (the tier model has no edge
 //! from domain to an adapter).

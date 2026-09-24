@@ -130,7 +130,7 @@ export interface BuildingShellProps {
   // surfaces (four-state projections; absent reads as unrequested)
   office?: Projection<OfficeProjection>;
   dashboard?: Projection<DashboardProjection>;
-  /** A persisted layout record (AS-12). Restored field-wise; absent = defaults. */
+  /** A persisted layout record. Restored field-wise; absent = defaults. */
   initialLayout?: unknown;
   locale?: Locale;
 }
@@ -175,9 +175,9 @@ export function BuildingShell({
   const msg = translator(locale);
   const surface = surfaceAttributes(theme, colorScheme, systemPrefersDark);
 
-  // The view domain (AS-1): one store per shell mount, read through selectors so
+  // The view domain: one store per shell mount, read through selectors so
   // two regions needing the same fact take it from here, not a local copy.
-  // Seeded field-wise from the persisted layout record (AS-12) — absent or
+  // Seeded field-wise from the persisted layout record — absent or
   // unreadable falls back to the documented initial state.
   const [view] = useState(() => {
     const restored = restoreLayout(initialLayout);
@@ -195,7 +195,7 @@ export function BuildingShell({
   const settingsOpen = useStore(view, (s) => s.settingsOpen);
   const activeFacet = useStore(view, (s) => s.activeFacet);
 
-  // The pending multi-keystroke prefix, held between key events (AS-7). Empty
+  // The pending multi-keystroke prefix, held between key events. Empty
   // until a binding sequence is partially matched.
   const [pendingKeys, setPendingKeys] = useState<readonly string[]>([]);
 

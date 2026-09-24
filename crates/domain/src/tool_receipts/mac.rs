@@ -8,7 +8,7 @@ use super::key::ReceiptKey;
 /// A minted receipt: a human/model-visible [`token`](Receipt::token) plus
 /// the full 32-byte tag `verify` compares against. Carries no secret
 /// material — safe to log, to echo in a tool result, or to pass through
-/// `redact::redact` unredacted (TR-6, TR-9).
+/// `redact::redact` unredacted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Receipt {
     pub token: String,

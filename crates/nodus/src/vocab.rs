@@ -18,7 +18,7 @@ pub const BUILTIN_SCHEMA_VERSION: &str = "0.4.7";
 /// identifier. 54 commands total; `RUN` is the macro meta-command that
 /// bypasses schema vocabulary checks and is recognized before the validation pass.
 /// `ASK` / `CONFIRM` are the human-in-the-loop dialog commands; `SETTLE` is the
-/// outbound-value-settlement command (LP-17).
+/// outbound-value-settlement command.
 pub const KNOWN_COMMANDS: &[&str] = &[
     "FETCH",
     "STORE",
@@ -89,7 +89,7 @@ pub const VALID_TONES: &[&str] = &[
 
 /// Closed registry of analysis-flag extractors (`~flag`). The validator checks
 /// `~flag` tokens against this set (advisory). Host extensions are a future
-/// `SchemaProvider` follow-on; the builtin set is never mutated (LP-4).
+/// `SchemaProvider` follow-on; the builtin set is never mutated.
 pub const KNOWN_FLAGS: &[&str] = &[
     "sentiment",
     "intent",
@@ -123,7 +123,7 @@ pub const KNOWN_VALIDATORS: &[&str] = &[
     "approved",
 ];
 
-/// Closed registry of primitive `@in` field types (NL-7 closed value space).
+/// Closed registry of primitive `@in` field types (closed value space).
 pub const PRIMITIVE_TYPES: &[&str] = &[
     "str", "int", "float", "bool", "list", "obj", "url", "ts", "null", "any",
 ];
@@ -146,18 +146,18 @@ pub const RESERVED_VARIABLES: &[&str] = &[
     "$confidence",
     "$memory",
     "$kb_results",
-    // NL-23: $restart is the self-restart request — an ordinary writable
+    // $restart is the self-restart request — an ordinary writable
     // pipeline target, like $out/$draft. $restart_count is its runtime-owned
     // counterpart below (unforgeable — see that list's doc comment).
     "$restart",
     "$restart_count",
 ];
 
-/// Runtime-owned variable names that user pipeline targets must not shadow (NL-8).
+/// Runtime-owned variable names that user pipeline targets must not shadow.
 /// These are set exclusively by the executor and are not writable by workflow steps.
 /// Writable reserved variables (`$out`, `$raw`, `$draft`, `$log`, `$quality`,
 /// `$sentiment`, `$confidence`, `$restart`) are intentionally excluded — commands
-/// assign to them. `$restart_count` is the one exception among the NL-23 pair:
+/// assign to them. `$restart_count` is the one exception among the pair:
 /// it must stay runtime-owned so flow logic cannot forge the chain position it
 /// reads (a workflow may *request* a restart via `$restart` but may not fabricate
 /// how many have already happened).
@@ -223,7 +223,7 @@ pub mod error_code {
     pub const NO_TRIGGER: &str = "NODUS:NO_TRIGGER";
     /// A step error reached no `@err:` handler.
     pub const UNHANDLED_ERROR: &str = "NODUS:UNHANDLED_ERROR";
-    /// A workflow's capability manifest is unsatisfiable by the active host (LP-8).
+    /// A workflow's capability manifest is unsatisfiable by the active host.
     pub const CAPABILITY_UNMET: &str = "NODUS:CAPABILITY_UNMET";
 
     // ── Taxonomy expansion (schema v0.4.6 → v0.7). Severity/category metadata
@@ -258,27 +258,27 @@ pub mod error_code {
     /// A `CONFIRM` was rejected under `+strict`.
     pub const DIALOG_REJECTED: &str = "NODUS:DIALOG_REJECTED";
     /// A proposed `§config` value set failed the pre-run shape check or was
-    /// rejected by the host `ConfigProvider` (NL-20).
+    /// rejected by the host `ConfigProvider`.
     pub const CONFIG_INVALID: &str = "NODUS:CONFIG_INVALID";
     /// A `$restart` request was refused: either `restart_max` is undeclared
-    /// (self-restart disabled) or the declared ceiling was reached (NL-23).
+    /// (self-restart disabled) or the declared ceiling was reached.
     /// A bounded construct reaching its bound, mirroring `MAX_REACHED` — a
     /// normal reported outcome, not a fault.
     pub const RESTART_LIMIT: &str = "NODUS:RESTART_LIMIT";
     /// A `~COMPENSATE` action itself failed while unwinding a completed
-    /// effect (NL-22). The original effect stays recorded live — this marks
+    /// effect. The original effect stays recorded live — this marks
     /// the compensation attempt as failed, never as if the effect were undone.
     pub const COMPENSATION_FAILED: &str = "NODUS:COMPENSATION_FAILED";
     /// A host `PolicyProvider` denied a per-effect authorization check before
-    /// the effect ran (LP-11). Non-halting: the effect never occurred, its
+    /// the effect ran. Non-halting: the effect never occurred, its
     /// pipeline target stays unbound, and execution continues.
     pub const POLICY_DENIED: &str = "NODUS:POLICY_DENIED";
     /// A gate-permitted `SETTLE` produced no verifiable receipt from the host
-    /// `SettlementRail` (LP-17, VS-7). Non-halting: the payment is not treated
+    /// `SettlementRail`. Non-halting: the payment is not treated
     /// as settled, and the pipeline target stays unbound.
     pub const SETTLEMENT_UNACCOUNTED: &str = "NODUS:SETTLEMENT_UNACCOUNTED";
     /// An `EnvironmentProfile` declares a `max_tokens` budget with no
-    /// identified `token_measure` (NE-14). Fail-fast pre-run: rejected before
+    /// identified `token_measure`. Fail-fast pre-run: rejected before
     /// `execute_for_environment` runs, never a silent default-encoder
     /// substitution.
     pub const ENV_MEASURE_UNKNOWN: &str = "NODUS:ENV_MEASURE_UNKNOWN";
@@ -343,7 +343,7 @@ pub fn error_meta(code: &str) -> Option<(ErrorSeverity, ErrorCategory)> {
         ec::NO_SCHEMA => (Error, Validation),
         ec::NO_TRIGGER => (Warn, Routing),
         ec::UNHANDLED_ERROR => (Error, Runtime),
-        // Portability-layer code (LP-8).
+        // Portability-layer code.
         ec::CAPABILITY_UNMET => (Error, Control),
         // Taxonomy expansion (v0.4.6 → v0.7).
         ec::UNDEFINED_CMD => (Error, Validation),
@@ -360,17 +360,17 @@ pub fn error_meta(code: &str) -> Option<(ErrorSeverity, ErrorCategory)> {
         ec::GIT_UNAVAILABLE => (Error, Runtime),
         ec::DIALOG_TIMEOUT => (Error, Dialog),
         ec::DIALOG_REJECTED => (Error, Dialog),
-        // Config-layer code (NL-20).
+        // Config-layer code.
         ec::CONFIG_INVALID => (Error, Validation),
-        // Self-restart code (NL-23).
+        // Self-restart code.
         ec::RESTART_LIMIT => (Warn, Control),
-        // Compensation-seam code (NL-22).
+        // Compensation-seam code.
         ec::COMPENSATION_FAILED => (Error, Runtime),
-        // Portability-layer code (LP-11).
+        // Portability-layer code.
         ec::POLICY_DENIED => (Error, Runtime),
-        // Portability-layer code (LP-17).
+        // Portability-layer code.
         ec::SETTLEMENT_UNACCOUNTED => (Error, Runtime),
-        // Environment-layer code (NE-14).
+        // Environment-layer code.
         ec::ENV_MEASURE_UNKNOWN => (Error, Control),
         // Model-call failure (a host provider reported the call failed).
         ec::MODEL_CALL_FAILED => (Error, Runtime),
@@ -411,7 +411,7 @@ impl Schema {
     ///
     /// Host commands that collide with `KNOWN_COMMANDS` are silently deduplicated.
     /// Host reserved variables that collide with `RESERVED_VARIABLES` are silently
-    /// deduplicated. This preserves LP-4: builtin constants are never mutated.
+    /// deduplicated. Builtin constants are never mutated.
     pub fn with_provider(provider: &dyn crate::portability::SchemaProvider) -> Self {
         let host_commands = provider
             .host_commands()
@@ -547,7 +547,7 @@ mod tests {
         assert!(schema.is_command("RUN"), "RUN must be a known command");
         assert_eq!(
             BUILTIN_SCHEMA_VERSION, "0.4.7",
-            "version bump must accompany a command addition (RUN, then SETTLE — LP-17)"
+            "version bump must accompany a command addition (RUN, then SETTLE)"
         );
     }
 

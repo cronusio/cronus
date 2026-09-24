@@ -1,9 +1,9 @@
-//! Corpus-maintenance pass (MC-6): confidence-gated actions against
+//! Corpus-maintenance pass: confidence-gated actions against
 //! accumulation pathologies, run off the hot path. Each action's blast
 //! radius sets its own gate — additive/reversible actions (`archive`) apply
 //! automatically; a lossy action (`merge`) requires an unambiguous signal.
 //!
-//! `summarize` (MC-7, edge-graph community detection) needs the MC-3 edge
+//! `summarize` (edge-graph community detection) needs the edge
 //! graph, which the consolidation-write module owns; this module only
 //! covers the three actions buildable against the signal/lifecycle schema
 //! already in place (no edges needed).
@@ -40,7 +40,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
 
 /// Idle window (seconds) an item must wait after one maintenance action
 /// before an *opposing* action may target it again — prevents a
-/// split→merge→split oscillation (MC-6).
+/// split→merge→split oscillation.
 pub const ANTI_CYCLE_COOLDOWN_SECS: u64 = 3_600;
 
 fn under_cooldown(conn: &Connection, item_id: &MemoryId, now: u64) -> Result<bool> {
@@ -90,12 +90,12 @@ fn record_audit(
     Ok(())
 }
 
-// ── recency (feeds both MC-8 ranking and this module's archive gate) ───────
+// ── recency (feeds both ranking and this module's archive gate) ───────
 
 /// Recompute the `Recency` derived signal for every active item: an
 /// exponential decay of age-since-`created_at`, half-life `HALFLIFE_SECS`.
 /// This is "step 1: recompute derived signals" for recency only — centrality
-/// and cluster recomputation need the MC-3 edge graph, owned by the
+/// and cluster recomputation need the edge graph, owned by the
 /// consolidation-write module.
 const RECENCY_HALFLIFE_SECS: f64 = 30.0 * 24.0 * 3600.0; // 30 days, stub default
 
@@ -119,7 +119,7 @@ pub(crate) fn recompute_recency(conn: &Connection, now: u64) -> Result<usize> {
     Ok(updated)
 }
 
-// ── MC-6: archive (additive/reversible — auto-applies) ──────────────────────
+// ── Archive (additive/reversible — auto-applies) ──────────────────────
 
 /// Archive threshold: an item whose recency factor falls below this,
 /// cushioned by centrality (a well-connected hub tolerates more staleness
@@ -127,7 +127,7 @@ pub(crate) fn recompute_recency(conn: &Connection, now: u64) -> Result<usize> {
 pub const ARCHIVE_RECENCY_THRESHOLD: f64 = 0.1;
 
 /// Sweep active items and archive those whose cushioned recency has decayed
-/// past the threshold. Auto-applies (no elevated gate — reversible, MC-6).
+/// past the threshold. Auto-applies (no elevated gate — reversible).
 /// Skips an item under an opposing cooldown. Returns the archived ids.
 pub(crate) fn sweep_archive(conn: &Connection, actor: &str, now: u64) -> Result<Vec<MemoryId>> {
     let mut stmt = conn.prepare("SELECT id FROM memories WHERE lifecycle_state = ?1")?;
@@ -173,7 +173,7 @@ pub(crate) fn sweep_archive(conn: &Connection, actor: &str, now: u64) -> Result<
 }
 
 /// Auto-thaw: touching an archived item (a recall hit, a consolidation
-/// update) reverses the archive — MC-6's "auto-thawed the instant anything
+/// update) reverses the archive — the design's "auto-thawed the instant anything
 /// touches the node." No-op (returns `false`) for any other state.
 pub(crate) fn touch(conn: &Connection, id: &MemoryId, actor: &str, now: u64) -> Result<bool> {
     let current: Option<String> = conn
@@ -205,12 +205,12 @@ pub(crate) fn touch(conn: &Connection, id: &MemoryId, actor: &str, now: u64) -> 
     Ok(true)
 }
 
-// ── MC-6: split (dispersion heuristic; no-generator = successful no-op) ────
+// ── Split (dispersion heuristic; no-generator = successful no-op) ────
 
 /// A body longer than this is *flagged* as an overload candidate. Real
 /// splitting (topic segmentation into an overview + children) needs a
 /// generator; with none bound, flagging is the complete, honest behavior —
-/// a no-generator no-op, per MC-2's own contract extended to MC-6.
+/// a no-generator no-op, consistent with the other no-generator paths.
 pub const SPLIT_LENGTH_THRESHOLD: usize = 4_000;
 
 /// Identify active items whose content crosses the overload threshold.
@@ -234,11 +234,11 @@ pub(crate) fn flag_split_candidates(conn: &Connection) -> Result<Vec<MemoryId>> 
     Ok(ids)
 }
 
-// ── MC-6: merge (lossy — elevated gate, transactional) ──────────────────────
+// ── Merge (lossy — elevated gate, transactional) ──────────────────────
 
 /// Merge-candidate detection: two **active** items whose bodies are
 /// identical after case/whitespace normalization. Exact-after-normalization
-/// is the domain-logic-first stand-in for "multi-sample agreement" (MC-6's
+/// is the domain-logic-first stand-in for "multi-sample agreement" (the
 /// elevated gate) — unambiguous, not a similarity heuristic that could
 /// misfire; a fuzzier detector is future work, not a regression risk today.
 pub(crate) fn find_merge_candidates(conn: &Connection) -> Result<Vec<(MemoryId, MemoryId)>> {
@@ -271,9 +271,9 @@ pub(crate) fn find_merge_candidates(conn: &Connection) -> Result<Vec<(MemoryId, 
     Ok(pairs)
 }
 
-/// Merge `discard` into `keep`: re-point `discard`'s chain edges *and* MC-3
+/// Merge `discard` into `keep`: re-point `discard`'s chain edges *and* the
 /// relationship/provenance edges onto `keep`, drop `discard`'s derived
-/// signals, hard-delete `discard`, all inside one transaction (MC-9:
+/// signals, hard-delete `discard`, all inside one transaction (
 /// multi-item actions commit whole-or-rollback).
 pub(crate) fn merge_pair(
     conn: &Connection,
@@ -294,7 +294,7 @@ pub(crate) fn merge_pair(
         )?;
         // A self-chain can result from re-pointing both ends onto `keep`.
         conn.execute("DELETE FROM memory_chains WHERE source_id = target_id", [])?;
-        // Same re-pointing for the MC-3 edge table. `OR IGNORE`:
+        // Same re-pointing for the edge table. `OR IGNORE`:
         // re-pointing could collide with an edge `keep` already has (the
         // table's UNIQUE constraint), which is fine — the edge already
         // exists on `keep`, so the discard's copy is redundant, not lost.

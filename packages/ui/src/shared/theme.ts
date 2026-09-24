@@ -46,14 +46,14 @@ export function themeAttributes(resolved: ResolvedTheme): {
 
 // ── Axis 2 · colour scheme (design identity) ────────────────────────────────
 
-/** Provenance of a scheme package (DI-4). */
+/** Provenance of a scheme package. */
 export interface SchemeProvenance {
   kind: "bundled" | "local" | "repository" | "registry";
   reference: string;
   importedAt?: string;
 }
 
-/** A schema-validated scheme package manifest (DI-1). */
+/** A schema-validated scheme package manifest. */
 export interface SchemeManifest {
   id: string;
   name: string;
@@ -71,7 +71,7 @@ export const DEFAULT_SCHEME_ID = "default";
 
 /**
  * The scheme catalog — layered built-in < project < personal with id-stable
- * override (DI-2). This slice ships only the built-in layer; project / personal
+ * override. This slice ships only the built-in layer; project / personal
  * schemes register at runtime through `registerScheme`.
  */
 const catalog = new Map<string, SchemeManifest>([

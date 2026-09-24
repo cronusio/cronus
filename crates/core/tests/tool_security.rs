@@ -225,7 +225,7 @@ fn policy_guide_only_not_triggered_for_normal_message() {
     assert!(!policy.block_all_tool_calls);
 }
 
-// ── BA-4 activation tool-surface barrier ──────────────────────────────────────
+// ── activation tool-surface barrier ──────────────────────────────────────
 
 #[test]
 fn is_activation_tool_name_flags_activation_and_autostart_shaped_names() {
@@ -244,7 +244,7 @@ fn is_activation_tool_name_flags_activation_and_autostart_shaped_names() {
 
 #[test]
 fn no_plan_mode_allowlisted_tool_is_activation_shaped() {
-    // BA-4: today's one real tool allowlist in this crate carries no
+    // Today's one real tool allowlist in this crate carries no
     // activation-shaped name — a future one cannot slip in by omission
     // because `is_activation_tool_name` is the standing guard, not a scan of
     // this specific list.

@@ -79,7 +79,7 @@ pub enum TokenType {
     TildeMap,
     /// `~RETRY` (followed by `:n`).
     TildeRetry,
-    /// `~COMPENSATE` (followed by `: CMD(args)`, NL-22).
+    /// `~COMPENSATE` (followed by `: CMD(args)`).
     TildeCompensate,
     /// `~JOIN`
     TildeJoin,

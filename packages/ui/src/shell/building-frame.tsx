@@ -9,7 +9,7 @@
  *
  * Presentation only: menu-open state and every toggle are caller-owned; a leaf
  * click dispatches the bound action and asks the caller to close. Unbound leaves
- * are already removed by `visibleMenu` (INV-9), so nothing here is a dead control.
+ * are already removed by `visibleMenu`, so nothing here is a dead control.
  */
 
 import { type Locale, translator } from "../shared/i18n";

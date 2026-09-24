@@ -1,4 +1,4 @@
-//! Integration tests for the compensation seam (NL-22).
+//! Integration tests for the compensation seam.
 //!
 //! Reverse-completion-order driving, completed-only (a step whose
 //! own action fails is never compensated), fallible-compensation-continues
@@ -97,7 +97,7 @@ const CLEAN_COMPENSATING_WF: &str = r#"§wf:compensating_clean v1.0
 "#;
 
 // A step whose own action violates a rule — its compensation must never run,
-// because a step that never completed is never compensated (NL-22(a)).
+// because a step that never completed is never compensated.
 const FAILING_STEP_HAS_COMPENSATION_WF: &str = r#"§wf:failing_step v1.0
 §runtime: { core: schema.nodus }
 !!NEVER: FORGET
@@ -253,7 +253,7 @@ fn compensation_emits_only_existing_event_variants() {
     // Compensations route through the same execute_command path as any
     // ordinary command, so every event they produce is an existing variant
     // (StepStart/StepEnd/etc.) — this exhaustive match compiles only because
-    // no new ExecutionEvent variant exists (HO-6 preserved). A source change
+    // no new ExecutionEvent variant exists (the closed taxonomy preserved). A source change
     // that added one would fail to compile here, not just silently pass.
     let events = recorder.events.lock().unwrap();
     for e in events.iter() {

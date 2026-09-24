@@ -119,7 +119,7 @@ export type MessageKey =
   | "settings.mode.system"
   | "settings.mode.light"
   | "settings.mode.dark"
-  // surface placeholder (INV-9)
+  // surface placeholder
   | "surface.placeholder"
   | "frame.close-menu"
   | "floor.actions"

@@ -127,7 +127,7 @@ pub fn focus_border_style(focused: bool) -> Style {
 
 // ── Panel availability ──────────────────────────────────────────────────────
 
-/// A core-supplied panel projection: obtained, or not (INV-6). `Unavailable`
+/// A core-supplied panel projection: obtained, or not. `Unavailable`
 /// carries why, so the two states stay distinguishable **in the view model
 /// itself** — a panel whose projection could not be obtained must not render
 /// the same way as one whose projection is legitimately empty, and the
@@ -342,7 +342,7 @@ pub fn render_office(area: Rect, buf: &mut Buffer, office: &Projection<OfficeVie
 // ── Status panel ────────────────────────────────────────────────────────────
 
 /// Version + status line, as the Status panel shows it. Wrapped in
-/// [`Projection`] like every other panel (structural INV-6 compliance): the
+/// [`Projection`] like every other panel (structural compliance): the
 /// panel's own doc comment already anticipates richer, potentially fallible
 /// position/progress/blockers fields later, and the distinction belongs in
 /// the view model before that lands, not retrofitted onto it once it does.
@@ -385,7 +385,7 @@ pub const MAX_SESSION_LINES: usize = 500;
 ///
 /// This is a last-N *projection* of the core's durable activity log, not view
 /// state accumulated across frames — keeping the view a pure function of the
-/// snapshot (INV-5). [`push`](SessionsView::push) drops the oldest line past the
+/// snapshot. [`push`](SessionsView::push) drops the oldest line past the
 /// cap so growth stays bounded.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SessionsView {
@@ -722,7 +722,7 @@ mod tests {
         );
     }
 
-    // ── Unavailable vs. empty (INV-6) ───────────────────────────────────────
+    // ── Unavailable vs. empty ───────────────────────────────────────
     //
     // Each panel gets its own positive proof — an `Unavailable` projection
     // renders its reason — plus one shared negative proof that a genuinely

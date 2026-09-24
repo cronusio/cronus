@@ -1,4 +1,4 @@
-//! MI-8 structured-predicate compiler: translates the closed
+//! Structured-predicate compiler: translates the closed
 //! `cronus_contract::FieldPredicate` vocabulary into a parameterized SQL
 //! `WHERE` fragment over `memories` columns. SQLite expresses every
 //! combinator in the vocabulary natively (arbitrary AND/OR/NOT nesting), so

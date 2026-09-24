@@ -1,5 +1,5 @@
 //! Facade-level invariant sweep for the invocable registry bootstrap
-//! (EP-12, INV-7) — exercised through the real facade export chain
+//!  — exercised through the real facade export chain
 //! (`cronus_core::invocable_bootstrap::bootstrap`, `cronus_core::invocable::*`),
 //! not a stand-in.
 
@@ -10,7 +10,7 @@ use cronus_core::Engine;
 use cronus_core::invocable::{CONTRIBUTE_GRANT, Dispatcher, InvocableRegistry, Registrant};
 use cronus_core::invocable_bootstrap::bootstrap;
 
-/// EP-12: core invocables are registered through the same public door a
+/// Core invocables are registered through the same public door a
 /// contribution uses — proven by registering a real contribution into the
 /// exact registry `bootstrap` populated, alongside the core invocables it
 /// already holds, with no separate API involved.
@@ -52,7 +52,7 @@ fn core_invocables_and_a_contribution_share_one_registration_door() {
     );
 }
 
-/// INV-7: dispatch output is masked against configured secrets — the single
+/// Dispatch output is masked against configured secrets — the single
 /// boundary point, proven directly on the real `Dispatcher` rather than a
 /// stand-in redaction call.
 #[test]
@@ -197,7 +197,7 @@ fn agent_status_reports_no_active_session() {
 }
 
 /// `exec` has no persistent store yet: every verb answers
-/// `Unavailable` honestly (INV-9, matching `core:loop.evolve`'s own
+/// `Unavailable` honestly (matching `core:loop.evolve`'s own
 /// precedent) rather than a `List([])` that implies a real, empty listing.
 #[test]
 fn exec_list_is_unavailable_not_a_silent_empty_success() {

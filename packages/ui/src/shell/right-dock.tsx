@@ -3,7 +3,7 @@
  *
  * Presentation only: a read-only projection of the active floor's workspace
  * tree. Git-ignored entries render dimmed. Open/reveal actions bind to
- * shell/core capabilities as they ship (INV-9) — in this slice the rows are
+ * shell/core capabilities as they ship — in this slice the rows are
  * inert. Dock visibility is caller-owned view state.
  */
 

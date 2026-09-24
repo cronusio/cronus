@@ -1,4 +1,4 @@
-//! Output/log redaction (SEC-5): scrub known secret values before rendering.
+//! Output/log redaction: scrub known secret values before rendering.
 
 use cronus_contract::{Outcome, OutcomeValue, Rejection};
 

@@ -1,6 +1,6 @@
 //! The catalog complement: what nothing in the scenario corpus simulates.
 //!
-//! Realizes `l1-usage-simulation` USM-8: coverage is claimed against the
+//! Coverage is claimed against the
 //! product's declared action catalog, and the complement — never a
 //! percentage — is the report's headline number. A percentage compresses
 //! "60% of a hundred actions" and "60% of six" into the same-looking
@@ -96,7 +96,7 @@ impl std::error::Error for CoverageError {}
 /// not-yet-shipped entry cannot be distinguished from an ordinary one here.
 /// Chosen over linking a live registry because that would pull the domain
 /// tier into a crate whose entire design keeps that tier at arm's length
-/// (§4.1 of `l2-simulation-suite`) — and chosen over scraping `--help` text
+/// — and chosen over scraping `--help` text
 /// because the completion script already exists as a complete, structured
 /// enumeration; `--help` text does not.
 pub fn catalog_from_completion(cronus_binary: &Path) -> Result<Vec<String>, CoverageError> {
@@ -142,7 +142,7 @@ pub fn default_simulations_dir() -> PathBuf {
 /// `README.md`). A file that fails to parse is a hard error — a coverage
 /// report computed by silently skipping what it could not read would
 /// undercount without saying so, which is the same silent-gap failure
-/// USM-8 exists to prevent.
+/// the coverage claim exists to prevent.
 pub fn load_corpus(dir: &Path) -> Result<Vec<Scenario>, CoverageError> {
     let mut scenarios = Vec::new();
     for path in markdown_files(dir) {

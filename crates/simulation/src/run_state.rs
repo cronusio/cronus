@@ -1,8 +1,8 @@
 //! Cross-process state for one `cronus-sim` run.
 //!
 //! `world`, `run`, `note`, `verdict`, and `finish` are separate CLI
-//! invocations — that is the entire point of the wrapper (§4.3 of
-//! `l2-simulation-suite`): an agent issues them one at a time, the way it
+//! invocations — that is the entire point of the wrapper:
+//! an agent issues them one at a time, the way it
 //! issues any other shell command. Everything they need to share therefore
 //! lives in one JSON file inside the world's own root, so it disappears
 //! with the world on teardown rather than lingering.
@@ -51,7 +51,7 @@ pub struct RunState {
     pub resolved_binary: PathBuf,
     pub product_version: String,
     /// Captured once, at `create()` time. The baseline `finish` compares a
-    /// fresh recomputation against to detect contamination (USM-12).
+    /// fresh recomputation against to detect contamination.
     pub repo_dirty_digest_at_build: Option<String>,
     pub bound_steps: u32,
     pub bound_wall_secs: u32,
@@ -259,11 +259,11 @@ impl RunState {
     }
 
     /// Append a discovery, optionally classified against the
-    /// improvement-loop taxonomy and optionally carrying a proposed remedy
-    /// (USM-13). Neither addition is consulted when computing an outcome
-    /// (USM-3 unchanged) — a discovery is information, not an obligation,
+    /// improvement-loop taxonomy and optionally carrying a proposed remedy.
+    /// Neither addition is consulted when computing an outcome
+    /// (unchanged) — a discovery is information, not an obligation,
     /// classified or not — and a remedy here is a claim recorded for a
-    /// human to weigh, never an act this call performs (USM-12).
+    /// human to weigh, never an act this call performs.
     pub fn add_note(
         &mut self,
         text: String,
@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn a_run_state_json_with_no_notes_key_at_all_still_loads_with_an_empty_discovery_list() {
-        // Simulates a schema older than USM-13's two new `Discovery` fields
+        // Simulates a schema older than the two new `Discovery` fields
         // ever existing at the `RunState` level — not merely a `Discovery`
         // missing `class`/`remedy` (covered in `findings.rs`), but a whole
         // persisted world whose `notes` key is absent entirely. The field's

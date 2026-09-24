@@ -78,7 +78,7 @@ describe("scheme axis · resolveScheme (mode × scheme)", () => {
   });
 });
 
-describe("scheme axis · surfaceAttributes (root application, DI-2 cosmetic-only)", () => {
+describe("scheme axis · surfaceAttributes (root application, cosmetic-only)", () => {
   it("produces data-theme + data-scheme + the dark class for a resolved pair", () => {
     const a = surfaceAttributes("dark", "default", true);
     expect(a["data-theme"]).toBe("dark");

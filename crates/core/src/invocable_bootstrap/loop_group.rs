@@ -142,7 +142,7 @@ fn register_evolve(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher
     dispatcher.attach(
         id,
         Arc::new(|_args| {
-            // INV-9 shipped-surface honesty: this workspace has no
+            // Shipped-surface honesty: this workspace has no
             // CLI-nameable harness registry yet, so the command is present
             // but marked unavailable — never a silent "not implemented"
             // success stub. The domain-tier `run_evolution` exists and is

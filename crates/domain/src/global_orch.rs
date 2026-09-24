@@ -1,12 +1,12 @@
 //! Global orchestration — the building-level coordinator (the home workspace
 //! manager), above individual offices.
 //!
-//! One coordinator per building (GO-1). It maintains a read-only aggregate view of
-//! all offices fed by their state events (GO-4), routes cross-office messages over
-//! the ACP relay bypassing paused/hibernating offices (GO-5), annotates new-
-//! component cards with the phase's mandatory cross-cutting concerns (GO-3), and
-//! escalates conflicts (GO-6). It never cancels or re-delegates an office's active
-//! work (GO-2) — this module exposes no such path.
+//! One coordinator per building. It maintains a read-only aggregate view of
+//! all offices fed by their state events, routes cross-office messages over
+//! the ACP relay bypassing paused/hibernating offices, annotates new-
+//! component cards with the phase's mandatory cross-cutting concerns, and
+//! escalates conflicts. It never cancels or re-delegates an office's active
+//! work — this module exposes no such path.
 //!
 //! The ACP relay transport and the event-bus subscription are seams; the aggregate,
 //! routing decision, phase-concern annotation, and escalation algebra are here.
@@ -14,7 +14,7 @@
 use crate::office_control::OfficeState;
 use std::collections::HashMap;
 
-/// A read-only per-office summary in the building aggregate view (GO-4).
+/// A read-only per-office summary in the building aggregate view.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfficeSummary {
     pub office_id: String,
@@ -25,7 +25,7 @@ pub struct OfficeSummary {
     pub active_sessions: u32,
 }
 
-/// A mandatory cross-cutting concern in the phase-awareness catalog (GO-3).
+/// A mandatory cross-cutting concern in the phase-awareness catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Concern {
     Localization,
@@ -36,20 +36,20 @@ pub enum Concern {
     BudgetSafety,
 }
 
-/// How the coordinator resolves an escalation (GO-6).
+/// How the coordinator resolves an escalation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Escalation {
     /// Resolved directly within the coordinator's authority.
     ResolveDirect,
     /// A cross-office deliberation round among affected offices' orchestrators.
     CrossOfficeDeliberation(Vec<String>),
-    /// Escalated to the user (HITL, ORC-9).
+    /// Escalated to the user (HITL).
     Hitl,
 }
 
-/// The building-level coordinator. Sole coordinator (GO-1); read-only toward
-/// offices (GO-4) — it forwards routing/escalation as messages, never mutates an
-/// office's state and offers no cancel/re-delegate path (GO-2).
+/// The building-level coordinator. Sole coordinator; read-only toward
+/// offices — it forwards routing/escalation as messages, never mutates an
+/// office's state and offers no cancel/re-delegate path.
 #[derive(Debug, Default)]
 pub struct BuildingView {
     offices: HashMap<String, OfficeSummary>,
@@ -60,7 +60,7 @@ impl BuildingView {
         BuildingView::default()
     }
 
-    /// Ingest an office summary from the event bus (GO-4). Read-only projection —
+    /// Ingest an office summary from the event bus. Read-only projection —
     /// the office remains the sole writer of its own state.
     pub fn observe(&mut self, summary: OfficeSummary) {
         self.offices.insert(summary.office_id.clone(), summary);
@@ -79,7 +79,7 @@ impl BuildingView {
         self.offices.values().map(|o| o.active_cards).sum()
     }
 
-    /// Route a message to the first reachable candidate office (GO-5). A
+    /// Route a message to the first reachable candidate office. A
     /// Paused/Hibernating/Offline/Error office is bypassed. Order = caller priority.
     pub fn route(&self, candidates: &[String]) -> Option<String> {
         candidates
@@ -89,12 +89,12 @@ impl BuildingView {
     }
 }
 
-/// Whether an office in `state` can receive routed work (GO-5).
+/// Whether an office in `state` can receive routed work.
 pub fn is_reachable(state: OfficeState) -> bool {
     matches!(state, OfficeState::Active | OfficeState::Idle)
 }
 
-/// The phase-awareness check (GO-3): the mandatory concerns for the current phase
+/// The phase-awareness check: the mandatory concerns for the current phase
 /// that are also relevant to the component become non-optional acceptance criteria
 /// on the new card. Returns them in a stable order.
 pub fn check_phase_concerns(mandatory: &[Concern], relevant: &[Concern]) -> Vec<Concern> {
@@ -106,7 +106,7 @@ pub fn check_phase_concerns(mandatory: &[Concern], relevant: &[Concern]) -> Vec<
         .collect()
 }
 
-/// Decide an escalation path (GO-6). A conflict spanning multiple offices with an
+/// Decide an escalation path. A conflict spanning multiple offices with an
 /// objective resolution resolves directly; a design conflict requests a cross-office
 /// deliberation; an ambiguous or high-impact one escalates to the human.
 pub fn decide_escalation(
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn aggregate_view_is_read_only_projection() {
-        // GO-4: the view aggregates observed office summaries.
+        // The view aggregates observed office summaries.
         let mut bv = BuildingView::new();
         bv.observe(office("a", OfficeState::Active, 3));
         bv.observe(office("b", OfficeState::Idle, 2));
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn routing_bypasses_unreachable_offices() {
-        // GO-5: paused/hibernating offices are skipped; order is caller priority.
+        // paused/hibernating offices are skipped; order is caller priority.
         let mut bv = BuildingView::new();
         bv.observe(office("a", OfficeState::Hibernating, 0));
         bv.observe(office("b", OfficeState::Paused, 0));
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn phase_concerns_are_mandatory_intersection() {
-        // GO-3: only concerns both mandatory for the phase AND relevant apply.
+        // Only concerns both mandatory for the phase AND relevant apply.
         let mandatory = [
             Concern::Localization,
             Concern::Observability,
@@ -187,7 +187,6 @@ mod tests {
 
     #[test]
     fn escalation_paths_resolve_by_inputs() {
-        // GO-6.
         assert_eq!(
             decide_escalation(&["a".into()], true, false),
             Escalation::Hitl

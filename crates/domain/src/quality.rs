@@ -55,7 +55,7 @@ impl GateKind {
         }
     }
 
-    /// Returns true when this gate is always required (QLY-2).
+    /// Returns true when this gate is always required.
     pub fn is_always_on(&self) -> bool {
         matches!(
             self,
@@ -134,7 +134,7 @@ pub fn detect_language(project_root: &Path) -> Language {
 
 /// Run a single quality gate for a project.
 pub fn run_gate(gate: GateKind, project_root: &Path, tags: &[CardTag]) -> GateResult {
-    // Skip conditional gates when the relevant tag is absent (QLY-3)
+    // Skip conditional gates when the relevant tag is absent
     if gate == GateKind::Benchmarks && !tags.contains(&CardTag::Performance) {
         return GateResult {
             gate,
@@ -225,7 +225,7 @@ pub enum DoneGateStatus {
     Fail,
 }
 
-/// Check whether all required gates have passed for a card (QLY-1, QLY-7).
+/// Check whether all required gates have passed for a card.
 ///
 /// The real gate result store is not yet wired to the kanban board;
 /// this seam accepts explicit results so callers control the outcome in tests.

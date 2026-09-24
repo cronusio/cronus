@@ -1,8 +1,7 @@
-//! `cronus-contract` — the ports tier of the crate topology (§4.1/§4.2):
+//! `cronus-contract` — the ports tier of the crate topology:
 //! shared types plus the seam traits domain code depends on and
 //! adapter crates implement. Zero external dependencies, by construction —
-//! nothing here may ever depend on I/O, a platform service, or a C library
-//! (§4.3).
+//! nothing here may ever depend on I/O, a platform service, or a C library.
 //!
 //! This crate holds no logic of its own beyond what a data type's own
 //! invariants require (id generation, display formatting, weight lookup). It
@@ -14,7 +13,7 @@
 //
 // Moved from `crates/core/src/memory/mod.rs`. `MemoryEntry` is the payload the
 // `MemorySearch` / `UserDataStore` seam traits below carry across the
-// domain/adapter boundary (§4.5); its field types travel with it.
+// domain/adapter boundary; its field types travel with it.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,7 +171,7 @@ impl VerificationState {
     }
 }
 
-/// Where a memory sits on the processing-depth axis (MC-1), orthogonal to
+/// Where a memory sits on the processing-depth axis, orthogonal to
 /// scope. Refinement flows one way, `raw -> working -> consolidated`;
 /// consolidation never rewrites raw evidence, so any consolidated claim can
 /// be checked against what actually happened.
@@ -205,12 +204,12 @@ impl MemoryDepth {
     }
 }
 
-/// A memory's reversible lifecycle state (MI-9), orthogonal to MEM-5 decay.
+/// A memory's reversible lifecycle state, orthogonal to decay.
 /// Decay may lower an item's ranking in any state, but MUST NOT delete an
 /// item whose state is `Paused` or `Archived` — a deliberate shelving is a
 /// value signal that overrides automatic pruning. `Deleted` is not a stored
 /// variant: it is realized by the existing targeted forget (row removal),
-/// per MI-9's own table.
+/// per its own table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifecycleState {
     /// In the default recall set.
@@ -240,8 +239,8 @@ impl LifecycleState {
     }
 }
 
-/// The typed outcome of a captured experience (MI-13's read side over MI-7's
-/// write side) — `None` on every ordinary memory (the honest default for the
+/// The typed outcome of a captured experience (read back by the reuse gate, written
+/// at capture) — `None` on every ordinary memory (the honest default for the
 /// entire pre-existing corpus), `Some(_)` only for an item `distill_run`
 /// produced. Orthogonal to `kind`: a distilled run is still classified by
 /// `kind` for what it's *about* (`ProjectContext`, typically), while this
@@ -276,7 +275,7 @@ impl ExperienceOutcome {
     }
 }
 
-/// The subject-of-memory lens (MI-6 ext): who the memory is *about*,
+/// The subject-of-memory lens: who the memory is *about*,
 /// orthogonal to `actor` (who said it) and to `source` (how it entered the
 /// system). A closed 2-variant vocabulary — no third-party subject exists
 /// in this single-tenant model.
@@ -320,14 +319,14 @@ pub struct MemoryEntry {
     pub depth: MemoryDepth,
     pub lifecycle_state: LifecycleState,
     pub experience_outcome: Option<ExperienceOutcome>,
-    /// Who said this (MI-6) — distinct from `workspace_id` (scope
+    /// Who said this — distinct from `workspace_id` (scope
     /// ownership) and `source` (how it entered the system).
     pub actor: Option<String>,
-    /// A hard void-after instant (MI-6) — complements MEM-5 decay rather
+    /// A hard void-after instant — complements decay rather
     /// than replacing it; decay lowers ranking, `expiry` removes the item
     /// from default recall outright once passed.
     pub expiry: Option<u64>,
-    /// The subject-of-memory lens (MI-6 ext).
+    /// The subject-of-memory lens.
     pub subject: Option<MemorySubject>,
 }
 
@@ -356,7 +355,7 @@ impl MemoryEntry {
             // finished fact — every pre-existing call site (auth, CLI `cronus
             // memory store`, session capture) writes exactly this shape, so
             // defaulting to `Consolidated` preserves that behavior exactly.
-            // `Raw`/`Working` are for the future ingestion pipeline (MC-1)
+            // `Raw`/`Working` are for the future ingestion pipeline
             // and are opted into via `with_depth`.
             depth: MemoryDepth::Consolidated,
             lifecycle_state: LifecycleState::Active,
@@ -377,27 +376,27 @@ impl MemoryEntry {
         self
     }
 
-    /// Marks this entry as a captured experience (MI-7 write side) so
-    /// MI-13's reuse gate can later recall it typed. Ordinary memories never
+    /// Marks this entry as a captured experience so
+    /// the reuse gate can later recall it typed. Ordinary memories never
     /// call this — `experience_outcome` stays `None`.
     pub fn with_experience_outcome(mut self, outcome: ExperienceOutcome) -> Self {
         self.experience_outcome = Some(outcome);
         self
     }
 
-    /// MI-6: attribute this capture to who said it.
+    /// Attribute this capture to who said it.
     pub fn with_actor(mut self, actor: impl Into<String>) -> Self {
         self.actor = Some(actor.into());
         self
     }
 
-    /// MI-6: a hard void-after instant, distinct from MEM-5 decay.
+    /// A hard void-after instant, distinct from decay.
     pub fn with_expiry(mut self, expiry: u64) -> Self {
         self.expiry = Some(expiry);
         self
     }
 
-    /// MI-6 ext: the subject-of-memory lens.
+    /// The subject-of-memory lens.
     pub fn with_subject(mut self, subject: MemorySubject) -> Self {
         self.subject = Some(subject);
         self
@@ -664,9 +663,9 @@ impl BusSender for CaptureBusSender {
     }
 }
 
-// ── DN-2 provider-plane seams ────────────────────────────────────────────────
+// ── provider-plane seams ────────────────────────────────────────────────
 //
-// New trait declarations (§4.5). Illustrative shape, not
+// New trait declarations. Illustrative shape, not
 // a final signature — no implementation exists yet; `cronus-store-local`
 // (`UserDataStore`) and `cronus-auth-local` (`AuthProvider`/`IdentityProvider`)
 // implement these in a later phase task. The plain `String` error is
@@ -674,7 +673,7 @@ impl BusSender for CaptureBusSender {
 // existing one being redesigned, so committing to a richer error type now
 // would be speculative.
 
-/// MI-2: first-class temporal recall modes over the bi-temporal record —
+/// First-class temporal recall modes over the bi-temporal record —
 /// resolved against valid-time (`AsOf`) or transaction-time (`ChangedSince`,
 /// `Recent`), never conflating the two.
 #[derive(Debug, Clone, Copy)]
@@ -687,7 +686,7 @@ pub enum TemporalMode {
     Recent,
 }
 
-/// MI-8: the field a structured predicate compares — closed to the columns
+/// The field a structured predicate compares — closed to the columns
 /// `MemoryEntry` actually has. The vocabulary is backend-agnostic; this enum
 /// names *which* field, the backend decides how to index or compare it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -702,14 +701,14 @@ pub enum PredicateField {
     ExperienceOutcome,
 }
 
-/// A comparison operand (MI-8).
+/// A comparison operand.
 #[derive(Debug, Clone)]
 pub enum PredicateValue {
     Text(String),
     Number(f64),
 }
 
-/// MI-8: a small, closed structured-comparison vocabulary — equals/
+/// A small, closed structured-comparison vocabulary — equals/
 /// not-equals, ordering, set membership, text containment — combinable via
 /// AND/OR/NOT, composable with (never replacing) the fuzzy multi-signal
 /// fusion and the temporal modes. Fixed at this layer precisely so it stays
@@ -739,12 +738,12 @@ pub enum FieldPredicate {
 pub trait MemorySearch {
     fn search_fts(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>, String>;
 
-    /// MI-2: temporal recall modes over the bi-temporal record, composing
+    /// Temporal recall modes over the bi-temporal record, composing
     /// with the same trust/lifecycle defaults as `search_fts`.
     fn recall_temporal(&self, mode: TemporalMode, limit: usize)
     -> Result<Vec<MemoryEntry>, String>;
 
-    /// MI-8: the closed structured-comparison vocabulary.
+    /// The closed structured-comparison vocabulary.
     fn recall_structured(
         &self,
         predicate: &FieldPredicate,
@@ -752,8 +751,8 @@ pub trait MemorySearch {
     ) -> Result<Vec<MemoryEntry>, String>;
 }
 
-/// The DN-2 user-data plane (§4.5). `MemorySearch` is one facet; a full
-/// implementation also covers write, prune, and export (DN-7 portability).
+/// The user-data plane. `MemorySearch` is one facet; a full
+/// implementation also covers write, prune, and export (portability).
 ///
 /// No `Send + Sync` bound: the on-device default wraps a `rusqlite::Connection`,
 /// which is not `Sync` (SQLite connections are not shared across threads
@@ -761,22 +760,22 @@ pub trait MemorySearch {
 /// started from assumed it; the concrete implementation proved it wrong.
 pub trait UserDataStore: MemorySearch {
     fn put(&self, entry: &MemoryEntry) -> Result<(), String>;
-    fn export(&self) -> Result<Vec<MemoryEntry>, String>; // DN-7: always able to come home
+    fn export(&self) -> Result<Vec<MemoryEntry>, String>; // Always able to come home
 }
 
-/// The DN-2 authentication plane (§4.5).
+/// The authentication plane.
 pub trait AuthProvider: Send + Sync {
     fn authenticate(&self, principal: &str, credential: &str) -> Result<bool, String>;
 }
 
-/// The DN-2 principal-identity plane (§4.5).
+/// The principal-identity plane.
 pub trait IdentityProvider: Send + Sync {
     fn current_principal(&self) -> Option<String>;
 }
 
 // ── InferenceBackend seam ────────────────────────────────────────────────────
 //
-// The streaming call surface (MR-2/MR-8). Distinct from `ModelProvider`
+// The streaming call surface. Distinct from `ModelProvider`
 // above: that trait is routing metadata (id/health/cost/latency/tier/
 // task_fit — what the router scores) and has no method that performs a
 // call. A concrete provider in `cronus-model-local` implements both traits —
@@ -795,7 +794,7 @@ pub struct GenerateRequest {
     pub parameters: Vec<(String, String)>,
 }
 
-/// One event in a generation stream (MR-8).
+/// One event in a generation stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamEvent {
     Token(String),
@@ -813,7 +812,7 @@ pub enum StreamEvent {
     Error(InferenceError),
 }
 
-/// The wire-failure taxonomy a transport maps onto (§4.5). Deliberately flat
+/// The wire-failure taxonomy a transport maps onto. Deliberately flat
 /// and small — retry/rotate/fallback policy over these variants lives in
 /// the model-error-recovery layer, not here.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -825,12 +824,12 @@ pub enum InferenceError {
     MalformedStream(String),
     /// The caller's `CancelHandle` was set mid-call.
     Cancelled,
-    /// The backend has no support for the attempted operation (MR-6/MR-9:
+    /// The backend has no support for the attempted operation (
     /// reported honestly, never silently emulated).
     Unsupported,
 }
 
-/// Static facts about a model as reported by its serving backend (MR-3/MR-12).
+/// Static facts about a model as reported by its serving backend.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModelDescriptor {
     pub name: String,
@@ -839,14 +838,14 @@ pub struct ModelDescriptor {
     pub parameters: Option<String>,
 }
 
-/// A residency instruction for an explicit load/unload lifecycle (MR-6).
+/// A residency instruction for an explicit load/unload lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResidencyHint {
     KeepAliveSecs(u64),
     UnloadNow,
 }
 
-/// One event in a model-acquisition stream (MR-4).
+/// One event in a model-acquisition stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PullProgress {
     Downloading {
@@ -889,7 +888,7 @@ impl Default for CancelHandle {
     }
 }
 
-/// The streaming inference call surface (MR-2/MR-8). Implemented by a
+/// The streaming inference call surface. Implemented by a
 /// concrete endpoint-profile provider in `cronus-model-local`; the nodus
 /// `ModelProvider` (`generate`/`analyze` → `String`) is satisfied by a
 /// host-side bridge that collapses this stream, never by implementing this
@@ -1038,12 +1037,12 @@ mod inference_tests {
 //
 // The client-facing project wiki is a derived projection
 // CACHE: pages are rows written only by the office regeneration pipeline and
-// reconstructable from ground truth (PW-3). These are the payload types the
+// reconstructable from ground truth. These are the payload types the
 // store persists; the SQLite store itself lives in `cronus-store-local`.
 
-/// The fixed page-kind hierarchy (§4.1). The client wiki is
+/// The fixed page-kind hierarchy. The client wiki is
 /// navigable overview → area → detail via `WikiPage::parent_id` + `ord`; the
-/// kinds are closed so no page sits far from the overview (PW-6).
+/// kinds are closed so no page sits far from the overview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WikiPageKind {
     Overview,
@@ -1056,7 +1055,7 @@ pub enum WikiPageKind {
 
 impl WikiPageKind {
     /// Every page kind, in overview → detail order. The single source of truth
-    /// for "regenerate the whole wiki" (`rebuild`, PW-3): a new kind added to
+    /// for "regenerate the whole wiki" (`rebuild`): a new kind added to
     /// the enum is regenerated by a rebuild the moment it appears here.
     pub const fn all() -> [WikiPageKind; 6] {
         [
@@ -1093,7 +1092,7 @@ impl WikiPageKind {
     }
 }
 
-/// One citation backing a wiki page's claims (PW-4). Every substantive claim
+/// One citation backing a wiki page's claims. Every substantive claim
 /// must resolve to a citation; the regeneration pipeline drops an uncited
 /// section rather than persisting it. `source_kind` names what is cited (e.g.
 /// `decision`, `work_product`, `board_item`, `ledger_fact`); `source_id`
@@ -1113,8 +1112,8 @@ impl WikiCitation {
     }
 }
 
-/// A client-facing wiki page — a derived projection row (PW-1…PW-6), never a
-/// source of truth: reconstructable from ground truth by `rebuild` (PW-3).
+/// A client-facing wiki page — a derived projection row, never a
+/// source of truth: reconstructable from ground truth by `rebuild`.
 ///
 /// Optional structure is absent by default: a freshly-built page is a root
 /// (`parent_id = None`), first in order (`ord = 0`), fresh (`stale = false`),
@@ -1124,20 +1123,20 @@ impl WikiCitation {
 pub struct WikiPage {
     pub id: String,
     pub office_id: String,
-    /// `None` for the overview root; otherwise the parent in the nav tree (PW-6).
+    /// `None` for the overview root; otherwise the parent in the nav tree.
     pub parent_id: Option<String>,
     /// Sibling ordering under `parent_id`.
     pub ord: i64,
     pub kind: WikiPageKind,
     pub title: String,
-    /// Generated plain-language content (PW-1).
+    /// Generated plain-language content.
     pub body: String,
-    /// Sources backing the page (PW-4); non-empty once the pipeline attributes it.
+    /// Sources backing the page; non-empty once the pipeline attributes it.
     pub citations: Vec<WikiCitation>,
-    /// Hash of the inputs this page was generated from (PW-5).
+    /// Hash of the inputs this page was generated from.
     pub source_fingerprint: String,
     pub generated_at: u64,
-    /// `true` when the current source fingerprint differs from the stored one (PW-5).
+    /// `true` when the current source fingerprint differs from the stored one.
     pub stale: bool,
 }
 
@@ -1168,7 +1167,7 @@ impl WikiPage {
     }
 }
 
-/// One entry in a page's change history (PW-5), appended newest-first by the
+/// One entry in a page's change history, appended newest-first by the
 /// regeneration pipeline. `page_id` is `None` for an office-level change not
 /// tied to a single page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1181,15 +1180,15 @@ pub struct WikiChangelogEntry {
     pub at: u64,
 }
 
-/// The wiki store seam the office regeneration pipeline writes through
-/// (§4.2). Lives in the ports tier so `cronus-domain` (the
+/// The wiki store seam the office regeneration pipeline writes through.
+/// Lives in the ports tier so `cronus-domain` (the
 /// pipeline) never depends on `cronus-store-local` (the SQLite realization);
-/// the client has no handle to this — only the curator-owned pipeline does
-/// (PW-2). The plain `String` error mirrors the other DN-2 seams.
+/// the client has no handle to this — only the curator-owned pipeline does.
+/// The plain `String` error mirrors the other provider-plane seams.
 pub trait WikiCache {
     fn get_page(&self, id: &str) -> Result<Option<WikiPage>, String>;
 
-    /// Apply one regeneration **transactionally** (PW-3): upsert every page
+    /// Apply one regeneration **transactionally**: upsert every page
     /// and append every changelog entry as a single all-or-nothing unit. On
     /// any failure, nothing is written — the prior rows stay intact and
     /// correctly marked (a failed regeneration never leaves a half-written
@@ -1200,7 +1199,7 @@ pub trait WikiCache {
         changelog: &[WikiChangelogEntry],
     ) -> Result<(), String>;
 
-    /// Rebuild an office's wiki from scratch (PW-3): **transactionally** drop
+    /// Rebuild an office's wiki from scratch: **transactionally** drop
     /// every existing `wiki_page` / `wiki_changelog` row for `office_id`, then
     /// write the freshly re-derived `pages` + `changelog` — all in one
     /// all-or-nothing unit. This is the operational proof the store is a
@@ -1220,16 +1219,16 @@ pub trait WikiCache {
     /// Every page belonging to an office — the input to the freshness sweep.
     fn pages_for_office(&self, office_id: &str) -> Result<Vec<WikiPage>, String>;
 
-    /// Mark pages stale (PW-5): their sources drifted since generation and no
+    /// Mark pages stale: their sources drifted since generation and no
     /// regeneration has caught up, so the UI must show a stale marker rather
     /// than silently presenting them as current.
     fn mark_stale(&self, page_ids: &[String]) -> Result<(), String>;
 
-    /// Change history newest-first (PW-5), at most `limit` entries.
+    /// Change history newest-first, at most `limit` entries.
     fn changelog(&self, office_id: &str, limit: usize) -> Result<Vec<WikiChangelogEntry>, String>;
 }
 
-/// The **read-only** client-facing wiki surface (PW-2/PW-6). The client is
+/// The **read-only** client-facing wiki surface. The client is
 /// handed a `&dyn WikiReadSurface`, which — by having no write method at all —
 /// makes "the client can never curate the wiki" a compile-time property, not a
 /// convention: there is simply no API to mutate a row through this trait. The
@@ -1239,19 +1238,19 @@ pub trait WikiReadSurface {
     fn page(&self, id: &str) -> Result<Option<WikiPage>, String>;
 
     /// The direct children of `parent_id` (or the roots when `None`), ordered
-    /// for navigation — the overview → area → detail tree (PW-6).
+    /// for navigation — the overview → area → detail tree.
     fn children(&self, office_id: &str, parent_id: Option<&str>) -> Result<Vec<WikiPage>, String>;
 
-    /// Full-text search over page title + body, best matches first (PW-6).
+    /// Full-text search over page title + body, best matches first.
     fn search(&self, office_id: &str, query: &str, limit: usize) -> Result<Vec<WikiPage>, String>;
 
-    /// Change history newest-first (PW-5), at most `limit` entries.
+    /// Change history newest-first, at most `limit` entries.
     fn changelog(&self, office_id: &str, limit: usize) -> Result<Vec<WikiChangelogEntry>, String>;
 }
 
-// ── Service Activation seam (§4.1, BA-1…BA-11) ────────
+// ── Service Activation seam ────────
 
-/// One of the two background modes beyond manual launch (BA-2). Manual
+/// One of the two background modes beyond manual launch. Manual
 /// launch itself is not a variant — it is the absence of any registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationMode {
@@ -1259,9 +1258,9 @@ pub enum ActivationMode {
     System,
 }
 
-/// Whether a single mode can be offered on this host (BA-10). Per-mode, not
+/// Whether a single mode can be offered on this host. Per-mode, not
 /// whole-host: a non-systemd Linux host offers `Login` (via XDG autostart)
-/// while reporting `System` unsupported (§4.4).
+/// while reporting `System` unsupported.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModeSupport {
     Supported,
@@ -1272,14 +1271,14 @@ pub enum ModeSupport {
     },
 }
 
-/// What this host can offer, per mode (BA-10).
+/// What this host can offer, per mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivationCapabilities {
     pub login: ModeSupport,
     pub system: ModeSupport,
 }
 
-/// The observed activation state (BA-8) — always read from the OS at the
+/// The observed activation state — always read from the OS at the
 /// moment it is asked, never a stored or remembered value. `RequiresApproval`
 /// is a registered-but-vetoed state distinct from `Active`: the engine
 /// genuinely will not run until the user approves it, so it must never be
@@ -1289,47 +1288,47 @@ pub enum ActivationState {
     Inactive,
     Active(ActivationMode),
     RequiresApproval(ActivationMode),
-    /// The facility could not be queried — never reported as `Active` (BA-8).
+    /// The facility could not be queried — never reported as `Active`.
     Unknown {
         reason: String,
     },
 }
 
-/// The per-OS activation seam (§4.1). No OS type (registry key, plist, unit
+/// The per-OS activation seam. No OS type (registry key, plist, unit
 /// file, service handle) crosses this trait. The domain tier holds the
-/// mutual-exclusion and consent-bookkeeping policy (§4.4/§4.6) and calls this
+/// mutual-exclusion and consent-bookkeeping policy and calls this
 /// seam without ever naming a registry key itself; the adapter crate
-/// (`cronus-activation-os`, minted by §4.4(a)) holds the
+/// (`cronus-activation-os`) holds the
 /// OS calls.
 ///
 /// There is no `set_state` and no persisted mirror: the only way to learn the
 /// activation state is `observe()`, and the only way to change it is
 /// `enable`/`disable` — both called only from an interactive frontend, never
-/// from agent-run code (BA-4).
+/// from agent-run code.
 pub trait ActivationRegistry: Send + Sync {
-    /// What this host can offer, per mode. `Unsupported` on a spoke (BA-10).
+    /// What this host can offer, per mode. `Unsupported` on a spoke.
     fn capabilities(&self) -> ActivationCapabilities;
 
-    /// Read the OS. Never a cached value (BA-8).
+    /// Read the OS. Never a cached value.
     fn observe(&self) -> ActivationState;
 
     /// Register exactly `mode`. An adapter-level primitive — it does not
     /// decide whether some other mode should first be removed; that
-    /// mutual-exclusion ordering (BA-3) is domain-tier policy, which calls
+    /// mutual-exclusion ordering is domain-tier policy, which calls
     /// `disable()` and verifies via `observe()` before calling this. May
-    /// prompt for elevation for `System` (BA-6).
+    /// prompt for elevation for `System`.
     fn enable(&self, mode: ActivationMode) -> Result<(), String>;
 
     /// Remove whatever is currently registered. An adapter-level primitive;
-    /// the caller verifies absence via `observe()` (BA-7).
+    /// the caller verifies absence via `observe()`.
     fn disable(&self) -> Result<(), String>;
 }
 
-/// The honest do-nothing default (§5: "seam and probe
+/// The honest do-nothing default ("seam and probe
 /// first ... gives the settings surface something honest to render"). Before
 /// the real per-OS adapter crate is wired in, this reports both modes
 /// `Unsupported` rather than exposing a toggle that silently does nothing
-/// (BA-10) — the settings surface renders the true "not available yet" state
+///  — the settings surface renders the true "not available yet" state
 /// instead of a fabricated one. `enable`/`disable` refuse rather than pretend
 /// to register anything, so a caller can never observe a mode this adapter
 /// claims to support.
@@ -1383,7 +1382,7 @@ mod activation_tests {
     /// A scriptable registry for tests: capabilities and the current state
     /// are set at construction; `enable`/`disable` mutate the state, or fail
     /// without mutating it when scripted to — enough to exercise the honest-
-    /// representation properties (BA-8, BA-10) and a transition round-trip
+    /// representation properties and a transition round-trip
     /// with no real OS calls.
     struct ScriptedRegistry {
         capabilities: ActivationCapabilities,
@@ -1469,7 +1468,7 @@ mod activation_tests {
 
     #[test]
     fn a_spoke_host_reports_unsupported_for_both_modes() {
-        // BA-10: a host with no usable supervisor reports Unsupported with a
+        // A host with no usable supervisor reports Unsupported with a
         // reason, never an inert toggle.
         let spoke = ScriptedRegistry::new(
             ActivationCapabilities {
@@ -1489,7 +1488,7 @@ mod activation_tests {
 
     #[test]
     fn an_unqueryable_facility_yields_unknown_never_active() {
-        // BA-8: where the OS cannot be queried, the state is Unknown, never
+        // Where the OS cannot be queried, the state is Unknown, never
         // silently reported as Active.
         let registry = ScriptedRegistry::supported(ActivationState::Unknown {
             reason: "registry key unreadable".to_string(),
@@ -1537,15 +1536,15 @@ mod activation_tests {
     }
 }
 
-// ── Knowledge Store seam (§4, KB-1…KB-11) ────────────────
+// ── Knowledge Store seam ────────────────
 //
 // Named, access-controlled document collections with hybrid semantic+keyword
 // retrieval. The SQLite/sqlite-vec/FTS5 realization lives in
 // `cronus-store-local`; `cronus-domain` (ingestion, hybrid retrieval fusion,
 // query preparation) depends only on the `KnowledgeStore` port below, never on
-// the store crate directly (the `WikiCache` precedent, DN-2).
+// the store crate directly (the `WikiCache` precedent).
 
-/// Who authored a document — the KB-9 write-zone boundary. Assigned from the
+/// Who authored a document — the write-zone boundary. Assigned from the
 /// ingestion source at document creation, never chosen by a later agent
 /// write, so the agent cannot mint a `Human` row to smuggle authority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1571,7 +1570,7 @@ impl Origin {
     }
 }
 
-/// Editorial-trust state for an agent-synthesized document (KB-10), ordered
+/// Editorial-trust state for an agent-synthesized document, ordered
 /// `Draft < Reviewed < Stable` so a `min_curation` filter is a simple
 /// comparison. Absent (`None` on [`Document::curation`]) for `Origin::Human`
 /// rows — curation is an agent-document concept, distinct from the indexing
@@ -1602,7 +1601,7 @@ impl Curation {
     }
 }
 
-/// Index-pipeline state (KB-3/KB-5), distinct from the editorial-trust
+/// Index-pipeline state, distinct from the editorial-trust
 /// `Curation` above — this tracks ingestion progress, not trust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentStatus {
@@ -1636,7 +1635,7 @@ impl DocumentStatus {
     }
 }
 
-/// A named, access-controlled document collection (KB-1). Every retrieval
+/// A named, access-controlled document collection. Every retrieval
 /// query targets an explicit set of collection ids; there is no
 /// implicit "search everything".
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1670,7 +1669,7 @@ impl Collection {
     }
 }
 
-/// An optional per-collection directory tree (KB-2) — human navigation only;
+/// An optional per-collection directory tree — human navigation only;
 /// directory structure never affects retrieval ranking or chunking.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Directory {
@@ -1680,7 +1679,7 @@ pub struct Directory {
     pub name: String,
 }
 
-/// A source document within a collection (KB-5/KB-9/KB-10). Structure absent
+/// A source document within a collection. Structure absent
 /// by default: a freshly-created document is `Origin::Agent`, `draft`
 /// curation, `pending` status, with no directory placement.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1695,7 +1694,7 @@ pub struct Document {
     pub name: String,
     pub status: DocumentStatus,
     pub origin: Origin,
-    /// `None` for `Origin::Human` — editorial trust is an agent-document concept (KB-10).
+    /// `None` for `Origin::Human` — editorial trust is an agent-document concept.
     pub curation: Option<Curation>,
     pub error_msg: Option<String>,
     pub meta: Option<String>,
@@ -1729,7 +1728,7 @@ impl Document {
     }
 
     /// A new human-authored document (an upload or human-owned record):
-    /// `pending`, no curation (KB-10 is an agent-document concept).
+    /// `pending`, no curation (an agent-document concept).
     pub fn new_human(
         id: impl Into<String>,
         collection_id: impl Into<String>,
@@ -1754,7 +1753,7 @@ impl Document {
     }
 }
 
-/// A locator for where in a source document a chunk came from (KB-6
+/// A locator for where in a source document a chunk came from (source
 /// attribution). All fields optional — precision varies by source type (a
 /// PDF has pages, an HTML page has sections, a plain-text record has neither).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1765,7 +1764,7 @@ pub struct SourceRef {
     pub byte_end: Option<u64>,
 }
 
-/// One retrievable, embedded slice of a document (KB-6).
+/// One retrievable, embedded slice of a document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk {
     pub id: String,
@@ -1777,16 +1776,16 @@ pub struct Chunk {
     pub created_at: u64,
 }
 
-/// A semantic+keyword retrieval request (KB-1/KB-11).
+/// A semantic+keyword retrieval request.
 #[derive(Debug, Clone)]
 pub struct RetrievalRequest {
     pub query: String,
     /// Explicit target collections — retrieval never implicitly searches
-    /// every collection (KB-1).
+    /// every collection.
     pub collection_ids: Vec<String>,
     pub top_k: usize,
     pub min_score: Option<f32>,
-    /// KB-10 trust floor: chunks whose document `curation` is below this are
+    /// Trust floor: chunks whose document `curation` is below this are
     /// excluded. `Origin::Human` documents (no curation) are always eligible.
     pub min_curation: Option<Curation>,
 }
@@ -1803,7 +1802,7 @@ impl RetrievalRequest {
     }
 }
 
-/// A retrieved, attributed chunk (KB-6/KB-7) — the API asserts no
+/// A retrieved, attributed chunk — the API asserts no
 /// correctness, only "this text, from this source, at this score".
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetrievedChunk {
@@ -1817,7 +1816,7 @@ pub struct RetrievedChunk {
     pub score: f32,
 }
 
-/// KB-9: the explicit, audited override required to write into an
+/// The explicit, audited override required to write into an
 /// `Origin::Human` zone. `HumanDirected` carries an `audit_ref` so every
 /// override write is attributable on the durable audit path — never a silent
 /// default.
@@ -1827,7 +1826,7 @@ pub enum WriteOverride {
     HumanDirected { audit_ref: String },
 }
 
-/// The knowledge-store seam (§4). `cronus-domain`
+/// The knowledge-store seam. `cronus-domain`
 /// composes ingestion and hybrid retrieval over this port; the SQLite +
 /// sqlite-vec + FTS5 realization lives in `cronus-store-local`. No `Send +
 /// Sync` bound — `rusqlite::Connection` is not `Sync` (the `WikiCache` /
@@ -1838,16 +1837,16 @@ pub trait KnowledgeStore {
     fn get_collection(&self, id: &str) -> Result<Option<Collection>, String>;
     fn create_directory(&self, directory: &Directory) -> Result<(), String>;
 
-    // -- Documents (KB-9/KB-10 write-gated) -------------------------------
+    // -- Documents (write-gated) -------------------------------
     /// Insert or replace a document. Refused when the *existing* row (if
-    /// any) is `Origin::Human` and `override_` is not `HumanDirected` (KB-9)
+    /// any) is `Origin::Human` and `override_` is not `HumanDirected`
     /// — enforced here, the single write seam, never by caller convention.
     /// A brand-new `Origin::Human` document (no existing row) is not gated —
     /// the gate protects *rewriting* human material, not its initial ingest.
     fn write_document(&self, document: &Document, override_: &WriteOverride) -> Result<(), String>;
     fn get_document(&self, id: &str) -> Result<Option<Document>, String>;
-    /// Update only the KB-3 index-state fields (`status`, `error_msg`) of an
-    /// existing document — **never KB-9-gated**, unlike [`write_document`].
+    /// Update only the index-state fields (`status`, `error_msg`) of an
+    /// existing document — **never write-gated**, unlike [`write_document`].
     /// Index state is system bookkeeping the ingestion pipeline maintains,
     /// not authored content; an `origin = human` document's pipeline
     /// (pending → indexing → ready/error) must be able to complete without
@@ -1860,7 +1859,7 @@ pub trait KnowledgeStore {
         status: DocumentStatus,
         error_msg: Option<&str>,
     ) -> Result<(), String>;
-    /// KB-10: advance curation. `Draft` is agent-free; `Reviewed`/`Stable`
+    /// Advance curation. `Draft` is agent-free; `Reviewed`/`Stable`
     /// require `human_auth` (an opaque authorization reference) or the
     /// transition is refused.
     fn set_curation(
@@ -1869,33 +1868,33 @@ pub trait KnowledgeStore {
         next: Curation,
         human_auth: Option<&str>,
     ) -> Result<(), String>;
-    /// KB-8: mark a document deleted — excluded from retrieval immediately;
+    /// Mark a document deleted — excluded from retrieval immediately;
     /// physical cleanup is [`KnowledgeStore::gc`].
     fn soft_delete_document(&self, id: &str) -> Result<(), String>;
-    /// KB-8: physically remove documents soft-deleted more than
+    /// Physically remove documents soft-deleted more than
     /// `older_than_secs` ago, plus their chunk/FTS/vector rows. Returns the
     /// number of documents removed.
     fn gc(&self, older_than_secs: u64) -> Result<u64, String>;
 
-    // -- Chunks (KB-3 incremental re-index) -------------------------------
-    /// Delete every chunk for `document_id` — the KB-3 re-index precondition
+    // -- Chunks (incremental re-index) -------------------------------
+    /// Delete every chunk for `document_id` — the re-index precondition
     /// (existing chunks removed before fresh ones are inserted).
     fn delete_chunks(&self, document_id: &str) -> Result<(), String>;
     /// Insert a chunk and its embedding, keeping the FTS and vector indices
     /// in sync with the chunk row, atomically.
     fn insert_chunk(&self, chunk: &Chunk, embedding: &[f32]) -> Result<(), String>;
-    /// KB-3, transactionally: delete every existing chunk for `document_id`
+    /// Transactionally: delete every existing chunk for `document_id`
     /// (if any) and insert the given fresh set, as one all-or-nothing unit.
     /// A failure anywhere in the batch leaves the document's *prior* chunk
     /// set intact — never a half-deleted, half-inserted state (the
     /// `WikiCache::apply_regeneration` precedent). This is the atomicity
     /// primitive the ingestion pipeline's re-index composes over;
     /// [`KnowledgeStore::delete_chunks`] alone remains for the standalone
-    /// removal case (soft-delete follow-up, KB-8).
+    /// removal case (soft-delete follow-up).
     fn reindex_chunks(&self, document_id: &str, chunks: &[(Chunk, Vec<f32>)])
     -> Result<(), String>;
 
-    // -- Retrieval primitives (KB-1-scoped; RRF fusion composed in domain) --
+    // -- Retrieval primitives (collection-scoped; RRF fusion composed in domain) --
     /// Vector nearest-neighbour candidates among `ready`, non-deleted
     /// documents in `collection_ids`, ascending by distance (closest first).
     fn ann_search(
@@ -1911,8 +1910,8 @@ pub trait KnowledgeStore {
         query_text: &str,
         top_k: usize,
     ) -> Result<Vec<(String, f32)>, String>;
-    /// Hydrate chunk ids into full [`RetrievedChunk`]s (KB-6 attribution),
-    /// applying the `min_curation` floor (KB-10) — `Origin::Human` documents
+    /// Hydrate chunk ids into full [`RetrievedChunk`]s (with attribution),
+    /// applying the `min_curation` floor — `Origin::Human` documents
     /// are always eligible regardless of the floor. `score` on each result is
     /// left at `0.0`; the caller (domain-tier RRF fusion) sets it.
     fn hydrate_chunks(
@@ -1922,7 +1921,7 @@ pub trait KnowledgeStore {
     ) -> Result<Vec<RetrievedChunk>, String>;
 }
 
-// ── Invocable registry seam (SP-11, EP-2/4/11/12, IB-1) ──────────────────────
+// ── Invocable registry seam ──────────────────────
 //
 // The descriptor types below are the whole advertised contract for one
 // action. A surface renders help, completion, and command grouping from an
@@ -1935,14 +1934,14 @@ pub trait KnowledgeStore {
 // each other.
 
 /// A qualified invocable identity: `"core:board.list"` for a core action,
-/// `"<extension-id>:verb"` for a contributed one (EP-11). The qualifier is
+/// `"<extension-id>:verb"` for a contributed one. The qualifier is
 /// what lets a contribution and a core action share one namespace without
 /// either ever shadowing the other, whatever the core adds later.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct InvocableId(String);
 
-/// Why a candidate identity does not match the grammar (§4.4): exactly one
+/// Why a candidate identity does not match the grammar: exactly one
 /// `:` separator, with a non-empty qualifier before it and a non-empty,
 /// separator-free tail after it. Returned by [`InvocableId::new`] —
 /// everything downstream of construction can therefore rely on any
@@ -1976,7 +1975,7 @@ impl std::error::Error for InvocableIdError {}
 impl InvocableId {
     /// Construct a qualified identity, refusing anything that does not
     /// match the grammar: `<qualifier>:<tail>`, both halves non-empty,
-    /// neither containing the separator (§4.4). Refusing here — rather than
+    /// neither containing the separator. Refusing here — rather than
     /// accepting any string and validating later at registration — is what
     /// keeps an unvalidated identity from existing at all: a multi-
     /// separator or empty-half string would otherwise parse silently and
@@ -2039,7 +2038,7 @@ impl std::fmt::Display for InvocableId {
     }
 }
 
-/// Where an invocable's behavior is decided (SP-8/SP-11) — the machine-
+/// Where an invocable's behavior is decided — the machine-
 /// readable form of "legitimate difference, named with its reason". A
 /// surface consults this to know whether an action is reachable through
 /// generic dispatch at all, never by guessing from an omission.
@@ -2062,11 +2061,11 @@ pub enum Locus {
     /// management, diagnostics). Declared once in the launcher's own closed
     /// grammar and registered here so a session-scoped surface can
     /// *declare* that it deliberately does not offer it, rather than
-    /// merely omitting it (SP-11).
+    /// merely omitting it.
     Installation,
 }
 
-/// Whether an invocable is on the shipped surface (INV-9). An action the
+/// Whether an invocable is on the shipped surface. An action the
 /// core cannot yet perform simply has no descriptor at all — this type has
 /// no "not implemented" state, because that state must be unrepresentable
 /// rather than discouraged.
@@ -2118,12 +2117,12 @@ pub enum BinderKind {
     EnumText(&'static [&'static str]),
 }
 
-/// One argument an invocable declares, in order (IB-1). This is the single
+/// One argument an invocable declares, in order. This is the single
 /// source an invocable's advertised schema is derived from — a caller is
 /// told exactly this, and it is exactly this the runtime later enforces, so
 /// the two cannot drift into two different answers to "what does this
 /// take". `optional` distinguishes a value that may be genuinely absent
-/// from one that, if present, must parse (IB-5): a present-but-malformed
+/// from one that, if present, must parse: a present-but-malformed
 /// value is never silently treated as absent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -2133,8 +2132,8 @@ pub struct Binder {
     pub optional: bool,
 }
 
-/// Bounds enforced on a contributed descriptor's text at registration
-/// (EP-14). Declared here, in the dependency-free tier, so the registry
+/// Bounds enforced on a contributed descriptor's text at registration.
+/// Declared here, in the dependency-free tier, so the registry
 /// (domain tier) and any surface rendering a validation refusal read the
 /// same numbers rather than each guessing its own. Enforcement lives at the
 /// registration door, not here — this crate only names the limits.
@@ -2149,13 +2148,13 @@ pub const INVOCABLE_GROUP_MAX_LEN: usize = 40;
 pub const INVOCABLE_MAX_BINDERS: usize = 16;
 pub const BINDER_NAME_MAX_LEN: usize = 40;
 
-/// The full advertised contract for one action (SP-1/SP-2). Every render of
+/// The full advertised contract for one action. Every render of
 /// help, completion, or a command grammar's grouping is a projection of this
 /// struct; none restates it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Invocable {
-    /// Qualified identity (EP-11): `"core:…"` for the core, `"<ext-id>:…"`
+    /// Qualified identity: `"core:…"` for the core, `"<ext-id>:…"`
     /// for a contribution.
     pub id: InvocableId,
     /// Human-readable, catalog-facing name.
@@ -2166,11 +2165,11 @@ pub struct Invocable {
     /// grammar.
     pub group: &'static str,
     pub locus: Locus,
-    /// Ordered, typed; the single schema source (IB-1).
+    /// Ordered, typed; the single schema source.
     pub binders: Vec<Binder>,
     pub stability: Stability,
     /// Whether a resolved dispatch of this invocable records its raw
-    /// arguments in the dispatch journal (§4.13). An invocable whose
+    /// arguments in the dispatch journal. An invocable whose
     /// argument may itself be a secret, or whose own domain event already
     /// owns the payload, declares `false` — this removes that argument
     /// class from the journal entirely rather than relying on redaction to
@@ -2182,7 +2181,7 @@ pub struct Invocable {
 impl Invocable {
     /// Whether a frontend's own local discovery projection — a slash
     /// catalog, an action registry, an IPC catalog command — should offer
-    /// this descriptor at all (SP-11). The single predicate every surface's
+    /// this descriptor at all. The single predicate every surface's
     /// catalog filter is defined in terms of, so no surface hand-rolls this
     /// rule a second time: only a live, generically-dispatchable action
     /// belongs on a discovery surface — `ClientLocal` because it is
@@ -2198,10 +2197,10 @@ impl Invocable {
 }
 
 /// Whether an id names something the registry currently knows, asked and
-/// answered **before** dispatch (SP-13). Deliberately not `Option`: the two
+/// answered **before** dispatch. Deliberately not `Option`: the two
 /// outcomes read as domain facts here (`Found`/`Unknown`), not as a generic
 /// absence, because three different surfaces act on `Unknown` in three
-/// different — and mutually incompatible — ways (§4.5), and folding it into
+/// different — and mutually incompatible — ways, and folding it into
 /// a failure-shaped `Outcome` would force one of them to behave incorrectly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolved<'a> {
@@ -2404,7 +2403,7 @@ mod invocable_tests {
     }
 }
 
-// ── Dispatch envelope (SP-11, IB-2/3/4/5) ─────────────────────────────────────
+// ── Dispatch envelope ─────────────────────────────────────
 //
 // `Invocation` is the runtime call; `Outcome` is what dispatch returns —
 // structured data, never rendered text, so one dispatch serves a text
@@ -2522,7 +2521,7 @@ pub enum OutcomeValue {
     Record(Vec<(String, OutcomeValue)>),
 }
 
-/// The closed set of reasons a binder failed to produce a value (IB-4).
+/// The closed set of reasons a binder failed to produce a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum RejectionMode {
@@ -2536,13 +2535,13 @@ pub enum RejectionMode {
     IllShaped,
 }
 
-/// A binding failure, naming its mode and the binder it concerns (IB-4's
+/// A binding failure, naming its mode and the binder it concerns (its
 /// location). Travels the normal result channel as a structured value
-/// (IB-3) — never an unstructured fault.
+///  — never an unstructured fault.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Rejection {
-    /// The declared binder this rejection concerns (IB-4's location; this
+    /// The declared binder this rejection concerns (its location; this
     /// crate's [`Binder`] is flat and named, so the binder name is exactly
     /// the location).
     pub binder: &'static str,
@@ -2550,9 +2549,9 @@ pub struct Rejection {
     pub detail: String,
 }
 
-/// What dispatch returns for a **resolved** invocation (§4.5) — an
+/// What dispatch returns for a **resolved** invocation — an
 /// invocable the registry does know exists. `Rejected` means a declared
-/// binder failed, so the body never ran at all (IB-2) — it always names a
+/// binder failed, so the body never ran at all — it always names a
 /// binder and a location. `Unavailable` covers everything else that keeps a
 /// result from existing without that being the caller's input at fault: a
 /// resource the body depends on could not be reached, or a contribution's
@@ -2563,7 +2562,7 @@ pub struct Rejection {
 ///
 /// An invocation naming nothing the registry knows produces no `Outcome`
 /// at all — see [`Resolved`] and [`Dispatched`]. Folding that case in here
-/// was this type's shape before the distinction was drawn (SP-13); an
+/// was this type's shape before the distinction was drawn; an
 /// unresolved invocation is not an incident, and three different surfaces
 /// react to it three different ways, none of which is "render an error".
 #[derive(Debug, Clone, PartialEq)]
@@ -2575,7 +2574,7 @@ pub enum Outcome {
     Unavailable { reason: String },
 }
 
-/// What `Dispatcher::dispatch` returns: resolution, asked first (SP-13),
+/// What `Dispatcher::dispatch` returns: resolution, asked first,
 /// before whether a resolved invocation produced an ordinary [`Outcome`].
 /// `Unknown` is not a failure — nothing ran, nothing was rejected, nothing
 /// was journaled — and each surface acts on it differently (fall through to

@@ -1,19 +1,19 @@
-//! Real Linux activation registration (§4.4).
+//! Real Linux activation registration.
 //!
 //! **Login-scoped:** a systemd **user** unit
 //! (`~/.config/systemd/user/cronus.service`) enabled via `systemctl --user`,
 //! with an **XDG autostart** fallback (`~/.config/autostart/cronus.desktop`)
-//! on non-systemd hosts (§2, §4.4 — this spec's own RFC→Stable resolution
-//! of the non-systemd TBD).
+//! on non-systemd hosts (the settled resolution
+//! of the non-systemd case).
 //!
 //! **System-scoped:** a systemd **system** unit with `User=<user>`
 //! (`/etc/systemd/system/cronus.service`), preferred when the user can
 //! authorize it — elevated via `pkexec` (PolicyKit), the real graphical
-//! authentication ceremony a human performs and can refuse (BA-6) — falling
+//! authentication ceremony a human performs and can refuse — falling
 //! back to the **lingering user unit** (`loginctl enable-linger`) when they
-//! cannot, exactly as §4.4 prescribes ("preferring the system unit when the
+//! cannot, exactly as designed ("preferring the system unit when the
 //! user can authorize it and falling back to the lingering user unit when
-//! they cannot"). Both are system-scoped in BA-2's sense (boot-started,
+//! they cannot"). Both are system-scoped in the boot-time sense (boot-started,
 //! survive logout) — "two realizations, one mode".
 //!
 //! Pure `std` — no crate beyond `cronus-contract`: unit/desktop-entry
@@ -57,7 +57,7 @@ fn xdg_autostart_path() -> Result<PathBuf, String> {
 
 /// The conventional presence check: `systemctl --user` succeeds (or reports
 /// the well-defined "degraded" exit code) only under an active user systemd
-/// instance — absent on a non-systemd host (§2's resolved TBD).
+/// instance — absent on a non-systemd host (an open question since resolved).
 fn has_systemd_user() -> bool {
     Command::new("systemctl")
         .args(["--user", "is-system-running"])
@@ -100,7 +100,7 @@ impl SystemCalls for LinuxSystemCalls {
             }
             // `systemctl --user is-enabled` distinguishes "enabled" from a
             // unit file that exists but was disabled — the weaker-wins
-            // signal BA-8 asks for.
+            // signal the registry needs.
             let output = Command::new("systemctl")
                 .args(["--user", "is-enabled", UNIT_NAME])
                 .output()
@@ -181,7 +181,7 @@ impl SystemCalls for LinuxSystemCalls {
             return Ok(true);
         }
         // Lingering-user-unit realization: present only if BOTH the login
-        // unit/autostart exists AND linger is enabled (§4.4 "two
+        // unit/autostart exists AND linger is enabled ("two
         // realizations, one mode").
         Ok(linger_enabled()? && self.login_entry_present()?)
     }
@@ -210,7 +210,7 @@ impl SystemCalls for LinuxSystemCalls {
             Ok(()) => Ok(()),
             Err(system_unit_err) => {
                 // Fall back to the login-scoped realization + linger — still
-                // system-scoped per §4.4.
+                // system-scoped.
                 self.write_login_entry()?;
                 let user = current_username()?;
                 try_enable_linger(&user).map_err(|linger_err| {
@@ -262,7 +262,7 @@ impl SystemCalls for LinuxSystemCalls {
         // Every artifact this adapter's own name could occupy on Linux: the
         // user unit, the XDG autostart entry, the system unit, and the
         // linger flag. Nothing else is ever inspected, so no foreign
-        // registration is ever in scope (BA-7).
+        // registration is ever in scope.
         self.remove_login_entry()?;
         self.remove_system_entry()
     }
@@ -271,7 +271,7 @@ impl SystemCalls for LinuxSystemCalls {
         // The systemd user-unit path works headless or graphical. Absent
         // systemd, XDG autostart needs a graphical session to ever be read
         // — a headless non-systemd host genuinely cannot offer login-scoped
-        // activation (§2's resolved TBD), so this is checked, not assumed.
+        // activation (an open question since resolved), so this is checked, not assumed.
         if has_systemd_user() || has_graphical_session() {
             ModeSupport::Supported
         } else {
@@ -284,7 +284,7 @@ impl SystemCalls for LinuxSystemCalls {
 
     fn system_capability(&self) -> ModeSupport {
         // Both realizations (system unit, lingering user unit) are
-        // systemd/logind features — absent systemd, neither exists (§4.4).
+        // systemd/logind features — absent systemd, neither exists.
         if has_systemd_user() {
             ModeSupport::Supported
         } else {
@@ -332,7 +332,7 @@ fn system_unit_file_content(exe_path: &str, user: &str) -> String {
 
 /// Write and enable the system-wide unit — every step needs root, so every
 /// step goes through `pkexec` (the real polkit authentication ceremony,
-/// BA-6). `pkexec tee` writes the file since we (unprivileged) cannot open
+/// which a human can refuse). `pkexec tee` writes the file since we (unprivileged) cannot open
 /// `/etc/systemd/system/` for writing directly.
 fn try_write_system_unit(exe_path: &str) -> Result<(), String> {
     let user = current_username()?;

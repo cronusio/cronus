@@ -12,7 +12,7 @@ use super::core_id;
 /// used to construct a fresh engine per call and discard it on return,
 /// so `set` followed by `show` in the next invocation always reported the
 /// engine's own zero default — a command that *looked* wired reporting
-/// nothing was ever recorded. INV-9 shipped-surface honesty (matching
+/// nothing was ever recorded. Shipped-surface honesty (matching
 /// `core:loop.evolve`'s own precedent): present and documented, but
 /// answering `Unavailable` with the reason, never a silent success stub.
 const BUDGET_UNAVAILABLE: &str =

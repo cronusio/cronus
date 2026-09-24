@@ -4,7 +4,7 @@
  * The leaf lists are fixed by the navigation model; each leaf names an action id
  * (resolved against the {@link ActionRegistry}) and, optionally, a display-only
  * keybinding. A `null` entry is a separator. A leaf whose action id is not bound
- * is dropped by {@link visibleMenu} (INV-9) — never rendered as a dead item.
+ * is dropped by {@link visibleMenu} — never rendered as a dead item.
  */
 
 import type { MessageKey } from "../shared/i18n";
@@ -175,7 +175,7 @@ export const MENU: readonly MenuGroup[] = [
 
 /**
  * The menu as it should render for a given registry: leaves whose action is not
- * bound are removed (INV-9), and separators that become leading, trailing, or
+ * bound are removed, and separators that become leading, trailing, or
  * doubled after that removal are collapsed.
  */
 export function visibleMenu(registry: ActionRegistry): MenuGroup[] {

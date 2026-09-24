@@ -1,13 +1,13 @@
-//! The declared contract a loop constructs before it runs (LG-1, LG-2, LG-10).
+//! The declared contract a loop constructs before it runs.
 //!
 //! `MutableArtifact` has no `Criteria` variant: the success criteria that
 //! judge a loop can never be named as mutable through this type. That is the
-//! anti-drift spine (LG-3) — enforced by the compiler, not by a runtime check
+//! anti-drift spine — enforced by the compiler, not by a runtime check
 //! a compromised actor could bypass.
 
 use std::collections::HashSet;
 
-/// LG-1: every autonomous loop declares which of the two kinds it is. An
+/// Every autonomous loop declares which of the two kinds it is. An
 /// evolution loop may nest an execution loop for candidate scoring, but each
 /// level declares its own class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +20,7 @@ pub enum LoopClass {
     Evolution,
 }
 
-/// LG-2 / LG-3: the closed taxonomy of artifact kinds an iteration may
+/// The closed taxonomy of artifact kinds an iteration may
 /// change. There is deliberately no `Criteria` variant — the success
 /// criteria of a loop are structurally unreachable through this type, so a
 /// `MutationManifest` can never declare them mutable.
@@ -40,7 +40,7 @@ pub enum MutableArtifact {
     Tools,
 }
 
-/// LG-2: a loop's declared mutation rights — the artifact kinds an iteration
+/// A loop's declared mutation rights — the artifact kinds an iteration
 /// may change. Anything not in `mutable` is immutable for that loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MutationManifest {
@@ -70,7 +70,7 @@ impl MutationManifest {
         self.mutable.contains(&artifact)
     }
 
-    /// LG-2: the manifest is part of the loop specification and is
+    /// The manifest is part of the loop specification and is
     /// recoverable from the run record — a plain-data projection with no
     /// information loss.
     pub fn to_record(&self) -> (u8, Vec<MutableArtifact>) {
@@ -88,7 +88,7 @@ impl MutationManifest {
     }
 }
 
-/// LG-6: the independent termination ceiling. Evaluated before every
+/// The independent termination ceiling. Evaluated before every
 /// iteration, regardless of the actor's or the oracle's state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ceiling {
@@ -104,18 +104,18 @@ pub struct Ceiling {
     pub patience: u32,
 }
 
-/// LG-10: the standing objective and its progress cursor for a
+/// The standing objective and its progress cursor for a
 /// continuous-session loop that compacts in place. Re-projected into every
 /// turn from a durable slot so mid-session compaction can never drop it. A
 /// `LoopSpec` with no `ObjectiveSlot` is a discrete-iteration loop governed
-/// by LG-5 alone (fresh context per iteration, nothing to re-project).
+/// by alone (fresh context per iteration, nothing to re-project).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectiveSlot {
     pub objective: String,
     pub progress: String,
 }
 
-/// LG-4: who holds the right to declare an iteration "done". `Judge` and
+/// Who holds the right to declare an iteration "done". `Judge` and
 /// `Human` compare lineage against the actor to decide whether a termination
 /// is full-confidence or reduced-confidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,7 +138,7 @@ pub enum WorkspaceKind {
     Worktree,
 }
 
-/// The full declared contract a loop runs under (LG-1…LG-10 composed).
+/// The full declared contract a loop runs under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoopSpec {
     pub class: LoopClass,
@@ -154,12 +154,12 @@ pub struct LoopSpec {
 pub struct Verdict {
     pub done: bool,
     /// Set when the oracle's lineage matches the actor's — a permitted but
-    /// weaker termination (LG-4).
+    /// weaker termination.
     pub reduced_confidence: bool,
     pub feedback: Option<String>,
 }
 
-/// One append-only entry in a loop's mutation ledger (LG-8).
+/// One append-only entry in a loop's mutation ledger.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LedgerEntry {
     pub iteration: u32,
@@ -179,12 +179,12 @@ pub enum LoopOutcome {
 mod tests {
     use super::*;
 
-    // --- LG-3: criteria are structurally unreachable ------------------------
+    // --- Criteria are structurally unreachable ------------------------
 
     #[test]
     fn the_mutable_artifact_taxonomy_is_exactly_the_six_non_criteria_kinds() {
         // Exhaustive match: this compiles only because these six variants are
-        // the whole enum. A `Criteria` arm would not compile — LG-3 holds by
+        // the whole enum. A `Criteria` arm would not compile — the guarantee holds by
         // construction, not by this test.
         let all = [
             MutableArtifact::Scratch,
@@ -227,11 +227,11 @@ mod tests {
         assert!(manifest.allows(MutableArtifact::Tools));
     }
 
-    // --- LG-1: a declared class is required to construct a spec -------------
+    // --- A declared class is required to construct a spec -------------
 
     #[test]
     fn constructing_a_loop_spec_requires_a_declared_class() {
-        // Omitting `class` from the struct literal is a compile error (LG-1
+        // Omitting `class` from the struct literal is a compile error (a class rule
         // by construction); this test proves the value round-trips once
         // declared.
         let spec = LoopSpec {
@@ -262,7 +262,7 @@ mod tests {
         assert!(!manifest.allows(MutableArtifact::Plan));
     }
 
-    // --- LG-2: the manifest recovers from its run-record form ---------------
+    // --- The manifest recovers from its run-record form ---------------
 
     #[test]
     fn a_manifest_round_trips_through_its_record_form_without_loss() {
@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(restored, original);
     }
 
-    // --- LG-4: oracle lineage shapes are constructible and distinct ---------
+    // --- Oracle lineage shapes are constructible and distinct ---------
 
     #[test]
     fn oracle_kinds_are_distinct_and_carry_their_lineage_data() {
@@ -288,7 +288,7 @@ mod tests {
         assert_ne!(judge, human);
     }
 
-    // --- LG-10: an objective slot is optional and carries progress ----------
+    // --- An objective slot is optional and carries progress ----------
 
     #[test]
     fn a_loop_spec_with_no_objective_slot_is_a_discrete_iteration_loop() {

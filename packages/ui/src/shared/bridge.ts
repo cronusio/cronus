@@ -39,8 +39,8 @@ export type ChannelEvent<T> =
 
 /**
  * The shell-facing slice of the host's settings store. Host-owned configuration
- * the shell reads and writes as marshalling, not logic (admission rule §4.3,
- * 1.0.1 — host-owned facility). `layout` is opaque here: the frontend owns the
+ * the shell reads and writes as marshalling, not logic (admission rule:
+ * a host-owned facility). `layout` is opaque here: the frontend owns the
  * `LayoutRecord` schema and its field-wise restore.
  */
 export interface ShellSettings {
@@ -51,7 +51,7 @@ export interface ShellSettings {
 }
 
 /**
- * Where an invocable's behavior is decided (SP-8/SP-11) — mirrors
+ * Where an invocable's behavior is decided — mirrors
  * `cronus_contract::Locus`'s wire shape one-to-one (a unit variant is a bare
  * string under serde's default external tagging; `HostOnly` is the one
  * variant carrying a field). `capability_catalog` never actually returns a
@@ -70,7 +70,7 @@ export type Locus =
     };
 
 /**
- * Whether an invocable is on the shipped surface (INV-9) — mirrors
+ * Whether an invocable is on the shipped surface — mirrors
  * `cronus_contract::Stability`. `capability_catalog` only ever returns
  * `"Shipped"` entries in practice (the same filter `Locus` above notes), but
  * `Retired` stays representable for the same reason.
@@ -93,7 +93,7 @@ export type BinderKind =
   | "Float"
   | "RepeatableNamedText";
 
-/** One argument an invocable declares, in order (IB-1) — mirrors `cronus_contract::Binder`. */
+/** One argument an invocable declares, in order — mirrors `cronus_contract::Binder`. */
 export interface Binder {
   name: string;
   kind: BinderKind;
@@ -101,8 +101,8 @@ export interface Binder {
 }
 
 /**
- * A frontend-projectable action descriptor (mirrors `cronus_contract::Invocable`,
- * SP-12) — data-only by construction: every field is a string, a boolean, or
+ * A frontend-projectable action descriptor (mirrors `cronus_contract::Invocable`) —
+ * data-only by construction: every field is a string, a boolean, or
  * one of the closed unions above, so there is no field through which a host
  * handle or a closure could travel. That guarantee is a property of this
  * type, not a runtime check.
@@ -149,7 +149,7 @@ export type ArgValue =
  * What the caller supplies to [`CoreClient.invoke`]. Deliberately just
  * `id`+`args`, not a mirror of the Rust `Invocation` struct: the caller
  * identity (`Surface::Desktop`) is asserted by the bridge itself, never
- * accepted from this seam (SP-12's own reasoning extended from payload
+ * accepted from this seam (the same reasoning extended from payload
  * shape to identity) — this executable face has no field through which to
  * claim a different surface even if it tried.
  */
@@ -187,10 +187,10 @@ export type OutcomeValue =
       >;
     };
 
-/** The closed set of reasons a binder failed to produce a value (IB-4) — mirrors `cronus_contract::RejectionMode`. */
+/** The closed set of reasons a binder failed to produce a value — mirrors `cronus_contract::RejectionMode`. */
 export type RejectionMode = "Absent" | "Unreadable" | "Malformed" | "IllShaped";
 
-/** A binding failure, naming its mode and the binder it concerns (IB-4) — mirrors `cronus_contract::Rejection`. */
+/** A binding failure, naming its mode and the binder it concerns — mirrors `cronus_contract::Rejection`. */
 export interface Rejection {
   binder: string;
   mode: RejectionMode;
@@ -204,7 +204,7 @@ export interface StreamHandle {
 
 /**
  * What [`CoreClient.invoke`] resolves to for a **resolved** invocation
- * (mirrors `cronus_contract::Outcome`) — data-only, the same SP-12
+ * (mirrors `cronus_contract::Outcome`) — data-only, the same data-only
  * guarantee [`Invocable`] carries. An invocation naming nothing the
  * registry knows resolves to `null` instead of any `Outcome` shape — see
  * [`CoreClient.invoke`]'s own doc comment.
@@ -232,23 +232,23 @@ export interface CoreClient {
   /** Human-readable core status line (already masked by the core). */
   status(): Promise<string>;
   /**
-   * Every descriptor this shell may project (SP-11), sourced from the
+   * Every descriptor this shell may project, sourced from the
    * shared registry — never a hand-written list local to this client.
    */
   catalog(): Promise<Invocable[]>;
   /**
    * Dispatch one call through the shared registry/dispatcher boundary.
-   * `null` is the registry's real "unknown" answer (SP-13) — a stale local
+   * `null` is the registry's real "unknown" answer — a stale local
    * catalog copy naming an id the core no longer recognises, never a
    * fabricated failure. This method only marshals that answer through;
    * deciding to refresh the local catalog on it is the caller's own concern.
    */
   invoke(invocation: Invocation): Promise<Outcome | null>;
   /**
-   * Open a push channel (AS-3). `onMessage` gets each payload; `onClose` fires
+   * Open a push channel. `onMessage` gets each payload; `onClose` fires
    * exactly once — if the channel fails to open, or the host reports it closed —
-   * after which the subscription is dead. Returns a function that detaches it
-   * (AS-4). Never retries: reconnection follows the host's connection lifecycle,
+   * after which the subscription is dead. Returns a function that detaches it.
+   * Never retries: reconnection follows the host's connection lifecycle,
    * not a frontend timer.
    */
   subscribe<T>(
@@ -256,7 +256,7 @@ export interface CoreClient {
     onMessage: (payload: T) => void,
     onClose?: (reason: string) => void,
   ): () => void;
-  /** Host-owned settings the shell persists through (AS-12). */
+  /** Host-owned settings the shell persists through. */
   settings: {
     /** Read the current shell-facing settings slice. */
     get(): Promise<ShellSettings>;

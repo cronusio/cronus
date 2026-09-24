@@ -1,11 +1,11 @@
-//! Archetype inference and application (OA-7, OA-8, OA-11).
+//! Archetype inference and application.
 //!
 //! Inference runs at office instantiation and on demand thereafter, and is
 //! **never a blocking prompt on the ordinary path**: an inconclusive result
-//! leaves the office archetype-free (a complete state, OA-11); a confident
+//! leaves the office archetype-free (a complete state); a confident
 //! result is applied silently. The office is asked only when two or more
 //! archetypes score within an ambiguity band *and* the choice changes the
-//! pool materially — and then in kinds-of-work terms, never roles (OFF-6).
+//! pool materially — and then in kinds-of-work terms, never roles.
 
 use super::catalog::{ActiveArchetype, ArchetypeCatalog};
 
@@ -43,22 +43,22 @@ fn score(id: &str, intent_lower: &str) -> usize {
         .count()
 }
 
-/// The result of inferring an archetype from captured intent (OA-7).
+/// The result of inferring an archetype from captured intent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferenceResult {
     /// One archetype clears the confidence bar — applied silently.
     Confident(String),
-    /// No archetype is recognized — the office stays archetype-free (OA-11).
+    /// No archetype is recognized — the office stays archetype-free.
     Inconclusive,
     /// Two or more score within the ambiguity band — ask the office, in
-    /// kinds-of-work terms (OFF-6). Carries the tied ids.
+    /// kinds-of-work terms. Carries the tied ids.
     Ambiguous(Vec<String>),
 }
 
-/// The margin within which two archetypes are "tied" for OA-7 ambiguity.
+/// The margin within which two archetypes are "tied" for ambiguity.
 const AMBIGUITY_BAND: usize = 1;
 
-/// OA-7: infer the archetype from captured intent. Scores every shipped
+/// Infer the archetype from captured intent. Scores every shipped
 /// archetype, returns the confident leader, `Inconclusive` when nothing is
 /// recognized, or `Ambiguous` when the top two are within the band (the only
 /// case that may ask the office).
@@ -86,7 +86,7 @@ pub fn infer(catalog: &ArchetypeCatalog, captured_intent: &str) -> InferenceResu
 }
 
 impl ActiveArchetype {
-    /// OA-8: record exactly one active archetype, re-scoping future decisions.
+    /// Record exactly one active archetype, re-scoping future decisions.
     /// Touches no staff — this method has access only to the archetype record,
     /// so it *structurally cannot* release a role, discard memory, or
     /// invalidate work.
@@ -94,7 +94,7 @@ impl ActiveArchetype {
         self.active = Some(id.to_string());
     }
 
-    /// OA-8/OA-11: return the office to the archetype-free state. Like `set`,
+    /// Return the office to the archetype-free state. Like `set`,
     /// it touches only the archetype record.
     pub fn clear(&mut self) {
         self.active = None;
@@ -105,7 +105,7 @@ impl ActiveArchetype {
 mod tests {
     use super::*;
 
-    // --- OA-7: silent inference, inconclusive → archetype-free --------------
+    // --- Silent inference, inconclusive → archetype-free --------------
 
     #[test]
     fn a_software_shaped_intent_infers_software_engineering() {
@@ -134,10 +134,10 @@ mod tests {
         if let InferenceResult::Confident(id) = infer(&catalog, "something unrelated") {
             office.set(&id);
         }
-        assert!(office.is_archetype_free()); // OA-11: still fully functional
+        assert!(office.is_archetype_free()); // Still fully functional
     }
 
-    // --- OA-8: apply / set / clear touch no staff ---------------------------
+    // --- Apply / set / clear touch no staff ---------------------------
 
     #[test]
     fn set_then_clear_round_trips_the_active_field_without_touching_staff() {

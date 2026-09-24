@@ -100,7 +100,7 @@ describe("core bridge client", () => {
   });
 });
 
-describe("core bridge — wire types carry no field beyond JSON-serializable data (SP-12)", () => {
+describe("core bridge — wire types carry no field beyond JSON-serializable data", () => {
   it("an Invocable exercising every Locus/Stability shape round-trips through JSON unchanged", () => {
     const descriptors: Invocable[] = [
       {
@@ -232,7 +232,7 @@ const flush = async () => {
 };
 
 describe("core bridge — the push channel (subscribe)", () => {
-  it("delivers messages and stops on the returned detach (AS-4)", async () => {
+  it("delivers messages and stops on the returned detach", async () => {
     let handler: ((e: { payload: ChannelEvent<number> }) => void) | undefined;
     const listen = ((_channel, h) => {
       handler = h as typeof handler;

@@ -1,4 +1,4 @@
-//! The per-turn receipt ledger (TR-4, TR-8): the sole authority on "did
+//! The per-turn receipt ledger: the sole authority on "did
 //! this happen". Any component that would record an action as fact
 //! consults [`ReceiptLedger::status`] and treats [`ReceiptStatus::Unreceipted`]
 //! as fabricated — a default-deny on the *fact-recording* path, never
@@ -34,8 +34,8 @@ pub enum ReceiptStatus {
     Receipted(Receipt),
 }
 
-/// A shape that cannot be rounded down to a single "verified" number
-/// (TR-8): a caller must display both counts, so outstanding work stays
+/// A shape that cannot be rounded down to a single "verified" number:
+/// a caller must display both counts, so outstanding work stays
 /// visible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CoverageReport {
@@ -58,7 +58,7 @@ impl ReceiptLedger {
         }
     }
 
-    /// Record a detached action as outstanding (TR-8): no tag, nothing to
+    /// Record a detached action as outstanding: no tag, nothing to
     /// bind yet.
     pub fn record_pending(&mut self, action_id: u64) {
         self.entries.insert(action_id, LedgerEntry::Pending);
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(coverage.pending, 1);
     }
 
-    /// TR-4's guarantee is an absence, not a branch: this test's real job
+    /// The existence guarantee is an absence, not a branch: this test's real job
     /// is naming the reviewed API surface, since a runtime assertion
     /// cannot prove a function does not exist. `ReceiptLedger` exposes
     /// exactly four methods — `new`, `status`, `record_pending`,

@@ -1,5 +1,5 @@
 //! The caller's input is checked against the workflow's declared `@in:` contract
-//! before anything runs (NL-9): presence, type, undeclared names, and names the
+//! before anything runs: presence, type, undeclared names, and names the
 //! runtime owns.
 
 use nodus::{

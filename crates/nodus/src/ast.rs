@@ -43,7 +43,7 @@ pub struct RuntimeBlock {
     pub agents: Vec<(String, String)>,
     /// Execution mode (defaults to `production`).
     pub mode: String,
-    /// Bounded whole-run self-restart ceiling (NL-23). `None` disables the
+    /// Bounded whole-run self-restart ceiling. `None` disables the
     /// feature entirely — a workflow with no `restart_max` behaves exactly as
     /// before this construct existed.
     pub restart_max: Option<u32>,
@@ -280,7 +280,7 @@ pub struct MacroBlock {
 
 // ─── Config AST (`§config:`) ────────────────────────────────────────────────
 
-/// A field's value constraint: a bounded range or a closed enumeration (NL-20).
+/// A field's value constraint: a bounded range or a closed enumeration.
 ///
 /// Bounds and members are kept as raw literal strings — matching
 /// [`InputField::default`]'s raw-string precedent — and are coerced to a typed
@@ -299,7 +299,7 @@ pub enum FieldConstraint {
     OneOf(Vec<String>),
 }
 
-/// A single field declared in a `§config:` file (NL-20).
+/// A single field declared in a `§config:` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigField {
     /// Field name.
@@ -332,8 +332,8 @@ impl Default for ConfigField {
     }
 }
 
-/// The parsed body of a `§config:` file: an ordered set of field declarations
-/// (NL-20). Field order is preserved for deterministic rendering and stable
+/// The parsed body of a `§config:` file: an ordered set of field declarations.
+/// Field order is preserved for deterministic rendering and stable
 /// diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfigDecl {
@@ -383,7 +383,7 @@ pub struct Step {
     /// the validator rejects.
     pub retry: Option<u32>,
     /// `~COMPENSATE: CMD(args)` — the host-supplied undo for this step's
-    /// business effect (NL-22). `None` means the step is honestly
+    /// business effect. `None` means the step is honestly
     /// un-compensable, not that it has no effect.
     pub compensation: Option<CommandCall>,
 }

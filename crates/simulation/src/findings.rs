@@ -1,5 +1,5 @@
 //! What a finished run actually means: the outcome computed from obligation
-//! verdicts alone (USM-3 — a discovery can never fail a run), and the
+//! verdicts alone (a discovery can never fail a run), and the
 //! attribution that keeps a harness or environment defect from being filed
 //! as a product finding.
 
@@ -19,11 +19,11 @@ pub enum RunOutcome {
     Fail,
     /// At least one declared obligation was never decided — the run's
     /// bound was exhausted, or it was interrupted, before the actor
-    /// finished judging everything (USM-9).
+    /// finished judging everything.
     Incomplete,
     /// The repository's own tracked-file dirtiness changed between world
     /// build and `finish` — something wrote outside the world. Verdicts
-    /// are discarded regardless of what they said (USM-12).
+    /// are discarded regardless of what they said.
     Contaminated,
     /// The harness or its environment failed (a world could not be torn
     /// down, for example) — not the product. Reported `void`, and must
@@ -56,9 +56,9 @@ impl RunOutcome {
     }
 }
 
-/// The improvement-loop's own five-name taxonomy (`l1-improvement-loop`
-/// IMP-1), reused verbatim rather than invented a second time (USM-13):
-/// only `Defect` has anywhere further to go — USM-7's existing pinning
+/// The improvement-loop's own five-name taxonomy —
+/// reused verbatim rather than invented a second time:
+/// only `Defect` has anywhere further to go — the existing pinning
 /// path, driven by a human running `pin`, unchanged by this enum's
 /// existence. The other four name something that failed no stated
 /// contract, so they stop at the report for a human to weigh.
@@ -77,7 +77,7 @@ pub enum DiscoveryClass {
 }
 
 impl DiscoveryClass {
-    /// All five variants, in the order `l1-improvement-loop` IMP-1 lists
+    /// All five variants, in the order the improvement loop lists
     /// them. Used both to parse and to render the closed vocabulary a
     /// caller can choose from.
     pub const ALL: [DiscoveryClass; 5] = [
@@ -128,17 +128,17 @@ impl fmt::Display for DiscoveryClass {
 
 /// One recorded observation from a run.
 ///
-/// USM-3: `class` and `remedy` are never consulted when computing an
+/// `class` and `remedy` are never consulted when computing an
 /// outcome — a discovery is information, not an obligation, classified or
-/// not. USM-12/USM-13: `remedy` is a claim for a human to weigh, never an
+/// not. A `remedy` is a claim for a human to weigh, never an
 /// act this record performs or implies was performed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Discovery {
     pub text: String,
-    /// Optional (USM-13): a discovery is not required to carry a class.
+    /// Optional: a discovery is not required to carry a class.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<DiscoveryClass>,
-    /// Optional (USM-13): what the reporter judges would close the gap —
+    /// Optional: what the reporter judges would close the gap —
     /// a claim, never an applied change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remedy: Option<String>,
@@ -146,7 +146,7 @@ pub struct Discovery {
 
 impl Discovery {
     /// An unclassified discovery carrying no proposed remedy — the shape
-    /// every `note` produced before USM-13 gave it two more fields to fill.
+    /// every `note` produced before it gained two more fields to fill.
     pub fn plain(text: String) -> Self {
         Discovery {
             text,
@@ -166,7 +166,7 @@ pub struct FinishReport {
     /// `outcome == Incomplete`.
     pub undecided_obligations: Vec<String>,
     /// Discoveries recorded by `note`, carried through for the record.
-    /// Never consulted to compute `outcome` (USM-3).
+    /// Never consulted to compute `outcome`.
     pub notes: Vec<Discovery>,
 }
 

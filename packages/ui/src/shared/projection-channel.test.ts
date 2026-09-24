@@ -37,7 +37,7 @@ function fakeListen() {
 }
 
 describe("bindProjectionChannel — the seam's event direction and liveness", () => {
-  it("opening puts the store in pending; a message fulfils it and notifies (AS-3)", async () => {
+  it("opening puts the store in pending; a message fulfils it and notifies", async () => {
     const fake = fakeListen();
     const client = createCoreClient(noInvoke, fake.listen);
     const store = createProjectionStore<number>();
@@ -146,7 +146,7 @@ describe("bindProjectionChannel — the seam's event direction and liveness", ()
     });
   });
 
-  it("the detach function stops delivery (AS-4)", async () => {
+  it("the detach function stops delivery", async () => {
     const fake = fakeListen();
     const client = createCoreClient(noInvoke, fake.listen);
     const store = createProjectionStore<number>();

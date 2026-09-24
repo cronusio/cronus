@@ -1,9 +1,9 @@
-//! Developer-office invariant acceptance sweep (DVO-1…DVO-8) — the
+//! Developer-office invariant acceptance sweep — the
 //! closing validation. Each DVO invariant maps to one named test, exercised
 //! through the real gate, the real facade wiring, and the real domain types
 //! reached via `cronus_core`'s re-exports — matching the
 //! `knowledge_invariants`/`wiki_invariants`/`activation_invariants`
-//! precedent. Local-only: no network call anywhere in this file (DVO-2).
+//! precedent. Local-only: no network call anywhere in this file.
 
 use std::path::PathBuf;
 
@@ -38,24 +38,21 @@ fn temp_git_repo(tag: &str, config_body: &str) -> PathBuf {
     repo
 }
 
-// ── DVO-1 Conditional system-workspace floor ────────────────────────────────
+// ── Conditional system-workspace floor ────────────────────────────────
 
 #[test]
 fn dvo1_the_floor_is_present_only_while_elevated() {
     let mut module = DevOfficeModule::new();
     assert!(
         !module.is_loaded(),
-        "DVO-1: absent by default for a normal install"
+        "absent by default for a normal install"
     );
 
     module.sync(AdmissionTier::Elevated);
-    assert!(module.is_loaded(), "DVO-1: floor present while Elevated");
+    assert!(module.is_loaded(), "floor present while Elevated");
 
     module.sync(AdmissionTier::Absent);
-    assert!(
-        !module.is_loaded(),
-        "DVO-1: floor gone once no longer Elevated"
-    );
+    assert!(!module.is_loaded(), "floor gone once no longer Elevated");
 }
 
 #[test]
@@ -75,7 +72,7 @@ fn dvo1_developer_kind_is_a_singleton_never_reachable_through_project_creation()
     // smoke tests in `cli_smoke.rs`, not re-simulated here.
 }
 
-// ── DVO-2 Repository-authenticity binding (network-free, fail-closed) ──────
+// ── Repository-authenticity binding (network-free, fail-closed) ──────
 
 #[test]
 fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
@@ -112,7 +109,7 @@ fn dvo2_non_canonical_ambiguous_and_absent_repos_all_fail_closed() {
     ));
 }
 
-// ── DVO-3 Identity-gated human-admitted elevated access ─────────────────────
+// ── Identity-gated human-admitted elevated access ─────────────────────
 
 /// A fake reader scripted to a fixed answer — proves the gate only ever
 /// calls the read-only `is_admitted` method, never a write.
@@ -153,7 +150,7 @@ fn dvo3_the_domain_gate_can_only_read_never_mint_an_admission() {
     assert!(real_reader.is_admitted());
 }
 
-// ── DVO-4 Hidden-by-default trigger-loaded module (clean load/unload) ──────
+// ── Hidden-by-default trigger-loaded module (clean load/unload) ──────
 
 #[test]
 fn dvo4_unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
@@ -170,12 +167,12 @@ fn dvo4_unload_is_clean_and_the_tier_is_never_cached_across_syncs() {
         assert_eq!(
             module.is_loaded(),
             tier == AdmissionTier::Elevated,
-            "DVO-4: no stale/remembered elevated surface after tier {tier:?}"
+            "no stale/remembered elevated surface after tier {tier:?}"
         );
     }
 }
 
-// ── DVO-5 Tiered admission with a default-off feedback ceiling ─────────────
+// ── Tiered admission with a default-off feedback ceiling ─────────────
 
 #[test]
 fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
@@ -191,7 +188,7 @@ fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
     assert_eq!(
         DevOfficeGate::resolve(&default_off),
         AdmissionTier::Absent,
-        "DVO-5: shipped default is off — a normal install exposes no surface"
+        "shipped default is off — a normal install exposes no surface"
     );
 
     let opted_in = GateInputs {
@@ -202,7 +199,7 @@ fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
     assert_eq!(
         DevOfficeGate::resolve(&opted_in),
         AdmissionTier::Feedback,
-        "DVO-5: a deployment may opt the feedback ceiling on"
+        "a deployment may opt the feedback ceiling on"
     );
 
     let elevated = GateInputs {
@@ -213,11 +210,11 @@ fn dvo5_feedback_tier_defaults_off_and_is_a_deliberate_deploy_opt_in() {
     assert_eq!(
         DevOfficeGate::resolve(&elevated),
         AdmissionTier::Elevated,
-        "DVO-5: a genuine admission still reaches Elevated regardless of the feedback flag"
+        "a genuine admission still reaches Elevated regardless of the feedback flag"
     );
 }
 
-// ── DVO-6 Repository-scoped workspace isolation ─────────────────────────────
+// ── Repository-scoped workspace isolation ─────────────────────────────
 
 #[test]
 fn dvo6_the_dev_workspace_scope_never_reaches_another_workspaces_store() {
@@ -234,20 +231,20 @@ fn dvo6_the_dev_workspace_scope_never_reaches_another_workspaces_store() {
         .get(&WorkspaceId::new(DEV_OFFICE_WORKSPACE_ID).unwrap())
         .unwrap()
         .expect("dev workspace must exist");
-    assert_eq!(dev_ws.path, dev_repo, "DVO-6: scoped to its own bound repo");
+    assert_eq!(dev_ws.path, dev_repo, "scoped to its own bound repo");
     assert_ne!(
         dev_ws.path, user_repo,
-        "DVO-6: no handle into the user workspace's own path"
+        "no handle into the user workspace's own path"
     );
 
     let user_ws = mgr.get(&user_id).unwrap().expect("user workspace exists");
     assert_eq!(
         user_ws.path, user_repo,
-        "DVO-6: the user workspace is equally untouched by the dev workspace's registration"
+        "the user workspace is equally untouched by the dev workspace's registration"
     );
 }
 
-// ── DVO-7 Contained and audited elevated authority ──────────────────────────
+// ── Contained and audited elevated authority ──────────────────────────
 
 #[test]
 fn dvo7_elevated_actions_pass_the_authority_gate_and_are_always_audited() {
@@ -257,28 +254,28 @@ fn dvo7_elevated_actions_pass_the_authority_gate_and_are_always_audited() {
     let allowed = ToolPolicy::default();
     assert!(
         run_elevated_action(&mut dispatch, &allowed, "dev.self_edit").is_ok(),
-        "DVO-7: an unblocked elevated action passes the tool-security gate"
+        "an unblocked elevated action passes the tool-security gate"
     );
 
     let mut blocked = ToolPolicy::default();
     blocked.disabled_tools.push("dev.dangerous_op".to_string());
     assert!(
         run_elevated_action(&mut dispatch, &blocked, "dev.dangerous_op").is_err(),
-        "DVO-7: the authority gate still refuses a disabled action"
+        "the authority gate still refuses a disabled action"
     );
 
     let log = std::fs::read_to_string(&audit_path).unwrap();
     assert!(
         log.contains("\"outcome\":\"allowed\""),
-        "DVO-7: the allowed action produced an audit entry"
+        "the allowed action produced an audit entry"
     );
     assert!(
         log.contains("\"outcome\":\"blocked\""),
-        "DVO-7: the refused action is audited too, not silently dropped"
+        "the refused action is audited too, not silently dropped"
     );
 }
 
-// ── DVO-8 Standard dev-workflow, no exception lane ──────────────────────────
+// ── Standard dev-workflow, no exception lane ──────────────────────────
 
 #[test]
 fn dvo8_the_pipeline_has_no_workspace_identity_parameter_to_special_case() {
@@ -299,7 +296,7 @@ fn dvo8_the_pipeline_has_no_workspace_identity_parameter_to_special_case() {
         assert_eq!(
             ordinary.advance(pass, false, t),
             dev_office.advance(pass, false, t),
-            "DVO-8: identical transitions for both — no dev-office-specific pipeline"
+            "identical transitions for both — no dev-office-specific pipeline"
         );
     }
     assert_eq!(ordinary.stage(), dev_office.stage());

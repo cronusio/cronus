@@ -73,7 +73,7 @@ impl Validator {
         Self::validate_with_schema(ast, filename, &vocab::Schema::builtin())
     }
 
-    /// NL-9 — check the caller's `input` against the workflow's declared `@in:`
+    /// Check the caller's `input` against the workflow's declared `@in:`
     /// contract before anything runs. One `E022` error per breach:
     ///
     /// - a **required** field (no `?`, no default) that was not supplied;
@@ -482,7 +482,7 @@ impl Validator {
             .collect()
     }
 
-    /// `restart_max` (NL-23, the run-grain analog of `~UNTIL MAX:n`) must be a
+    /// `restart_max` (the run-grain analog of `~UNTIL MAX:n`) must be a
     /// declared bound with 1 ≤ n ≤ 10, mirroring `e017_retry_bounded`'s shape.
     fn e018_restart_max_bounded(wf: &WorkflowFile, filename: &str) -> Vec<Diagnostic> {
         match wf.runtime.as_ref().and_then(|rt| rt.restart_max) {
@@ -496,7 +496,7 @@ impl Validator {
         }
     }
 
-    /// NL-23(b): a `$restart` request is legal only from a run-boundary step,
+    /// A `$restart` request is legal only from a run-boundary step,
     /// never from inside a `~FOR`/`~PARALLEL` body or a `?SWITCH` arm — which
     /// context resumes and what of the in-flight siblings survives is
     /// undefined otherwise. Statically detectable: nesting is a fixed AST
@@ -518,7 +518,7 @@ impl Validator {
         diags
     }
 
-    /// NL-27 — a `@macro` name admits exactly one holder. Modelled on
+    /// A `@macro` name admits exactly one holder. Modelled on
     /// `e015_no_duplicate_test_names`: same shape, same
     /// per-extra-occurrence firing, applied to `wf.macros` instead of
     /// `wf.tests`.
@@ -538,7 +538,7 @@ impl Validator {
         diags
     }
 
-    /// NL-1 — an unknown command fails at validation, never at run time.
+    /// An unknown command fails at validation, never at run time.
     ///
     /// Two shapes reach here. A step line the parser could not type as a
     /// command but that is written like a call (`NAME(...)`) was kept as an
@@ -596,7 +596,7 @@ impl Validator {
         diags
     }
 
-    /// NT-9 — a `@test:` block that names something that cannot exist in the
+    /// A `@test:` block that names something that cannot exist in the
     /// workflow is a validation error, not an assertion that silently never
     /// fires (or an override that silently never applies).
     ///
@@ -692,14 +692,14 @@ impl Validator {
         diags
     }
 
-    /// DG-11 — advise moving a dialog past a
+    /// Advise moving a dialog past a
     /// step that does not need to precede it, so the human is asked once,
     /// late, with the material assembled.
     ///
     /// Each `?IF`/`~FOR`/`~UNTIL` body and each `~PARALLEL` branch is its own
     /// **scope**: a candidate step is never proposed from outside the block a
     /// dialog lives in, because moving a dialog across a block boundary
-    /// changes *whether* it runs, not only when (§4.8.4). `~PARALLEL`
+    /// changes *whether* it runs, not only when. `~PARALLEL`
     /// branches run concurrently, so they are still walked for nested scopes
     /// but never paired against each other as before/after candidates — there
     /// is no "before" between siblings that do not run in sequence.
@@ -717,7 +717,7 @@ impl Validator {
         diags
     }
 
-    /// DG-11 — advise against a dialog prompt
+    /// Advise against a dialog prompt
     /// that carries a produced artifact rather than a reference to it. Fires
     /// on a bare `$var` argument to `ASK`/`CONFIRM` whose producing command is
     /// model-backed (`GEN`/`ANALYZE`) — the whole-argument reference model
@@ -910,7 +910,7 @@ impl Validator {
             .collect()
     }
 
-    /// W015 (§10.3, realizing NT-9's "not a silent
+    /// W015 (realizing the "not a silent
     /// assertion-miss" clause) — a token inside a `@test:` block's `input:`
     /// or `expected:` section that looks like a key-value pair but uses a
     /// separator other than `:` (the corpus case: `expected: { status =
@@ -985,7 +985,7 @@ impl Validator {
 
     /// W011/W012/W013 — advisory checks against the closed vocabulary registries.
     /// `~flag` extractors, `^validator` names, and `@in` field types outside the
-    /// builtin registries are warned (NL-1 strengthening); warnings never block a
+    /// builtin registries are warned (vocabulary strengthening); warnings never block a
     /// run, so workflows using host-specific vocabulary degrade gracefully.
     fn w011_known_vocabulary(wf: &WorkflowFile, filename: &str) -> Vec<Diagnostic> {
         let schema = vocab::Schema::builtin();
@@ -1132,7 +1132,7 @@ fn collect_vars_step(
     for sub in &step.sub_steps {
         collect_vars_stmt(sub, declared, used);
     }
-    // NL-22: a ~COMPENSATE clause's args/target are ordinary variable
+    // A ~COMPENSATE clause's args/target are ordinary variable
     // references too — E004 should see them the same as the step's own body.
     if let Some(comp) = &step.compensation {
         collect_vars_cmd(comp, declared, used);
@@ -1191,7 +1191,7 @@ fn collect_vars_stmt(
                         .to_string(),
                 );
             }
-            // `~MAP` binds `$it` implicitly per element (§4.3);
+            // `~MAP` binds `$it` implicitly per element;
             // declare it before walking the body so E004 does not flag it as undeclared.
             declared.insert("$it".to_string());
             collect_vars_cmd(&mb.command, declared, used);
@@ -1570,13 +1570,13 @@ fn find_empty_switches_stmt(node: &Stmt, diags: &mut Vec<Diagnostic>, filename: 
     }
 }
 
-/// W016 (§4.8.2): scan one flat sequence for a dialog `D` followed, within
+/// W016: scan one flat sequence for a dialog `D` followed, within
 /// this same sequence, by the *last* qualifying step `S` it could be moved
 /// past. `S` must be an ordinary command (not itself a dialog) declaring
 /// `+reversible=true` and not declaring `+external=true` (clause b); nothing
 /// between `D` and `S` — `S` included — may read `D`'s pipeline target
 /// (clause c). A dialog with no pipeline target has an empty dependency set,
-/// so clause (c) never stops the scan for it (§4.8.2's boundary case).
+/// so clause (c) never stops the scan for it (the boundary case).
 fn w016_scan_scope(nodes: &[&Stmt], diags: &mut Vec<Diagnostic>, filename: &str) {
     for (i, node) in nodes.iter().enumerate() {
         let Stmt::Command(dialog) = node else {
@@ -1634,7 +1634,7 @@ fn w016_scan_scope(nodes: &[&Stmt], diags: &mut Vec<Diagnostic>, filename: &str)
 }
 
 /// Recurse into every nested sequential scope to run [`w016_scan_scope`]
-/// independently within it (§4.8.4: a dialog is scoped to its own block).
+/// independently within it (a dialog is scoped to its own block).
 /// `?SWITCH` arms and `~MAP`'s command are a single [`CommandCall`], not a
 /// sequence, so they hold no scope of their own; `~PARALLEL` branches run
 /// concurrently and are walked for further nesting but never scanned as a
@@ -1679,7 +1679,7 @@ fn w016_recurse_conditional(cond: &Conditional, diags: &mut Vec<Diagnostic>, fil
     }
 }
 
-/// W017 (§4.8.3) pass 1: record, for every pipeline target declared anywhere
+/// W017 pass 1: record, for every pipeline target declared anywhere
 /// in the file, the name of the command that produced it. Ordering does not
 /// matter here — a variable used before any declaration is already a
 /// separate `E014` error — so this is a plain unordered recursive walk,
@@ -1816,7 +1816,7 @@ fn w017_scan_conditional(
     }
 }
 
-/// NL-23(b) entry: walk a statement transparently (nothing here is itself
+/// Restart-rule entry: walk a statement transparently (nothing here is itself
 /// forbidden), but once a `~FOR` body, `~PARALLEL` branch, or `?SWITCH` arm is
 /// entered, switch to [`flag_restart_stmt`], which flags every `$restart`
 /// target found beneath — including through further nesting.
@@ -2011,7 +2011,7 @@ fn max_conditional_depth(node: &Stmt, depth: usize) -> usize {
     }
 }
 
-// ─── §config: shape check (NL-20) ─────────────────────────────────────────────
+// ─── §config: shape check ─────────────────────────────────────────────
 
 /// Why a proposed `§config` value set failed the shape check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2028,11 +2028,11 @@ pub enum ConfigReason {
     NotInEnum,
     /// A field's own declared `default` fails its declared type or constraint.
     BadDefault,
-    /// The declaration names this field more than once (NL-27).
+    /// The declaration names this field more than once.
     DuplicateField,
 }
 
-/// A single shape-check failure, naming the offending field and why (NL-20).
+/// A single shape-check failure, naming the offending field and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigViolation {
     /// The field name the violation concerns.
@@ -2041,13 +2041,13 @@ pub struct ConfigViolation {
     pub reason: ConfigReason,
 }
 
-/// A `§config` value set that passed the shape check (NL-20): every field
+/// A `§config` value set that passed the shape check: every field
 /// resolves to a value (proposed or defaulted), readable by name. `secret`
 /// fields are retrievable via [`AcceptedConfig::get`] (the value is *usable*)
 /// but this type exposes no separate accessor that renders a value into a
 /// model-facing prompt — [`crate::workflows::run_with_config`] deliberately
 /// does not merge `secret` fields into the workflow's `$in.config` surface,
-/// so an ordinary step has no path to a secret at all (DC-9's write-only
+/// so an ordinary step has no path to a secret at all (the write-only
 /// guarantee, realized as an omission rather than a redaction filter).
 #[derive(Debug, Clone, Default)]
 pub struct AcceptedConfig {
@@ -2149,7 +2149,7 @@ fn config_satisfies_constraint(
     }
 }
 
-/// Pure, pre-run shape check (NL-20 / DC-3 / DC-4): validate a proposed value
+/// Pure, pre-run shape check: validate a proposed value
 /// set against `decl` in one pass, reporting every violation and applying
 /// none. On success, returns an [`AcceptedConfig`] where every field resolves
 /// to a value — the proposed one, or the field's `default`, or `Value::Null`
@@ -2162,7 +2162,7 @@ pub fn check_config_values(
 ) -> std::result::Result<AcceptedConfig, Vec<ConfigViolation>> {
     let mut violations = Vec::new();
 
-    // NL-27: a field name declared twice must never reach `accepted` below —
+    // A field name declared twice must never reach `accepted` below —
     // two declarations of one name (one `secret`, one not) would resolve to
     // two entries whose accessors then disagree with each other (`get`
     // returns the first match, `is_secret` answers `any`, and
@@ -3042,7 +3042,7 @@ mod tests {
 
     #[test]
     fn w015_and_w009_co_fire_when_all_expected_pairs_are_dropped() {
-        // §7: a block whose only `expected:` pairs are all non-conforming has
+        // A block whose only `expected:` pairs are all non-conforming has
         // an `expected:` section in source but an empty one in the AST, so it
         // must emit BOTH W015 (the pairs were dropped) and W009 (nothing is
         // asserted) — the intended pairing, not a duplicate report.
@@ -3179,7 +3179,7 @@ mod tests {
         );
     }
 
-    // ── §config: shape check (NL-20) ────────────────────────────────────────
+    // ── §config: shape check ────────────────────────────────────────
 
     fn sample_config_decl() -> ConfigDecl {
         use crate::ast::ConfigField;
@@ -3522,7 +3522,7 @@ mod tests {
             diags
                 .iter()
                 .any(|d| d.code == "E013" && d.severity == Severity::Error),
-            "→ $restart_count must be rejected — it is runtime-owned and unforgeable (NL-8/NL-23); got: {diags:?}"
+            "→ $restart_count must be rejected — it is runtime-owned and unforgeable; got: {diags:?}"
         );
     }
 
@@ -3586,7 +3586,7 @@ mod tests {
             diags
                 .iter()
                 .any(|d| d.code == "E019" && d.severity == Severity::Error),
-            "a $restart request inside a ~FOR body must be rejected (NL-23(b)); got: {diags:?}"
+            "a $restart request inside a ~FOR body must be rejected; got: {diags:?}"
         );
     }
 
@@ -3624,7 +3624,7 @@ mod tests {
             diags
                 .iter()
                 .any(|d| d.code == "E019" && d.severity == Severity::Error),
-            "a $restart request inside a ?SWITCH arm must be rejected (NL-23(b)); got: {diags:?}"
+            "a $restart request inside a ?SWITCH arm must be rejected; got: {diags:?}"
         );
     }
 
@@ -3657,7 +3657,7 @@ mod tests {
         );
     }
 
-    // ─── W016 / W017 (DG-11) ───────────────────────────────────────────────
+    // ─── W016 / W017 ───────────────────────────────────────────────
 
     use crate::ast::RuntimeBlock;
 
@@ -3744,8 +3744,8 @@ mod tests {
 
     #[test]
     fn w016_absent_when_following_step_declares_nothing() {
-        // Soundness over recall (§4.8.2): an undeclared step is never treated
-        // as reversible, even though it might be. LP-16 descriptors are
+        // Soundness over recall: an undeclared step is never treated
+        // as reversible, even though it might be. Effect descriptors are
         // omitted, not defaulted — firing here would risk advising a dialog
         // past a step that turns out to be irreversible.
         let wf = wf_with_steps(vec![
@@ -3761,7 +3761,7 @@ mod tests {
 
     #[test]
     fn w016_fires_for_dialog_with_no_pipeline_target() {
-        // §4.8.2's boundary case: a bare gate with no binding has an empty
+        // The boundary case: a bare gate with no binding has an empty
         // dependency set, so clause (c) never stops the scan.
         let wf = wf_with_steps(vec![
             cmd_step(1, "CONFIRM", &["proceed?"], &[], None),
@@ -3806,7 +3806,7 @@ mod tests {
 
     #[test]
     fn w016_scoped_to_same_block_absent_when_reversible_step_is_after_the_block() {
-        // §4.8.4: moving a dialog out of a conditional changes *whether* it
+        // Moving a dialog out of a conditional changes *whether* it
         // is asked, not only when — a candidate outside the dialog's own
         // block must never be proposed.
         let dialog = Stmt::Command(CommandCall {

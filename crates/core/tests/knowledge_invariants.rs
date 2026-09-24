@@ -1,4 +1,4 @@
-//! Knowledge-store invariant acceptance sweep (KB-1…KB-11)
+//! Knowledge-store invariant acceptance sweep
 //! — the closing validation for this subsystem. Each KB invariant maps to one named test,
 //! exercised through the **real SQLite + sqlite-vec `KnowledgeDb`** (not an
 //! in-memory fake store) and the real domain pipeline exported via
@@ -8,7 +8,7 @@
 //! in CI, the generator-optional/no-live-model precedent every prior sweep
 //! in this project follows); `HttpUrlFetcher`'s real TCP mechanics are
 //! already proven in `crates/core/src/knowledge_bootstrap.rs`'s own tests —
-//! here KB-5's URL variant uses a fake `UrlFetcher` to keep the sweep
+//! here the URL variant uses a fake `UrlFetcher` to keep the sweep
 //! network-free, consistent with every other invariant here running
 //! offline and deterministic.
 
@@ -56,7 +56,7 @@ fn seed_ready_document(
     .expect("ingest")
 }
 
-// ── KB-1 Collection isolation ───────────────────────────────────────────────
+// ── Collection isolation ───────────────────────────────────────────────
 
 #[test]
 fn kb1_a_query_never_returns_another_collections_chunk() {
@@ -72,7 +72,7 @@ fn kb1_a_query_never_returns_another_collections_chunk() {
     let (results, _prepared) = retrieve(&db, &FakeEmbedder, None, &request).expect("retrieve");
     assert!(
         results.iter().all(|c| c.collection_id == "col-1"),
-        "KB-1: no result may come from an unrequested collection"
+        "no result may come from an unrequested collection"
     );
     assert!(
         !results.is_empty(),
@@ -80,7 +80,7 @@ fn kb1_a_query_never_returns_another_collections_chunk() {
     );
 }
 
-// ── KB-2 Hierarchical organisation (directory tree, retrieval-independent) ──
+// ── Hierarchical organisation (directory tree, retrieval-independent) ──
 
 #[test]
 fn kb2_directory_structure_never_affects_retrieval() {
@@ -109,7 +109,7 @@ fn kb2_directory_structure_never_affects_retrieval() {
     );
 }
 
-// ── KB-3 Incremental indexing ────────────────────────────────────────────────
+// ── Incremental indexing ────────────────────────────────────────────────
 
 #[test]
 fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
@@ -132,7 +132,7 @@ fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
     // Checked directly against the FTS index (not the fused `retrieve()`
     // path): ANN's k-nearest-neighbour search always returns *something*
     // when the index is non-empty, regardless of true relevance — a correct,
-    // expected property of vector search, not a KB-3 concern. FTS5's `MATCH`
+    // expected property of vector search, not a concern. FTS5's `MATCH`
     // is genuinely relevance-gated, so it is the precise instrument for
     // proving the old chunk's terms are gone, not merely out-ranked.
     let old_term_hits = db
@@ -140,7 +140,7 @@ fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
         .expect("fts_search");
     assert!(
         old_term_hits.is_empty(),
-        "KB-3: the old chunk's indexed terms must be fully removed, not merely out-ranked"
+        "the old chunk's indexed terms must be fully removed, not merely out-ranked"
     );
     let new_term_hits = db
         .fts_search(
@@ -156,7 +156,7 @@ fn kb3_re_ingesting_a_document_replaces_its_chunks_not_accumulates() {
     );
 }
 
-// ── KB-4 Access control ──────────────────────────────────────────────────────
+// ── Access control ──────────────────────────────────────────────────────
 
 #[test]
 fn kb4_a_query_from_a_caller_with_no_grant_is_denied_before_the_store_is_searched() {
@@ -188,7 +188,7 @@ fn kb4_a_query_from_a_caller_with_no_grant_is_denied_before_the_store_is_searche
     assert_eq!(scope, vec!["col-1".to_string()]);
 }
 
-// ── KB-5 Source types (file / URL / record) ─────────────────────────────────
+// ── Source types (file / URL / record) ─────────────────────────────────
 
 #[test]
 fn kb5_all_three_source_adapters_produce_ready_ingestible_text() {
@@ -240,7 +240,7 @@ fn kb5_all_three_source_adapters_produce_ready_ingestible_text() {
     assert_eq!(ingested.status, DocumentStatus::Ready);
 }
 
-// ── KB-6 Source attribution ──────────────────────────────────────────────────
+// ── Source attribution ──────────────────────────────────────────────────
 
 #[test]
 fn kb6_every_retrieved_chunk_carries_document_and_source_ref_attribution() {
@@ -259,7 +259,7 @@ fn kb6_every_retrieved_chunk_carries_document_and_source_ref_attribution() {
     }
 }
 
-// ── KB-7 Non-authoritative recall (structural) ──────────────────────────────
+// ── Non-authoritative recall (structural) ──────────────────────────────
 
 #[test]
 fn kb7_the_retrieved_chunk_shape_asserts_no_correctness_only_text_source_score() {
@@ -284,7 +284,7 @@ fn kb7_the_retrieved_chunk_shape_asserts_no_correctness_only_text_source_score()
     );
 }
 
-// ── KB-8 Soft deletion ────────────────────────────────────────────────────────
+// ── Soft deletion ────────────────────────────────────────────────────────
 
 #[test]
 fn kb8_a_soft_deleted_document_is_excluded_from_retrieval_then_gc_removes_it() {
@@ -308,7 +308,7 @@ fn kb8_a_soft_deleted_document_is_excluded_from_retrieval_then_gc_removes_it() {
     assert!(db.get_document("doc-1").unwrap().is_none());
 }
 
-// ── KB-9 Authorship zones ────────────────────────────────────────────────────
+// ── Authorship zones ────────────────────────────────────────────────────
 
 #[test]
 fn kb9_a_human_zone_rewrite_requires_an_audited_override_but_initial_ingest_and_status_updates_dont()
@@ -352,7 +352,7 @@ fn kb9_a_human_zone_rewrite_requires_an_audited_override_but_initial_ingest_and_
     .expect("an audited override may rewrite human-origin content");
 }
 
-// ── KB-10 Curation lifecycle ─────────────────────────────────────────────────
+// ── Curation lifecycle ─────────────────────────────────────────────────
 
 #[test]
 fn kb10_min_curation_excludes_draft_chunks_but_human_sources_stay_eligible() {
@@ -390,7 +390,7 @@ fn kb10_min_curation_excludes_draft_chunks_but_human_sources_stay_eligible() {
     );
 }
 
-// ── KB-11 Query preparation ──────────────────────────────────────────────────
+// ── Query preparation ──────────────────────────────────────────────────
 
 struct ExpandingPreparer;
 impl QueryPreparer for ExpandingPreparer {
@@ -438,7 +438,7 @@ fn kb11_query_preparation_is_recorded_falls_back_when_empty_and_never_widens_sco
         "the fallback query must still actually search"
     );
 
-    // Preparation never widens KB-4's collection scope: the request still
+    // Preparation never widens the collection scope: the request still
     // only names col-1, regardless of what the preparer returns.
     assert_eq!(request.collection_ids, vec!["col-1".to_string()]);
 }

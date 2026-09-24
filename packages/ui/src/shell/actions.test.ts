@@ -45,7 +45,7 @@ describe("resolveLabel — one of two channels, never both", () => {
   });
 });
 
-describe("actionsFromCatalog — the registry is not a second catalog (AS-6, §4.4)", () => {
+describe("actionsFromCatalog — the registry is not a second catalog", () => {
   it("a Semantic descriptor in the fed-in catalog is bound/live without being separately declared", () => {
     const descriptor = semantic("core:board.list", "List cards");
     const registry = createActionRegistry(

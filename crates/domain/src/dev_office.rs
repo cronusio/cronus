@@ -1,4 +1,4 @@
-//! Developer-office admission gate — the pure decision core (DVO-1, DVO-3, DVO-5).
+//! Developer-office admission gate — the pure decision core.
 //!
 //! Resolves what capability tier, if any, the developer office exposes, from
 //! two already-computed inputs: whether the working tree is a genuine
@@ -9,7 +9,7 @@
 //! present. The facade (`crates/core`) performs the real reads and calls
 //! [`DevOfficeGate::resolve`] with the results.
 
-/// The outcome of the repository-authenticity check (DVO-2): whether the
+/// The outcome of the repository-authenticity check: whether the
 /// current working tree is a verified checkout of the canonical upstream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RepoAuthenticity {
@@ -28,7 +28,7 @@ pub enum RepoAuthenticity {
 pub enum AdmissionTier {
     /// No surface renders — the default for a normal install.
     Absent,
-    /// Report/improve surface only; opt-in via `feedback_tier_enabled`, default off (DVO-5).
+    /// Report/improve surface only; opt-in via `feedback_tier_enabled`, default off.
     Feedback,
     /// The full self-maintenance developer office.
     Elevated,
@@ -45,7 +45,7 @@ pub struct GateInputs {
     pub feedback_tier_enabled: bool,
 }
 
-/// Read-only view onto the human-write-only admission plane (DVO-3).
+/// Read-only view onto the human-write-only admission plane.
 ///
 /// No mint/write method exists on this trait. The domain gate depends only
 /// on this port, so no path reachable through domain logic can mint or
@@ -84,7 +84,7 @@ impl DevOfficeGate {
 pub enum WorkspaceKind {
     /// The ordinary, user-created kind reachable through the workspace-creation flow.
     Project,
-    /// The sole system-owned kind (DVO-1): materializes only while the gate
+    /// The sole system-owned kind: materializes only while the gate
     /// resolves to `Elevated`, never through user action.
     Developer,
 }

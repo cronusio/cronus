@@ -1,15 +1,15 @@
 //! Lookahead planning — budget-bounded consequence simulation before high-impact,
 //! hard-to-reverse actions.
 //!
-//! Lookahead fires only for catalog trigger categories (LP-1). The simulation is a
+//! Lookahead fires only for catalog trigger categories. The simulation is a
 //! "what if" pass over the agent's model and issues no real tool calls, writes, or
-//! spawns (LP-2) — here the per-depth verdicts arrive pre-computed as data, so the
-//! engine performs zero side effects. Depth and token budget are hard limits (LP-3);
-//! a conclusion (even partial) is produced before commit (LP-4); budget exhaustion
-//! falls back to the approval gate, never a silent proceed (LP-5); every conclusion
-//! is appended to the decision log before commit (LP-6).
+//! spawns — here the per-depth verdicts arrive pre-computed as data, so the
+//! engine performs zero side effects. Depth and token budget are hard limits;
+//! a conclusion (even partial) is produced before commit; budget exhaustion
+//! falls back to the approval gate, never a silent proceed; every conclusion
+//! is appended to the decision log before commit.
 
-/// A high-impact action category eligible for lookahead (LP-1).
+/// A high-impact action category eligible for lookahead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TriggerCategory {
     BranchMerge,
@@ -36,7 +36,7 @@ impl TriggerCategory {
     }
 }
 
-/// The predicted verdict for one simulated depth step (LP-2 — data, not execution).
+/// The predicted verdict for one simulated depth step (data, not execution).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepVerdict {
     /// The projected next state is acceptable and leads toward the goal.
@@ -45,7 +45,7 @@ pub enum StepVerdict {
     Blocking,
 }
 
-/// The lookahead budget (LP-3): hard limits on depth and token spend.
+/// The lookahead budget: hard limits on depth and token spend.
 #[derive(Debug, Clone, Copy)]
 pub struct LookaheadBudget {
     pub max_depth: u8,
@@ -63,7 +63,7 @@ pub enum Conclusion {
     Modify(String),
     /// Unacceptable consequence found — route to the approval gate, do not execute.
     Escalate,
-    /// Budget exhausted before a conclusion — falls back to the approval gate (LP-5).
+    /// Budget exhausted before a conclusion — falls back to the approval gate.
     BudgetExhausted,
 }
 
@@ -73,13 +73,13 @@ impl Conclusion {
         matches!(self, Conclusion::Confirm | Conclusion::Modify(_))
     }
 
-    /// Whether this conclusion routes to the human approval gate (ORC-9).
+    /// Whether this conclusion routes to the human approval gate.
     pub fn routes_to_approval(&self) -> bool {
         matches!(self, Conclusion::Escalate | Conclusion::BudgetExhausted)
     }
 }
 
-/// One append-only decision-log record (LP-6).
+/// One append-only decision-log record.
 #[derive(Debug, Clone)]
 pub struct DecisionRecord {
     pub category: TriggerCategory,
@@ -87,7 +87,7 @@ pub struct DecisionRecord {
     pub conclusion: Conclusion,
 }
 
-/// The append-only decision log (LP-6). Feeds the self-improvement calibration loop.
+/// The append-only decision log. Feeds the self-improvement calibration loop.
 #[derive(Debug, Default)]
 pub struct DecisionLog {
     records: Vec<DecisionRecord>,
@@ -111,19 +111,19 @@ impl DecisionLog {
     }
 }
 
-/// Whether an action category triggers lookahead (LP-1). `None` = a non-catalog
+/// Whether an action category triggers lookahead. `None` = a non-catalog
 /// action, which bypasses lookahead entirely.
 pub fn is_triggered(category: Option<TriggerCategory>) -> bool {
     category.is_some()
 }
 
 /// Run a budget-bounded lookahead. The per-depth `verdicts` are the pre-computed
-/// simulation results (LP-2: no execution happens here). A conclusion is produced
-/// and appended to the log before the caller commits (LP-4/LP-6).
+/// simulation results (no execution happens here). A conclusion is produced
+/// and appended to the log before the caller commits.
 ///
 /// - A `Blocking` verdict at any depth terminates early with `Escalate`.
 /// - All `Acceptable` within depth → `Confirm`.
-/// - Depth/token budget consumed before a verdict resolves → `BudgetExhausted` (LP-5).
+/// - Depth/token budget consumed before a verdict resolves → `BudgetExhausted`.
 pub fn run_lookahead(
     log: &mut DecisionLog,
     category: TriggerCategory,
@@ -184,7 +184,6 @@ mod tests {
 
     #[test]
     fn only_catalog_actions_trigger() {
-        // LP-1.
         assert!(is_triggered(Some(TriggerCategory::SchemaMigration)));
         assert!(!is_triggered(None));
         assert_eq!(TriggerCategory::SecurityPolicy.default_depth(), 5);
@@ -229,7 +228,7 @@ mod tests {
 
     #[test]
     fn budget_exhaustion_falls_back_to_approval() {
-        // LP-3 + LP-5: depth budget consumed before a blocker/full-confirm ->
+        // Depth budget consumed before a blocker/full-confirm ->
         // BudgetExhausted, which routes to the approval gate (never silent proceed).
         let mut log = DecisionLog::new();
         let c = run_lookahead(
@@ -264,7 +263,7 @@ mod tests {
 
     #[test]
     fn every_conclusion_is_logged_before_commit() {
-        // LP-6: the record exists after the pass, before the caller commits.
+        // The record exists after the pass, before the caller commits.
         let mut log = DecisionLog::new();
         run_lookahead(
             &mut log,

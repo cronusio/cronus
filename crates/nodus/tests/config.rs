@@ -1,7 +1,6 @@
-//! Integration tests for the `§config` declarative-configuration surface
-//! (NL-20).
+//! Integration tests for the `§config` declarative-configuration surface.
 //!
-//! NL-20 shape-check coverage, the secret-neutrality gate, the LP-8
+//! Shape-check coverage, the secret-neutrality gate, the capability-manifest
 //! fail-fast path, and the full declaration → proposed → acceptance → run
 //! happy path.
 
@@ -84,7 +83,7 @@ impl AuditProvider for CountingAudit {
     }
 }
 
-// ─── NL-20 shape-check coverage (via check_config_values directly) ───────────
+// ─── shape-check coverage (via check_config_values directly) ───────────
 
 #[test]
 fn shape_check_unknown_field() {
@@ -159,7 +158,7 @@ fn shape_check_not_in_enum() {
 
 #[test]
 fn shape_check_duplicate_field() {
-    // NL-27: a field name declared twice is a validation error, not a
+    // A field name declared twice is a validation error, not a
     // silently-resolved ambiguity — regardless of whether the two
     // declarations otherwise agree.
     let decl = ConfigDecl {
@@ -325,11 +324,11 @@ fn rejected_config_run_leaves_no_partial_state() {
     assert!(result.vars.is_empty());
 }
 
-// ─── NL-27 regression: a duplicate field can no longer leak a secret ─────────
+// ─── regression: a duplicate field can no longer leak a secret ─────────
 
 #[test]
 fn duplicate_secret_field_rejects_rather_than_leaking() {
-    // Before NL-27 enforcement, a `§config:` name declared twice — once
+    // Before duplicate-name enforcement, a `§config:` name declared twice — once
     // `secret`, once not — produced two entries in `AcceptedConfig` under one
     // name: `is_secret` answered `true` (`.any()` over both), while
     // `non_secret_fields()` (the set `run_with_config` merges into
@@ -383,7 +382,7 @@ api_key : str
     assert!(result.log.is_empty(), "no step may execute on rejection");
 }
 
-// ─── LP-8: ExtensionRole::Config fail-fast ────────────────────────────────────
+// ─── ExtensionRole::Config fail-fast ────────────────────────────────────
 
 #[test]
 fn config_role_satisfied_by_builtin_host() {

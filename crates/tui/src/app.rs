@@ -5,7 +5,7 @@
 //! testable without a TTY: tests call `tick` directly with scripted events and a
 //! stub state source.
 //!
-//! INV-5 (view-only): [`App`] holds nothing but a [`ViewModel`] snapshot and a
+//! [`App`] holds nothing but a [`ViewModel`] snapshot and a
 //! view-local quit flag. All durable state lives in the core and is read through
 //! the [`SnapshotSource`] seam — the loop never mutates domain state.
 //!
@@ -43,8 +43,8 @@ const TICK: Duration = Duration::from_millis(50);
 
 /// An immutable projection of durable core state at one instant.
 ///
-/// The TUI renders from this and never mutates it (INV-5). Every field is a
-/// [`Projection`] (INV-6): `status` comes from the core capability surface;
+/// The TUI renders from this and never mutates it. Every field is a
+/// [`Projection`]: `status` comes from the core capability surface;
 /// `board`/`office` are dispatched through the shared registry (`core:board
 /// .list`/`core:role.list`) — the same door the command bar uses — never a
 /// path opened directly by this crate (which would re-derive the domain fact
@@ -126,7 +126,7 @@ pub struct TickResult {
 /// The render loop's state: the view-model, a quit flag, and the command-dispatch
 /// machinery. Still no domain state — the registry/dispatcher pair reaches the
 /// core only through the same public composition door every surface uses, and
-/// redaction happens once, inside the shared dispatcher (INV-7), never here.
+/// redaction happens once, inside the shared dispatcher, never here.
 pub struct App {
     view: ViewModel,
     should_quit: bool,
@@ -201,7 +201,7 @@ impl App {
         }
 
         // 1b) Dispatch a submitted command through the shared registry/dispatcher.
-        //     Resolution, binding, dispatch, and INV-7 masking all happen inside
+        //     Resolution, binding, dispatch, and secret masking all happen inside
         //     `dispatch::dispatch_command` — no raw secret value reaches the
         //     view-model or the screen buffer. `None` means the line resolved
         //     to no invocable (`Dispatched::Unknown`) — ordinary input, not a
@@ -597,7 +597,7 @@ fn record_text<'a>(fields: &'a [(String, OutcomeValue)], name: &str) -> Option<&
 /// Holds a ratatui terminal over the same crossterm version the [`Tui`] guard
 /// drives, so the two share one alternate screen: the guard owns the raw-mode
 /// lifecycle while ratatui owns frame diffing. Panels render purely from the
-/// view-model (INV-5); content for each panel arrives in the panel tracks — this
+/// view-model; content for each panel arrives in the panel tracks — this
 /// renderer establishes the bordered skeleton and the focus highlight.
 pub struct RatatuiRenderer {
     terminal: Terminal<RatatuiCrosstermBackend<Stdout>>,
@@ -624,7 +624,7 @@ impl Renderer for RatatuiRenderer {
 /// Render the whole TUI frame into `buf` for `area`, purely from the view-model.
 ///
 /// A pure function of `view`: the same view-model always produces the same buffer
-/// (INV-5 render-from-state). Extracted from the renderer so the render path can
+/// (render-from-state). Extracted from the renderer so the render path can
 /// be exercised against an off-screen [`Buffer`] without a terminal.
 pub fn render_view(area: Rect, buf: &mut Buffer, view: &ViewModel) {
     let areas = view::layout(area);
@@ -1524,7 +1524,7 @@ mod tests {
 
         assert_eq!(
             first, second,
-            "the same view-model must render an identical frame (INV-5)"
+            "the same view-model must render an identical frame"
         );
     }
 
@@ -1543,7 +1543,7 @@ mod tests {
         assert_ne!(base, after, "a changed snapshot must change the frame");
     }
 
-    // ── Board/office projection dispatch (INV-6: unavailable vs. empty) ────
+    // ── Board/office projection dispatch (unavailable vs. empty) ────
     //
     // `dispatch_board`/`dispatch_office` are what `CapabilitySource` and the
     // production `poll_snapshot` call every tick; proven directly here
@@ -1826,7 +1826,7 @@ mod tests {
 
         assert!(
             !rendered.contains("sk-LIVE-42"),
-            "no secret value reaches the rendered screen buffer (INV-7)"
+            "no secret value reaches the rendered screen buffer"
         );
         assert!(rendered.contains("***"), "the secret renders masked");
     }

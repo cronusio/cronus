@@ -14,7 +14,7 @@ use super::core_id;
 /// to construct a fresh manager per call and discard it on return — `create`
 /// even wrote a real worktree directory to disk while doing so, an orphaned
 /// side effect no later `list`/`finalize`/`discard` could ever see or clean
-/// up. INV-9 shipped-surface honesty (matching `core:loop.evolve`'s own
+/// up. Shipped-surface honesty (matching `core:loop.evolve`'s own
 /// precedent): present and documented, but answering `Unavailable` with the
 /// reason, never a silent success stub — and never touching the filesystem
 /// on a call that cannot actually be tracked afterward.

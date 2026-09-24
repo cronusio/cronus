@@ -1,5 +1,5 @@
 //! The semantic half of the command surface (the split between what acts on
-//! the user's work and what configures the product itself, §4.1.1): a
+//! the user's work and what configures the product itself): a
 //! `clap::Command` tree built at startup from the registry's `Semantic`,
 //! `Shipped` descriptors — never a compile-time enum. Help, completion, and
 //! grouping for this half all derive from the same descriptors; there is
@@ -37,7 +37,7 @@ use cronus_core::invocable::InvocableRegistry;
 
 /// Every descriptor this generated half is responsible for: reachable from
 /// every surface (`Semantic`) and currently on the default listing
-/// (`Shipped`) — a `Retired` descriptor keeps resolving (INV-9) but does
+/// (`Shipped`) — a `Retired` descriptor keeps resolving but does
 /// not appear here, and neither does anything `ClientLocal`/`HostOnly`/
 /// `Installation`, which this frontend does not project at all or projects
 /// through its own hand-declared grammar instead.
@@ -49,7 +49,7 @@ pub fn semantic_shipped(registry: &InvocableRegistry) -> Vec<&Invocable> {
                 && matches!(invocable.stability, Stability::Shipped)
         })
         .collect();
-    // Deterministic order (EP-4): grouped, then alphabetical within a
+    // Deterministic order: grouped, then alphabetical within a
     // group, so `--help` output and iteration order never depend on
     // registration order.
     invocables.sort_by(|a, b| (a.group, a.id.as_str()).cmp(&(b.group, b.id.as_str())));

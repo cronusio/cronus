@@ -172,7 +172,7 @@ fn attach_handlers(dispatcher: &mut Dispatcher) {
         fixture_id("absent-required"),
         // Unreachable in this corpus's own run: the fixture supplies no
         // value for its one required `id` binder at all, so `bind()`
-        // rejects before this handler could ever be called (IB-2). Attached
+        // rejects before this handler could ever be called. Attached
         // anyway for uniformity with every other fixture, rather than the
         // one special-cased as handler-less.
         Arc::new(|_args| Outcome::Unavailable {
@@ -200,7 +200,7 @@ fn attach_handlers(dispatcher: &mut Dispatcher) {
     );
 }
 
-/// This surface registers against the corpus (§4.5) — the harness is
+/// This surface registers against the corpus — the harness is
 /// expected to fail on its very first run against any real surface, and
 /// that failure is the initial inventory, not a defect in this test. What
 /// this test locks in precisely is *which* failure: this dispatcher is

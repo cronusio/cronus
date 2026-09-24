@@ -1,12 +1,12 @@
-//! Cronus domain — the no-I/O tier of the crate topology (§4.1, §4.2): pure
+//! Cronus domain — the no-I/O tier of the crate topology: pure
 //! domain logic with no C toolchain, platform service, or cryptographic
-//! implementation of its own (§4.3). Depends only on `cronus-contract`; the
+//! implementation of its own. Depends only on `cronus-contract`; the
 //! `cronus` facade wires this together with the adapter crates.
 //!
 //! `memory`'s SQLite-backed store, `inbox`'s SQLite-backed pipeline,
 //! `workspace`'s SQLite-backed registry, and `auth`'s password/TOTP/session
 //! machinery moved to the adapter crates (`cronus-store-local`,
-//! `cronus-auth-local`) — this crate cannot depend on either (§4.1's tier
+//! `cronus-auth-local`) — this crate cannot depend on either (the tier
 //! model has no edge from domain to an adapter), so their facade re-export
 //! shims stay in `crates/core`, not here.
 

@@ -1,7 +1,7 @@
-//! Sandbox network egress policy (SEC-3/SEC-6): named, per-binary
+//! Sandbox network egress policy: named, per-binary
 //! allowlisted policy entries on top of a deny-by-default baseline, with
-//! opt-in tiers/presets and typed, auditable access-failure classification
-//! (SEC-7). This is the binary-scoped least-privilege layer on top of the
+//! opt-in tiers/presets and typed, auditable access-failure classification.
+//! This is the binary-scoped least-privilege layer on top of the
 //! flat [`crate::egress::EgressGate`] — a binary not listed in any policy
 //! entry is denied every endpoint, regardless of what the gate itself would
 //! otherwise allow.
@@ -95,7 +95,7 @@ impl NetworkPolicyEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessDenied {
     /// The calling binary is not listed in any policy entry — denied
-    /// regardless of target (deny-by-default, §4.4).
+    /// regardless of target (deny-by-default).
     BinaryNotAllowlisted,
     /// The binary has entries, but none of its reachable endpoints match.
     EndpointNotAllowed,
@@ -121,7 +121,7 @@ impl SandboxPolicy {
     }
 
     /// The union of endpoints reachable by `binary` across every entry it
-    /// appears in (`effective_egress`, §4.4).
+    /// appears in (`effective_egress`).
     pub fn effective_egress(&self, binary: &str) -> Vec<&Endpoint> {
         self.entries
             .values()
@@ -149,8 +149,8 @@ impl SandboxPolicy {
     }
 }
 
-/// The filesystem half of the sandbox schema (§4.1) —
-/// only `read_write` matters for BA-4: a location absent from every entry has
+/// The filesystem half of the sandbox schema —
+/// only `read_write` matters for the write barrier: a location absent from every entry has
 /// no write path for agent-run code, regardless of what `read_only` or
 /// `include_workdir` (not modeled here — orthogonal to write access) exposes.
 /// Deny-by-default: absence means denied, never merely "not confirmed".
@@ -181,7 +181,7 @@ impl FilesystemPolicy {
 }
 
 /// OS activation-registration locations that are filesystem paths
-/// (§4.5, BA-4's second structural barrier): none of
+/// (the second structural barrier): none of
 /// these may ever appear in a `FilesystemPolicy`'s `read_write` set, or
 /// agent-run code would gain a write path to make the engine persistent and
 /// unattended.
@@ -200,7 +200,7 @@ pub const FILESYSTEM_REGISTRATION_LOCATIONS: &[&str] = &[
     "~/.config/autostart",
 ];
 
-/// Non-filesystem OS registration surfaces (§4.5), named for documentation
+/// Non-filesystem OS registration surfaces, named for documentation
 /// completeness only — see [`FILESYSTEM_REGISTRATION_LOCATIONS`].
 pub const NON_FILESYSTEM_REGISTRATION_SURFACES: &[&str] = &[
     r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
@@ -215,7 +215,7 @@ pub enum PolicyTier {
     Open,
 }
 
-/// The built-in preset names a tier includes (§4.6). `restricted` is the
+/// The built-in preset names a tier includes. `restricted` is the
 /// baseline (inference + gateway only) and carries no additional presets;
 /// `open` is never the default — appropriate only for a fully-trusted,
 /// user-reviewed sandbox.
@@ -283,7 +283,7 @@ pub struct PolicyPreset {
 
 /// Internal host → preset-name lookup backing access-failure classification.
 /// Kept separate from [`PolicyPreset`] so the user-facing preset object never
-/// carries real hostnames (§4.7 privacy note).
+/// carries real hostnames (privacy note).
 fn preset_for_host(host: &str) -> Option<&'static str> {
     const REGISTRY: &[(&str, &str)] = &[
         ("registry.npmjs.org", "npm-registry"),
@@ -318,7 +318,7 @@ pub struct SupportBoundary {
     pub note: Option<String>,
 }
 
-/// Read-only snapshot of the running sandbox's policy state (§4.8). The host
+/// Read-only snapshot of the running sandbox's policy state. The host
 /// process is the sole writer of the policy file; the agent inspects this
 /// snapshot and requests changes only through `approval_path`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,7 +332,7 @@ pub struct PolicyContext {
 }
 
 /// A signal from the OS/network layer strongly indicating a policy block
-/// (stands in for the raw OS error codes named in §4.9).
+/// (stands in for the raw OS error codes named).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OsErrorSignal {
     DnsResolutionFailed,
@@ -358,7 +358,7 @@ pub enum AccessFailureKind {
     Unknown,
 }
 
-/// The full classification record, written to the audit log (SEC-7).
+/// The full classification record, written to the audit log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessFailureClassification {
     pub kind: AccessFailureKind,
@@ -368,7 +368,7 @@ pub struct AccessFailureClassification {
     pub confidence: Confidence,
 }
 
-/// Classify an access failure (§4.9, first match wins):
+/// Classify an access failure (first match wins):
 /// 1. an OS-level network signal → `blocked-by-policy` (high confidence);
 /// 2. a 401/403 response → `missing-approval` (high confidence);
 /// 3. the target host matches a known-but-unapplied preset → `missing-approval` (high confidence);
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn no_activation_registration_location_is_read_write_in_the_baseline() {
-        // BA-4: the deny-by-default baseline (no entries at all) must leave
+        // The deny-by-default baseline (no entries at all) must leave
         // every activation registration location without a write path.
         let baseline = FilesystemPolicy::new();
         for location in FILESYSTEM_REGISTRATION_LOCATIONS {

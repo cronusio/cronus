@@ -1,16 +1,16 @@
-//! Project-wiki regeneration pipeline (§4.2, PW-1…PW-5, PW-8).
+//! Project-wiki regeneration pipeline.
 //!
 //! Office-owned, curator-driven: on a significant office change, map the change
 //! to the affected page kinds, gather each page's ground truth, generate
 //! client-language content, apply the grounding/honesty guards, and write the
 //! whole set transactionally through the `WikiCache` seam. The client has no
-//! path in here (PW-2).
+//! path in here.
 //!
 //! Domain-logic-first via two seams: [`GroundTruth`] (no model — the sources a
 //! page cites) is always present; [`PageGenerator`] (model-backed prose) is
 //! optional, so a run with no generator degrades to a **grounded stub** rather
-//! than fabricating (PW-4/PW-1). The guards — internal-detail filter (PW-8) and
-//! citation guard (PW-4) — are pure pipeline steps, so the honesty properties
+//! than fabricating. The guards — internal-detail filter and
+//! citation guard — are pure pipeline steps, so the honesty properties
 //! are testable without a model. This module owns the orchestration, the
 //! guards, and the all-or-nothing write guarantee.
 
@@ -20,8 +20,8 @@ use cronus_contract::{
     WikiCache, WikiChangelogEntry, WikiCitation, WikiPage, WikiPageKind, now_secs,
 };
 
-/// A significant office change that triggers incremental regeneration
-/// (§4.2). Never per-agent-turn — only office events.
+/// A significant office change that triggers incremental regeneration.
+/// Never per-agent-turn — only office events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OfficeChange {
     BoardItemDone,
@@ -56,7 +56,7 @@ pub fn map_event_to_kinds(change: OfficeChange) -> Vec<WikiPageKind> {
 
 /// One candidate section of generated content: its text, the sources it cites,
 /// and whether it carries internal engineering / SDD detail that must never
-/// reach a client page (PW-8). The generator flags internal detail; the guards
+/// reach a client page. The generator flags internal detail; the guards
 /// drop it and any uncited section before assembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneratedSection {
@@ -83,7 +83,7 @@ pub struct GeneratedContent {
     pub sections: Vec<GeneratedSection>,
 }
 
-/// Ground-truth gather (no model): the sources a page kind cites (PW-4 basis).
+/// Ground-truth gather (no model): the sources a page kind cites (citation basis).
 /// Always available — reading records needs no generator. An empty result
 /// means there is nothing grounded to write for this kind (the page is
 /// skipped, never fabricated).
@@ -110,7 +110,7 @@ pub struct RegenReport {
     pub regenerated: Vec<String>,
 }
 
-/// PW-8 internal-detail filter: drop every section carrying engineering / SDD
+/// Internal-detail filter: drop every section carrying engineering / SDD
 /// detail so it can never reach a client `wiki_page` row.
 pub fn filter_internal_detail(sections: Vec<GeneratedSection>) -> Vec<GeneratedSection> {
     sections
@@ -119,7 +119,7 @@ pub fn filter_internal_detail(sections: Vec<GeneratedSection>) -> Vec<GeneratedS
         .collect()
 }
 
-/// PW-4 citation guard: drop every section that resolves to no source. An
+/// Citation guard: drop every section that resolves to no source. An
 /// uncited claim is never persisted.
 pub fn citation_guard(sections: Vec<GeneratedSection>) -> Vec<GeneratedSection> {
     sections
@@ -134,7 +134,7 @@ pub fn citation_guard(sections: Vec<GeneratedSection>) -> Vec<GeneratedSection> 
 static CHANGELOG_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Regenerate the pages affected by `change` for one office, writing the whole
-/// set transactionally (PW-3). For each affected kind: gather sources; if none,
+/// set transactionally. For each affected kind: gather sources; if none,
 /// skip; else generate + guard (or, with no generator, a grounded stub). A
 /// generation failure aborts before any write; the store write is
 /// all-or-nothing.
@@ -161,7 +161,7 @@ pub fn regenerate(
     })
 }
 
-/// Rebuild an office's entire wiki from ground truth (PW-3) — the operational
+/// Rebuild an office's entire wiki from ground truth — the operational
 /// proof the store is a rebuildable projection cache. Regenerates **every**
 /// page kind (not just the ones an event touches), then hands the whole set to
 /// the store's transactional drop-and-reinsert. Because every page is derived
@@ -179,7 +179,7 @@ pub fn rebuild(
     let (pages, changelog) = build_pages(&WikiPageKind::all(), office_id, ground_truth, generator)?;
 
     // Always called — even with no grounded pages — so a rebuild also clears an
-    // office whose ground truth no longer grounds anything (PW-3).
+    // office whose ground truth no longer grounds anything.
     cache.rebuild_office(office_id, &pages, &changelog)?;
 
     Ok(RegenReport {
@@ -213,8 +213,8 @@ fn build_pages(
             Some(g) => {
                 // `?`: a generation failure returns before any page is built.
                 let content = g.generate(office_id, kind, &sources)?;
-                // Guards: strip internal detail (PW-8) then drop uncited
-                // sections (PW-4). What survives is client-facing and attributed.
+                // Guards: strip internal detail then drop uncited
+                // sections. What survives is client-facing and attributed.
                 let kept = citation_guard(filter_internal_detail(content.sections));
                 if kept.is_empty() {
                     // Everything was internal or uncited — fall back to a
@@ -314,7 +314,7 @@ fn default_title(kind: WikiPageKind) -> String {
     .to_string()
 }
 
-/// A page's `source_fingerprint` (PW-5): a hash of the exact sources it was
+/// A page's `source_fingerprint`: a hash of the exact sources it was
 /// generated from, so a later freshness check can detect drift.
 fn fingerprint_of(sources: &[WikiCitation]) -> String {
     let mut hasher = blake3::Hasher::new();
@@ -327,7 +327,7 @@ fn fingerprint_of(sources: &[WikiCitation]) -> String {
     hasher.finalize().to_hex().to_string()
 }
 
-/// Freshness sweep (PW-5): for every non-stale page, recompute the current
+/// Freshness sweep: for every non-stale page, recompute the current
 /// fingerprint of its sources and, if it differs from the stored one, mark the
 /// page stale — its sources moved without a regeneration catching up. Returns
 /// the ids newly marked stale. This never regenerates or mutates content; it
@@ -532,7 +532,7 @@ mod tests {
                         "CITED FACT",
                         vec![WikiCitation::new("decision", "d1")],
                     ),
-                    // No citations → must be dropped (PW-4).
+                    // No citations → must be dropped.
                     GeneratedSection {
                         text: "UNCITED CLAIM".to_string(),
                         citations: vec![],
@@ -570,7 +570,7 @@ mod tests {
                         "CLIENT FACT",
                         vec![WikiCitation::new("board_item", "c1")],
                     ),
-                    // Internal engineering detail — must be filtered (PW-8).
+                    // Internal engineering detail — must be filtered.
                     GeneratedSection {
                         text: "SDD internal: crate topology guard".to_string(),
                         citations: vec![WikiCitation::new("decision", "d9")],
@@ -612,7 +612,7 @@ mod tests {
 
         let overview = cache.page(WikiPageKind::Overview).expect("overview page");
         // The stub is exactly the grounded template — no invented prose — and
-        // it carries the gathered sources so it is attributable (PW-4/PW-1).
+        // it carries the gathered sources so it is attributable.
         assert_eq!(
             overview.body,
             grounded_stub(

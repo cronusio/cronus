@@ -1,5 +1,5 @@
-//! Long-term memory subsystem — the SQLite-backed `UserDataStore` default
-//! (§4.2, §4.6): storage, at-rest encryption, session chaining, and Bellman
+//! Long-term memory subsystem — the SQLite-backed `UserDataStore` default:
+//! storage, at-rest encryption, session chaining, and Bellman
 //! trust propagation. `MemoryEntry` and its field types are defined in
 //! `cronus-contract` (the ports tier `MemorySearch`/`UserDataStore` share
 //! with domain code) and re-exported here for call-site convenience.

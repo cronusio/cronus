@@ -1,4 +1,4 @@
-//! Backup & restore (STO-1/2/5/6/7): copy the mutable state tier — minus
+//! Backup & restore: copy the mutable state tier — minus
 //! secrets and regenerable cache — to a self-contained destination, and drop
 //! it back to resume from later. "Nothing extra": the program tier is never
 //! backed up (it is reinstallable), and secrets never leave the device
@@ -9,14 +9,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Top-level state-tier entries excluded from every backup by default
-/// (§4.1): the secret file, the regenerable cache, and the backups
+/// Top-level state-tier entries excluded from every backup by default:
+/// the secret file, the regenerable cache, and the backups
 /// directory itself — a backup must never contain other backups nested
 /// inside it, which is also what the default `backups_dir` sitting under
 /// `state_root` would otherwise produce (see the destination guard in
 /// [`copy_tree_excluding`] for the general case, where an explicit `--to`
 /// resolves inside `state_root` under a different name). `logs` is excluded
-/// by default too but is the one entry a caller may opt back in (§4.1
+/// by default too but is the one entry a caller may opt back in (
 /// "optional").
 const ALWAYS_EXCLUDED: &[&str] = &[".env", "cache", "backups"];
 const LOGS_ENTRY: &str = "logs";
@@ -121,7 +121,7 @@ fn unix_now() -> u64 {
 /// returned directory is needed to restore it.
 ///
 /// Written under a staging name first and renamed into place only once the
-/// copy fully succeeds (STO-2/5): `list()` only ever recognizes the final
+/// copy fully succeeds: `list()` only ever recognizes the final
 /// `backup-<unix-seconds>` name, so a crash or I/O error mid-copy leaves no
 /// half-written directory for a later `list`/`restore` to pick up.
 pub fn create(
@@ -197,7 +197,7 @@ pub fn list(backups_dir: &Path) -> io::Result<Vec<BackupRef>> {
     Ok(refs)
 }
 
-/// Restore-by-copy (STO-7): drop a backup's contents into `dest`, ready for
+/// Restore-by-copy: drop a backup's contents into `dest`, ready for
 /// the runtime to resume from. `dest` is created if missing; existing files
 /// at colliding paths are overwritten (a fresh restore target is expected).
 pub fn restore(backup: &BackupRef, dest: &Path) -> io::Result<()> {
@@ -224,7 +224,7 @@ mod tests {
         fs::write(path, contents).unwrap();
     }
 
-    /// A representative state tier: included content plus everything §4.1
+    /// A representative state tier: included content plus everything the design
     /// says must be excluded.
     fn seed_state_tier(root: &Path) {
         write(&root.join("config.json"), "{\"theme\":\"dark\"}");
@@ -251,7 +251,7 @@ mod tests {
 
         assert!(
             !backup_ref.path.join(".env").exists(),
-            "secrets must never be backed up (STO-6)"
+            "secrets must never be backed up"
         );
         assert!(
             !backup_ref.path.join("cache").exists(),

@@ -1,5 +1,5 @@
 /**
- * Wire a core push channel to a projection store (AS-3): opening the channel
+ * Wire a core push channel to a projection store: opening the channel
  * puts the store in `pending`, a message fulfils it, and a close — whether the
  * channel failed to open or the host reported it closed — makes it *unavailable*
  * with the reason, never leaving a stale value on screen as if current.

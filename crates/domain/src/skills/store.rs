@@ -1,15 +1,15 @@
 //! Two-tier skill stores and shadowing precedence.
 //!
 //! The preset store (`<program>/skills/`) ships with the product and is
-//! read-only at runtime (STO-1); the state store (`<state>/skills/`) holds
+//! read-only at runtime; the state store (`<state>/skills/`) holds
 //! user-added and office-generated packages; a workspace store
 //! (`<ws>/skills/`) scopes overrides to one workspace. A reference resolves
 //! by shadowing precedence — workspace, then state, then preset, first match
-//! wins (§4.1) — and an override whose content is identical to the preset it
+//! wins — and an override whose content is identical to the preset it
 //! shadows is a warning, never an error.
 //!
 //! In-memory here; the on-disk `<pack>/<name>/` layout is the canonical
-//! package model (§4.2, a separate task's contract). This module owns only
+//! package model (a separate task's contract). This module owns only
 //! the tier index and the resolution/write algebra.
 
 use std::collections::HashMap;
@@ -32,16 +32,16 @@ impl SkillId {
 
 /// A stored package's content, in whatever form makes two packages comparable
 /// for the override-identity check. The full canonical package shape
-/// (SKILL.md/extension.json/workflow.nd) is defined by §4.2; this module only
+/// (SKILL.md/extension.json/workflow.nd) is defined elsewhere; this module only
 /// needs equality over it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillEntry {
     pub content: String,
-    /// Set by the conversion pipeline (§4.4 stage 5) when the package landed
+    /// Set by the conversion pipeline when the package landed
     /// instruction-only. Not part of the tier-resolution algebra — carried
-    /// so `skill status` (§4.6) can report it without a second lookup.
+    /// so `skill status` can report it without a second lookup.
     pub degraded: bool,
-    /// Set for packages awaiting the standard review gate (EXT-7) — every
+    /// Set for packages awaiting the standard review gate — every
     /// converted or synthesized package, until reviewed.
     pub pending_review: bool,
 }
@@ -55,7 +55,7 @@ impl SkillEntry {
         }
     }
 
-    /// Attach conversion/review metadata (§4.6 status fields) to an entry.
+    /// Attach conversion/review metadata (status fields) to an entry.
     pub fn with_status(mut self, degraded: bool, pending_review: bool) -> Self {
         self.degraded = degraded;
         self.pending_review = pending_review;
@@ -66,7 +66,7 @@ impl SkillEntry {
 /// The three tiers a skill package can live in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillTier {
-    /// Shipped, immutable program tier (STO-1). Read-only at runtime.
+    /// Shipped, immutable program tier. Read-only at runtime.
     Preset,
     /// User-added and office-generated. Mutable.
     State,
@@ -76,7 +76,7 @@ pub enum SkillTier {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SkillStoreError {
-    /// STO-1: the program tier is read-only at runtime; nothing in this spec
+    /// The program tier is read-only at runtime; nothing in this spec
     /// ever writes under `<program>/`. The preset tier is seeded once via
     /// [`SkillStore::with_presets`], never through `write`.
     PresetIsReadOnly,
@@ -99,7 +99,7 @@ impl std::error::Error for SkillStoreError {}
 pub enum WriteOutcome {
     Written,
     /// The written content is identical to the preset entry it shadows — a
-    /// warning surfaced to the caller, never an error (§4.1).
+    /// warning surfaced to the caller, never an error.
     IdenticalToPreset,
 }
 
@@ -130,9 +130,9 @@ impl SkillStore {
     }
 
     /// Add or override a package in `tier`. Rejects `SkillTier::Preset` — the
-    /// program tier is read-only at runtime (STO-1). When the written content
+    /// program tier is read-only at runtime. When the written content
     /// is identical to the preset entry it would shadow, returns
-    /// `IdenticalToPreset` instead of failing (§4.1: a warning, not an error).
+    /// `IdenticalToPreset` instead of failing (a warning, not an error).
     pub fn write(
         &mut self,
         tier: SkillTier,
@@ -153,8 +153,8 @@ impl SkillStore {
     }
 
     /// Resolve `id` by shadowing precedence — workspace, then state, then
-    /// preset; first match wins (§4.1) — returning the tier it resolved from
-    /// alongside the entry (the provenance `skill status` reports, §4.6).
+    /// preset; first match wins — returning the tier it resolved from
+    /// alongside the entry (the provenance `skill status` reports).
     pub fn resolve(&self, id: &SkillId) -> Option<(SkillTier, &SkillEntry)> {
         self.workspace
             .get(id)

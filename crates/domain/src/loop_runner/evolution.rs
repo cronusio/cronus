@@ -1,4 +1,4 @@
-//! The evolution-loop runner (LG-1 composition, LG-8): wraps
+//! The evolution-loop runner: wraps
 //! EVALUATE→ANALYZE→IMPROVE, nesting the execution-loop runner to score each
 //! candidate. The evaluation pipeline (the oracle) stays frozen across every
 //! generation — it is never a member of the loop's own mutation manifest;
@@ -18,7 +18,7 @@ pub trait EvolutionBackend<H> {
     /// Build the execution backend that scores `harness` against one task
     /// in the task set — the inner loop. Its class stays `Execution` and it
     /// changes nothing about its own task, regardless of the outer
-    /// evolution loop (LG-1 composition).
+    /// evolution loop.
     fn execution_backend_for(&mut self, harness: &H, task: &str) -> Box<dyn ExecutionBackend>;
 
     /// IMPROVE: produce a candidate harness, the mutations it represents
@@ -27,7 +27,7 @@ pub trait EvolutionBackend<H> {
     fn improve(&mut self, harness: &H) -> (H, Vec<Mutation>, HashSet<String>);
 }
 
-/// A generation's keep/revert/partial verdict (LG-8: an evolution loop
+/// A generation's keep/revert/partial verdict (an evolution loop
 /// scores a predicted-flip set against what actually happened).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenerationVerdict {
@@ -56,7 +56,7 @@ pub fn score_generation(
     }
 }
 
-/// One generation's ledger entry (LG-8 — an evolution loop's ledger carries
+/// One generation's ledger entry (an evolution loop's ledger carries
 /// the predicted-flip field an execution loop's ledger omits).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerationRecord {
@@ -72,7 +72,7 @@ pub struct EvolutionReport<H> {
     pub generations_run: u32,
 }
 
-/// EVALUATE: nest `run_execution` per task in the task set (LG-1
+/// EVALUATE: nest `run_execution` per task in the task set (nested
 /// composition) to derive the set of tasks the harness currently passes.
 fn evaluate<H>(
     backend: &mut dyn EvolutionBackend<H>,
@@ -93,11 +93,11 @@ fn evaluate<H>(
 
 /// EVALUATE→ANALYZE→IMPROVE: scores the harness (nesting `run_execution` per
 /// task), calls IMPROVE for a manifest-bounded candidate, scores
-/// predicted-vs-actual flips (LG-8), and keeps the candidate only on a
+/// predicted-vs-actual flips, and keeps the candidate only on a
 /// `Keep` verdict. An IMPROVE mutation outside the declared manifest is
 /// rejected outright — never adopted, never scored. Held-out transfer
 /// validation for a criteria change or self-modification is the escalation
-/// gate's job (§4.6), not this ordinary per-generation cycle.
+/// gate's job, not this ordinary per-generation cycle.
 pub fn run_evolution<H: Clone>(
     spec: &LoopSpec,
     inner_spec: &LoopSpec,

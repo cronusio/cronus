@@ -145,7 +145,7 @@ export interface CommandPaletteProps {
   onGoToOffice?: (id: string) => void;
   onGoToSubsystem?: (tab: SidebarTab) => void;
   onOpenSettings?: () => void;
-  /** Bound actions from the shell registry, already INV-9-filtered. */
+  /** Bound actions from the shell registry, already filtered to shipped capabilities. */
   actions?: readonly {
     id: string;
     label: string;

@@ -1,5 +1,5 @@
 /**
- * The session domain (spec §4.2) — per-projection request status, derived.
+ * The session domain — per-projection request status, derived.
  *
  * The truth is the projection stores; this is an index over their kinds, so a
  * surface composing several projections can read one aggregate "loading" or

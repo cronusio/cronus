@@ -9,7 +9,7 @@
 //! shell composes the same `InvocableRegistry`/`Dispatcher` the CLI and TUI
 //! compose through `cronus_core::invocable_bootstrap::bootstrap` — no private
 //! path — and every dispatched `Outcome` is masked by the dispatcher's own
-//! boundary (`Dispatcher::set_secrets`, INV-7), not by a second, bridge-local
+//! boundary (`Dispatcher::set_secrets`), not by a second, bridge-local
 //! redaction call. The shell only marshals: no domain logic, no re-implemented
 //! dispatch.
 
@@ -69,7 +69,7 @@ impl<C: Capabilities> Bridge<C> {
         self.mask(&self.core.status())
     }
 
-    /// Every descriptor a frontend may project (SP-11): the same predicate
+    /// Every descriptor a frontend may project: the same predicate
     /// every surface's own catalog is filtered through, not a second
     /// hand-rolled list local to this shell.
     pub fn catalog(&self) -> Vec<Invocable> {
@@ -81,12 +81,12 @@ impl<C: Capabilities> Bridge<C> {
     }
 
     /// Dispatch one call through the shared boundary. `Ok(None)` is the
-    /// registry's real `Unknown` answer (SP-13) — never fabricated as a
+    /// registry's real `Unknown` answer — never fabricated as a
     /// failure; the caller's own catalog refresh on that answer is this
     /// task's own sibling concern, not this method's. The caller identity
     /// is asserted here as [`Surface::Desktop`], never accepted from the
     /// wire — the executable face marshals a payload, not an identity claim
-    /// (SP-12's own reasoning extended from shape to identity).
+    /// (the same reasoning, extended from shape to identity).
     pub fn invoke(
         &self,
         id: String,
@@ -147,7 +147,7 @@ pub fn capability_catalog(bridge: tauri::State<'_, CoreBridge>) -> Vec<Invocable
 
 /// IPC: `capability_invoke` — dispatch one call through the shared
 /// registry/dispatcher boundary. `Ok(None)` means the id named nothing the
-/// registry currently knows (SP-13's `Unknown`) — the caller's job is to
+/// registry currently knows (the `Unknown` answer) — the caller's job is to
 /// refresh its catalog, not render a failure.
 #[tauri::command]
 pub fn capability_invoke(

@@ -2,10 +2,10 @@
 //!
 //! A round collects independent arguments (gathered in parallel by the
 //! orchestration wave; here they arrive pre-generated so no participant reads
-//! another before synthesis, DL-1), the orchestrator synthesizes a final decision
-//! with attribution (DL-3, no vote), and the round is appended immutably to the
-//! deliberation log (DL-4). Over-budget arguments are truncated with a visible
-//! marker (DL-5). Participant selection maximizes specialty diversity (DL-2).
+//! another before synthesis), the orchestrator synthesizes a final decision
+//! with attribution (no vote), and the round is appended immutably to the
+//! deliberation log. Over-budget arguments are truncated with a visible
+//! marker. Participant selection maximizes specialty diversity.
 //!
 //! The parallel argument generation and the inbox-backed log store are seams; the
 //! algebra of the round is implemented and tested here.
@@ -19,7 +19,7 @@ pub struct Argument {
     pub key_points: Vec<String>,
     /// 0–100 self-declared confidence.
     pub confidence: u8,
-    /// Whether this argument was cut short by the budget (DL-5).
+    /// Whether this argument was cut short by the budget.
     pub truncated: bool,
 }
 
@@ -36,7 +36,7 @@ pub struct RoundEntry {
     pub truncated: bool,
 }
 
-/// The append-only deliberation log (DL-4). Exposes append + read; no update or
+/// The append-only deliberation log. Exposes append + read; no update or
 /// delete path exists, so a past decision cannot be retroactively edited.
 #[derive(Debug, Default)]
 pub struct DeliberationLog {
@@ -65,7 +65,7 @@ impl DeliberationLog {
     }
 }
 
-/// Select up to `n` participants maximizing distinct specialty coverage (DL-2).
+/// Select up to `n` participants maximizing distinct specialty coverage.
 /// Preserves input order among first-seen specialties; a repeated specialty is
 /// skipped until distinct ones are exhausted.
 pub fn select_participants(candidates: &[(String, String)], n: usize) -> Vec<(String, String)> {
@@ -94,7 +94,7 @@ pub fn select_participants(candidates: &[(String, String)], n: usize) -> Vec<(St
     chosen
 }
 
-/// Truncate an argument to a per-argument key-point budget, marking it (DL-5).
+/// Truncate an argument to a per-argument key-point budget, marking it.
 pub fn apply_budget(mut arg: Argument, max_points: usize) -> Argument {
     if arg.key_points.len() > max_points {
         arg.key_points.truncate(max_points);
@@ -104,8 +104,8 @@ pub fn apply_budget(mut arg: Argument, max_points: usize) -> Argument {
 }
 
 /// Run a deliberation round: the orchestrator synthesizes the pre-generated
-/// independent arguments into a decision (DL-3, no vote), and the round is appended
-/// immutably to the log (DL-4). Returns the decision string.
+/// independent arguments into a decision (no vote), and the round is appended
+/// immutably to the log. Returns the decision string.
 pub fn run_round(
     log: &mut DeliberationLog,
     round_id: &str,
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn participant_selection_maximizes_specialty_diversity() {
-        // DL-2: distinct specialties are preferred over repeats.
+        // Distinct specialties are preferred over repeats.
         let candidates = vec![
             ("alice".into(), "backend".into()),
             ("bob".into(), "backend".into()),
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn budget_truncates_argument_with_marker() {
-        // DL-5: an over-budget argument is truncated and marked, not dropped.
+        // An over-budget argument is truncated and marked, not dropped.
         let a = arg("alice", &["p1", "p2", "p3", "p4"]);
         let bounded = apply_budget(a, 2);
         assert_eq!(bounded.key_points.len(), 2);
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn round_appends_immutably_with_orchestrator_decision() {
-        // DL-3 + DL-4: the orchestrator's decision is recorded; log is append-only.
+        // The orchestrator's decision is recorded; log is append-only.
         let mut log = DeliberationLog::new();
         let args = vec![arg("alice", &["use sqlite"]), arg("bob", &["use postgres"])];
         let decision = run_round(

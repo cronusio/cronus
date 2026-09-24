@@ -1,7 +1,7 @@
 //! Facade wiring for the developer office: the real git/filesystem read the
 //! pure `dev_office` domain gate depends on but never performs itself
-//! (repository-authenticity, DVO-2), the admission read over
-//! `cronus-auth-local` (DVO-3), and the trigger-loaded module wiring (DVO-4)
+//! (repository-authenticity), the admission read over
+//! `cronus-auth-local`, and the trigger-loaded module wiring
 //! — the tier model has no edge from `domain` to either adapter, so all
 //! three live here. Local-only — this module never opens a socket.
 
@@ -27,7 +27,7 @@ const CANONICAL_UPSTREAM: &str = "https://github.com/cronusio/cronus";
 /// its bound remote from the local git config, and compares it against
 /// [`CANONICAL_UPSTREAM`]. Conservative on ambiguity: a multi-remote config
 /// with no single unambiguous candidate resolves `NotCanonical`, matching
-/// fail-closed handling elsewhere in this gate (AT-6).
+/// fail-closed handling elsewhere in this gate.
 pub fn repo_authenticity(cwd: &Path) -> RepoAuthenticity {
     let Some(git_dir) = find_worktree_marker(cwd) else {
         return RepoAuthenticity::NotARepo;
@@ -158,7 +158,7 @@ fn normalize_git_url(url: &str) -> String {
 }
 
 /// Wraps the `cronus-auth-local` admission store as the domain gate's
-/// read-only [`AdmissionReader`] port — the facade-side half of DVO-3's
+/// read-only [`AdmissionReader`] port — the facade-side half of the
 /// "admission read over auth-local" split. Exposes only the read method;
 /// minting/revoking stays on [`DeveloperAdmissionStore`] itself, reachable
 /// only via a `HumanPrincipal` a human-operated entry point constructs.
@@ -186,7 +186,7 @@ impl AdmissionReader for AuthLocalAdmissionReader {
 
 const DEV_OFFICE_MODULE_ID: &str = "dev-office";
 
-/// The dev office's trigger-loaded module (DVO-4). Composes the shared
+/// The dev office's trigger-loaded module. Composes the shared
 /// existing extensions loader instead of inventing a parallel one — the module
 /// is a single `ExtensionRegistry` entry toggled Active/Inactive by
 /// [`DevOfficeModule::sync`].
@@ -224,8 +224,8 @@ impl DevOfficeModule {
     }
 
     /// Re-evaluate the trigger and load/unload to match it. **Never caches**
-    /// a remembered "was elevated" value (DVO-4 observe-not-remember,
-    /// mirroring background-activation's BA-8 rule) — the caller re-derives
+    /// a remembered "was elevated" value (observe, don't remember,
+    /// mirroring background-activation's rule) — the caller re-derives
     /// `tier` fresh from [`cronus_domain::dev_office::DevOfficeGate::resolve`]
     /// on every input-changing event (app start, connection trigger,
     /// admission mint/revoke, workspace change) and passes it in here; this
@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn the_gate_result_is_never_cached_across_alternating_syncs() {
-        // DVO-4 observe-not-remember: the module must track live re-evaluated
+        // Observe, don't remember: the module must track live re-evaluated
         // input, not a stored "was elevated" flag — proven by toggling
         // several times and checking `is_loaded()` reflects each toggle.
         let mut module = DevOfficeModule::new();

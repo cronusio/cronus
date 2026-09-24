@@ -3,7 +3,7 @@
 //! at least one perturbation, and no file leaks a reference to the
 //! project's own planning/specification layer — a scenario ships with the
 //! product and must run in a checkout where that layer is entirely absent
-//! (`l1-usage-simulation` USM-9's companion-artifact discipline; the
+//! (the companion-artifact discipline; the
 //! reference-containment rule that discipline rests on).
 
 use std::path::{Path, PathBuf};

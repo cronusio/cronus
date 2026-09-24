@@ -1,5 +1,5 @@
-//! Office-archetype invariant acceptance sweep (
-//! OA-1…OA-11) — the closing validation for this subsystem. Each testable
+//! Office-archetype invariant acceptance sweep —
+//! the closing validation for this subsystem. Each testable
 //! invariant maps to one named test, exercised through the **real facade
 //! export chain** (`cronus_core::archetype::{...}`) — proving the assembled
 //! re-export composes, not just that each domain module works in isolation.
@@ -7,8 +7,8 @@
 //! The deep unit-level proof for every invariant lives in
 //! `crates/domain/src/archetype/{schema,catalog,selection,deviation}.rs`'s own
 //! 24 tests, and the real CLI wiring in `crates/cli/tests/cli_smoke.rs`'s 4
-//! binary-spawning tests. **OA-5** (imported-archetype content vetting) is
-//! deferred this phase — §4.7 depends on the admission-vetting gate — and is
+//! binary-spawning tests. **Imported-archetype content vetting** is
+//! deferred this phase — it depends on the admission-vetting gate — and is
 //! cited here rather than tested.
 
 use cronus_core::archetype::{
@@ -17,7 +17,7 @@ use cronus_core::archetype::{
     validate_definition_keys,
 };
 
-// --- OA-1: a prior, not a roster — no "hire these" field, empty seed --------
+// --- A prior, not a roster — no "hire these" field, empty seed --------
 
 #[test]
 fn oa1_the_shipped_archetype_carries_no_hire_field_and_seeds_no_one() {
@@ -29,7 +29,7 @@ fn oa1_the_shipped_archetype_carries_no_hire_field_and_seeds_no_one() {
     assert!(!def.pool.is_empty());
 }
 
-// --- OA-2: bounded, justified seed ------------------------------------------
+// --- Bounded, justified seed ------------------------------------------
 
 #[test]
 fn oa2_a_seed_over_the_cap_or_without_justification_fails() {
@@ -62,7 +62,7 @@ fn oa2_a_seed_over_the_cap_or_without_justification_fails() {
     );
 }
 
-// --- OA-3: a hire outside the pool succeeds and is recorded, never refused ---
+// --- A hire outside the pool succeeds and is recorded, never refused ---
 
 #[test]
 fn oa3_a_hire_outside_the_pool_is_recorded_not_refused() {
@@ -74,7 +74,7 @@ fn oa3_a_hire_outside_the_pool_is_recorded_not_refused() {
     assert_eq!(dev.hired_outside_pool, 1);
 }
 
-// --- OA-4: a fifth schema key is unrepresentable ----------------------------
+// --- A fifth schema key is unrepresentable ----------------------------
 
 #[test]
 fn oa4_an_authority_key_fails_the_closed_schema_gate() {
@@ -92,7 +92,7 @@ fn oa4_an_authority_key_fails_the_closed_schema_gate() {
     );
 }
 
-// --- OA-6: preset/custom split records derived_from -------------------------
+// --- preset/custom split records derived_from -------------------------
 
 #[test]
 fn oa6_create_from_preset_records_derived_from_and_leaves_the_source_untouched() {
@@ -110,7 +110,7 @@ fn oa6_create_from_preset_records_derived_from_and_leaves_the_source_untouched()
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// --- OA-7: inference is silent; inconclusive → archetype-free ---------------
+// --- Inference is silent; inconclusive → archetype-free ---------------
 
 #[test]
 fn oa7_inference_is_confident_on_software_intent_and_inconclusive_otherwise() {
@@ -125,7 +125,7 @@ fn oa7_inference_is_confident_on_software_intent_and_inconclusive_otherwise() {
     );
 }
 
-// --- OA-8: one active; set touches no staff ---------------------------------
+// --- One active; set touches no staff ---------------------------------
 
 #[test]
 fn oa8_set_and_clear_touch_only_the_archetype_record() {
@@ -136,7 +136,7 @@ fn oa8_set_and_clear_touch_only_the_archetype_record() {
     assert!(office.is_archetype_free());
 }
 
-// --- OA-9: three counters + the unvalidated state ---------------------------
+// --- Three counters + the unvalidated state ---------------------------
 
 #[test]
 fn oa9_an_unobserved_archetype_is_unvalidated_never_correct() {
@@ -148,7 +148,7 @@ fn oa9_an_unobserved_archetype_is_unvalidated_never_correct() {
     assert!(matches!(agg2.status(), ValidationStatus::Validated { .. }));
 }
 
-// --- OA-10: an unknown role id rejects the archetype (why two are blocked) --
+// --- An unknown role id rejects the archetype (why two are blocked) --
 
 #[test]
 fn oa10_an_unknown_role_id_rejects_the_archetype() {
@@ -166,7 +166,7 @@ fn oa10_an_unknown_role_id_rejects_the_archetype() {
     assert!(catalog.blocked_status("advertising-agency").is_some());
 }
 
-// --- OA-11: the archetype-free office is a complete state --------------------
+// --- The archetype-free office is a complete state --------------------
 
 #[test]
 fn oa11_the_archetype_free_office_is_a_complete_default() {

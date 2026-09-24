@@ -1,4 +1,4 @@
-//! Telemetry (TEL-1…5): opt-in, program-data-only improvement metrics. Off
+//! Telemetry: opt-in, program-data-only improvement metrics. Off
 //! by default; nothing is recorded until the user opts in, and opting out
 //! drops whatever was queued — "off" means off, not "silently accumulating
 //! for later." Sending itself is a separate, gated step this module does
@@ -7,11 +7,11 @@
 //!
 //! `MetricPayload` structurally excludes user content: it carries only
 //! counters, durations, and booleans — there is no string/free-text field a
-//! caller could put project content into (TEL-2). The one string on
+//! caller could put project content into. The one string on
 //! [`MetricEvent`] (`name`) is checked against a closed allowlist before a
 //! record is ever accepted.
 
-/// Known program-metric identifiers (§4 "ALLOW: allowlist filter"). A name
+/// Known program-metric identifiers (the allowlist filter). A name
 /// outside this set is rejected before it ever reaches the queue.
 pub const KNOWN_METRIC_NAMES: &[&str] = &[
     "startup",
@@ -26,7 +26,7 @@ pub const KNOWN_METRIC_NAMES: &[&str] = &[
 
 /// The value shape for a metric. Every variant is a plain number/bool —
 /// there is no variant that could carry a file path, a prompt, or any other
-/// user content (TEL-2 by construction, not by convention).
+/// user content (by construction, not by convention).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MetricPayload {
     Latency { duration_ms: u64 },
@@ -44,7 +44,7 @@ pub struct MetricEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnknownMetric;
 
-/// Local telemetry queue. `opted_in` defaults to `false` (TEL-1); recording
+/// Local telemetry queue. `opted_in` defaults to `false`; recording
 /// itself is gated on opt-in — before opting in there is nothing
 /// telemetry-side to inspect or send, which keeps "off" an honest default
 /// rather than a silent local accumulation the user never agreed to start.
@@ -63,7 +63,7 @@ impl TelemetryStore {
         self.opted_in
     }
 
-    /// TEL-1: flip the master switch. Opting out drops any queued events —
+    /// Flip the master switch. Opting out drops any queued events —
     /// nothing recorded while previously opted in survives a withdrawal of
     /// consent.
     pub fn set_opt_in(&mut self, opted_in: bool) {
@@ -96,13 +96,13 @@ impl TelemetryStore {
         Ok(())
     }
 
-    /// TEL-3 transparency: exactly what would be sent, inspectable at any time.
+    /// Transparency: exactly what would be sent, inspectable at any time.
     pub fn inspect(&self) -> &[MetricEvent] {
         &self.queued
     }
 
     /// Drain the queue for sending. Sending is the caller's job (through the
-    /// security egress gate, TEL-5) — this only hands over the batch, and
+    /// security egress gate) — this only hands over the batch, and
     /// only while opted in.
     pub fn drain_for_send(&mut self) -> Vec<MetricEvent> {
         if !self.opted_in {
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn payload_shape_carries_no_free_text_field() {
-        // Structural guarantee (TEL-2): every payload variant is a number or
+        // Structural guarantee: every payload variant is a number or
         // bool. This test exists to make the guarantee explicit and to fail
         // loudly (a compile error) if a future edit adds a string field.
         let _latency = MetricPayload::Latency { duration_ms: 0 };

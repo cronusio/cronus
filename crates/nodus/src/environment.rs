@@ -25,14 +25,14 @@ use std::collections::BTreeMap;
 
 // ─── Core types ────────────────────────────────────────────────────────────────
 
-/// Stable identifier for one task in an environment's catalog (NE-6).
+/// Stable identifier for one task in an environment's catalog.
 pub type TaskId = String;
 
-/// Deterministic seed for `open`/`reset` (NE-2).
+/// Deterministic seed for `open`/`reset`.
 pub type Seed = u64;
 
 /// What the environment hands back after `reset`/`step`. Opaque to nodus core —
-/// its shape is the environment's `profile()` concern (LP-4).
+/// its shape is the environment's `profile()` concern.
 #[derive(Debug, Clone)]
 pub struct Observation(pub Value);
 
@@ -40,7 +40,7 @@ pub struct Observation(pub Value);
 #[derive(Debug, Clone)]
 pub struct Action(pub Value);
 
-/// An isolated per-run environment handle (NE-7). Each `open()` call returns a
+/// An isolated per-run environment handle. Each `open()` call returns a
 /// fresh, independent value — no shared mutable state is reachable through it.
 /// Constructed by an [`EnvironmentProvider`] implementation inside `open`; hosts
 /// writing their own provider use [`Instance::new`].
@@ -70,13 +70,13 @@ impl Instance {
 
 // ─── Reward ───────────────────────────────────────────────────────────────────
 
-/// Typed, non-control grading outcome (NE-5). Never bound to a workflow
+/// Typed, non-control grading outcome. Never bound to a workflow
 /// variable and never branched on mid-run; a low score is not a run failure
 /// and a high score is not a run success — grading and run status are
 /// orthogonal axes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Reward {
-    /// `None` = ungraded (NE-9 no-op default — a host that supplies no scorer
+    /// `None` = ungraded (no-op default — a host that supplies no scorer
     /// still produces a valid, honestly-absent reward).
     pub score: Option<f64>,
     /// Host-defined breakdown. Data-safety bounded like [`crate::observability::FieldDescriptor`] —
@@ -85,32 +85,32 @@ pub struct Reward {
 }
 
 impl Reward {
-    /// The NE-9 no-op reward: absent score, empty metadata.
+    /// The no-op reward: absent score, empty metadata.
     pub fn no_op() -> Self {
         Reward::default()
     }
 }
 
-// ─── Grading mode (NE-11) ───────────────────────────────────────────────────────
+// ─── Grading mode ───────────────────────────────────────────────────────
 
-/// Closed set of ways `evaluate` may produce its [`Reward`] (NE-11).
+/// Closed set of ways `evaluate` may produce its [`Reward`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GradingMode {
     /// A deterministic checker over the frozen trajectory / final state.
     #[default]
     Automated,
     /// A model scores against a published rubric (function-scoped auxiliary
-    /// role, NE-8 — never the workflow's own policy model).
+    /// role — never the workflow's own policy model).
     Judge,
     /// The checker runs first as a floor; a judge runs only where the checker
     /// passed and may lower but never rescue a checker-failed result.
     Hybrid,
 }
 
-/// Compose a checker result and an optional judge result per `mode` (NE-11).
+/// Compose a checker result and an optional judge result per `mode`.
 ///
 /// `checker_passed` is the host's own explicit pass/fail verdict — nodus never
-/// infers pass/fail from `checker.score` (NE-9 metric neutrality: nodus owns no
+/// infers pass/fail from `checker.score` (metric neutrality: nodus owns no
 /// scoring semantics, so it cannot invent a numeric pass threshold).
 ///
 /// - `Automated` returns `checker` unchanged; `judge` is ignored.
@@ -150,12 +150,12 @@ pub fn grade(
     }
 }
 
-// ─── Budget (NE-13) ─────────────────────────────────────────────────────────────
+// ─── Budget ─────────────────────────────────────────────────────────────
 
-/// Fixed resource ceiling a graded run is uniformly halted at (NE-13). Any
+/// Fixed resource ceiling a graded run is uniformly halted at. Any
 /// subset of fields may be set; `None` fields impose no limit.
 ///
-/// `max_tokens` is accepted here for profile-identity completeness (NE-13
+/// `max_tokens` is accepted here for profile-identity completeness (the design
 /// requires the declared budget to travel with the archived candidate even
 /// when a component is unenforced) but is **not yet enforced** by
 /// `run_with_environment` — no token-accounting seam exists on
@@ -169,23 +169,23 @@ pub struct Budget {
     pub max_tokens: Option<u64>,
 }
 
-// ─── Profile (NE-6) ─────────────────────────────────────────────────────────────
+// ─── Profile ─────────────────────────────────────────────────────────────
 
 /// What an environment publishes before any run: the interchangeability
 /// contract two environments must share to be substitutable for the same
-/// workflow (NE-6).
+/// workflow.
 #[derive(Debug, Clone)]
 pub struct EnvironmentProfile {
     /// Orthogonal slice labels (e.g. `capability`, `complexity`) — declared on
-    /// the task, not inferred, so a slice is stable across runs (§4.7).
+    /// the task, not inferred, so a slice is stable across runs.
     pub labels: BTreeMap<String, String>,
-    /// How `evaluate` grades a run against this profile (NE-11).
+    /// How `evaluate` grades a run against this profile.
     pub grading: GradingMode,
-    /// Fixed resource ceiling, if any (NE-13). `None` behaves as today.
+    /// Fixed resource ceiling, if any. `None` behaves as today.
     pub budget: Option<Budget>,
-    /// Identity of the host encoder `budget.max_tokens` is denominated in
-    /// (NE-14). Opaque to the crate — no tokenizer or counting rule in core
-    /// (LP-1/LP-2). A profile whose budget carries no `max_tokens` needs no
+    /// Identity of the host encoder `budget.max_tokens` is denominated in.
+    /// Opaque to the crate — no tokenizer or counting rule in core
+    /// . A profile whose budget carries no `max_tokens` needs no
     /// measure and is unaffected by leaving this `None`.
     pub token_measure: Option<String>,
 }
@@ -205,49 +205,49 @@ impl EnvironmentProfile {
 
 // ─── EnvironmentProvider ────────────────────────────────────────────────────────
 
-/// Host-implemented task environment (NE-1). Nodus core ships exactly one
+/// Host-implemented task environment. Nodus core ships exactly one
 /// built-in deterministic environment ([`StubEnvironment`]) for in-process
-/// testing; concrete worlds live outside the crate (LP-2).
+/// testing; concrete worlds live outside the crate.
 ///
-/// # Lifecycle (NE-2)
+/// # Lifecycle
 ///
 /// `open` → `reset` → (optionally `step`, zero or more times) → `evaluate` →
 /// `release`. `release` is mandatory and MUST be idempotent — implementations
 /// must tolerate a second call on an already-released instance as a no-op.
 /// `reset`/`step` are deterministic given `(task, seed, prior actions)`.
 pub trait EnvironmentProvider {
-    /// The addressable task catalog (NE-6).
+    /// The addressable task catalog.
     fn task_ids(&self) -> Vec<TaskId>;
 
-    /// The interchangeability contract for this environment (NE-6).
+    /// The interchangeability contract for this environment.
     fn profile(&self) -> EnvironmentProfile;
 
-    /// Open a fresh, isolated instance for `task`/`seed` (NE-2/NE-7).
+    /// Open a fresh, isolated instance for `task`/`seed`.
     fn open(&self, task: &TaskId, seed: Seed) -> Instance;
 
-    /// Produce the initial observation. Deterministic given `(task, seed)` (NE-2).
+    /// Produce the initial observation. Deterministic given `(task, seed)`.
     fn reset(&self, inst: &mut Instance) -> Observation;
 
     /// Apply `action`, produce the resulting observation. Deterministic given
-    /// `(task, seed, prior actions)` (NE-2). Not called by the v1
+    /// `(task, seed, prior actions)`. Not called by the v1
     /// `run_with_environment` combinator (see module docs); available for a
     /// host to drive directly.
     fn step(&self, inst: &mut Instance, action: Action) -> Observation;
 
-    /// Grade a completed, frozen run (NE-4). Read-only: MUST NOT mutate `inst`
+    /// Grade a completed, frozen run. Read-only: MUST NOT mutate `inst`
     /// or the run it grades. Two calls over the same frozen instance MUST
     /// return equal rewards.
     fn evaluate(&self, inst: &Instance) -> Reward;
 
     /// Release `inst`. Mandatory; MUST be idempotent — a second call on an
-    /// already-released instance is a no-op, never a panic (NE-7).
+    /// already-released instance is a no-op, never a panic.
     fn release(&self, inst: Instance);
 }
 
-/// Built-in, deterministic, no-I/O environment (NE-1). `task_ids` publishes a
+/// Built-in, deterministic, no-I/O environment. `task_ids` publishes a
 /// single stub task; `reset` produces `Value::Null`; `step` echoes its action
 /// back as the observation (a pure function of `action` alone, so determinism
-/// holds trivially); `evaluate` always returns the NE-9 no-op reward.
+/// holds trivially); `evaluate` always returns the no-op reward.
 pub struct StubEnvironment;
 
 impl EnvironmentProvider for StubEnvironment {
@@ -276,14 +276,14 @@ impl EnvironmentProvider for StubEnvironment {
     }
 
     fn release(&self, _inst: Instance) {
-        // No resources held; releasing twice is trivially a no-op (NE-7).
+        // No resources held; releasing twice is trivially a no-op.
     }
 }
 
-// ─── Instance guard (NE-7 mandatory + idempotent release) ──────────────────────
+// ─── Instance guard (mandatory + idempotent release) ──────────────────────
 
 /// Guarantees `release` runs exactly once, even if `evaluate` or a caller
-/// callback panics between `open` and the end of the run (NE-7).
+/// callback panics between `open` and the end of the run.
 pub(crate) struct InstanceGuard<'e> {
     env: &'e dyn EnvironmentProvider,
     inst: Option<Instance>,
@@ -314,18 +314,18 @@ impl Drop for InstanceGuard<'_> {
     }
 }
 
-// ─── Candidate result (NE-12) ───────────────────────────────────────────────────
+// ─── Candidate result ───────────────────────────────────────────────────
 
-/// Archivable, content-addressable outcome of one graded run (NE-12). Nodus
+/// Archivable, content-addressable outcome of one graded run. Nodus
 /// supplies only this substrate; the candidate space, mutation, search
-/// strategy, and frontier are entirely host-side (LP-1/LP-2).
+/// strategy, and frontier are entirely host-side.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CandidateResult {
     /// Deterministic digest of the canonical workflow source. A `std`-library
-    /// digest (zero-dep, LP-1) — stable within one build, **not** guaranteed
+    /// digest (zero-dep) — stable within one build, **not** guaranteed
     /// stable across Rust versions/platforms. A host requiring durable
     /// cross-version archival stability computes its own cryptographic digest
-    /// over the exposed source (LP-2), the same pattern as LP-9 attestation.
+    /// over the exposed source, the same pattern as attestation.
     pub workflow_digest: String,
     /// The reward this candidate earned.
     pub reward: Reward,
@@ -335,16 +335,16 @@ pub struct CandidateResult {
     pub trajectory_ref: String,
     /// The budget this reward was earned under, if any. Rewards earned under
     /// different budgets are not comparable — a host optimizer MUST partition
-    /// its frontier by `(profile, budget)` (NE-13).
+    /// its frontier by `(profile, budget)`.
     pub budget: Option<Budget>,
     /// The measure `budget.max_tokens` was denominated in, if any. Rewards
     /// earned under different measures are not comparable either — a host
     /// optimizer MUST partition its frontier by `(profile, budget, measure)`,
-    /// never `(profile, budget)` alone (NE-14).
+    /// never `(profile, budget)` alone.
     pub token_measure: Option<String>,
 }
 
-/// Digest of raw `source` text (NE-12), under the same versioned scheme as
+/// Digest of raw `source` text, under the same versioned scheme as
 /// [`crate::executor::digest_ast`]. Used only when `source` does not parse into
 /// a workflow, so there is no AST to take an identity from.
 fn digest_source(source: &str) -> String {
@@ -355,19 +355,19 @@ fn digest_source(source: &str) -> String {
 
 /// The result of one `run_with_environment` cycle: the workflow's own
 /// [`RunResult`] plus the [`Reward`], returned alongside — never bound into
-/// `RunResult.vars` (NE-5).
+/// `RunResult.vars`.
 #[derive(Debug)]
 pub struct EnvRunResult {
     pub result: RunResult,
     pub reward: Reward,
     /// `true` when the run was uniformly halted by the profile's [`Budget`]
     /// rather than reaching a natural terminal state — a normal graded
-    /// outcome (NE-13), reflected in `result.status == Status::Partial`.
+    /// outcome, reflected in `result.status == Status::Partial`.
     pub budget_halted: bool,
 }
 
 impl EnvRunResult {
-    /// Build an archivable candidate tuple (NE-12). `workflow_source` is the
+    /// Build an archivable candidate tuple. `workflow_source` is the
     /// source the caller ran, hashed for `workflow_digest` at the AST level —
     /// the same `digest_ast` computation `ReproRecipe.workflow_digest` uses,
     /// so a `CandidateResult` and a `RunManifest` for the same run agree on
@@ -453,7 +453,7 @@ mod tests {
         let inst2 = env.open(&"t1".to_string(), 1);
         env.release(inst1);
         // A second release (on an independently-opened, isolated instance)
-        // must not panic — this is the idempotency contract (NE-7).
+        // must not panic — this is the idempotency contract.
         env.release(inst2);
     }
 
@@ -468,7 +468,7 @@ mod tests {
         assert_eq!(inst_b.seed(), 2);
     }
 
-    // ── InstanceGuard release-always-runs (NE-7) ─────────────────────────────
+    // ── InstanceGuard release-always-runs ─────────────────────────────
 
     struct CountingEnv {
         released: std::cell::RefCell<u32>,
@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(*env.released.borrow(), 1);
     }
 
-    // ── Grading modes (NE-11) ──────────────────────────────────────
+    // ── Grading modes ──────────────────────────────────────
 
     fn reward(score: f64) -> Reward {
         Reward {
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(out, Reward::no_op());
     }
 
-    // ── Candidate digest (NE-12) ───────────────────────────────────
+    // ── Candidate digest ───────────────────────────────────
 
     #[test]
     fn same_source_same_digest() {
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn candidate_digest_falls_back_to_source_hash_when_unparseable() {
-        // NE-12/HO-20 unification: candidate() prefers digest_ast, but an
+        // Digest unification: candidate() prefers digest_ast, but an
         // unparseable workflow_source (the caller passed something other than
         // what it actually ran) must degrade to the old digest_source hash
         // rather than panicking or silently producing an empty/placeholder

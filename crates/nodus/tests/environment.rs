@@ -1,12 +1,11 @@
-//! Integration tests for the Environment/Evaluation contract
-//! (NE-1…NE-13).
+//! Integration tests for the Environment/Evaluation contract.
 //!
 //! Covers, end-to-end through the public `workflows::run_with_environment*`
 //! surface: deterministic replay, the frozen-evaluation boundary (evaluate
 //! strictly after execute, release always last), idempotent/guaranteed
-//! release, the NE-10 manifest fail-fast gate (no instance opened on
-//! rejection), the NE-11 hybrid grading floor, the NE-13 budget halt, and the
-//! NE-12 candidate digest.
+//! release, the manifest fail-fast gate (no instance opened on
+//! rejection), the hybrid grading floor, the budget halt, and the
+//! candidate digest.
 
 use nodus::environment::{
     Action, Budget, EnvironmentProfile, EnvironmentProvider, GradingMode, Instance, Observation,
@@ -87,7 +86,7 @@ impl EnvironmentProvider for InstrumentedEnv {
     }
 }
 
-// ─── Deterministic replay (NE-2) ─────────────────────────────────────────────
+// ─── Deterministic replay ─────────────────────────────────────────────
 
 #[test]
 fn deterministic_replay_same_task_seed_same_observation() {
@@ -122,7 +121,7 @@ fn deterministic_replay_same_task_seed_same_observation() {
     assert_eq!(a.reward, b.reward);
 }
 
-// ─── Frozen-evaluation boundary (NE-4) ───────────────────────────────────────
+// ─── Frozen-evaluation boundary ───────────────────────────────────────
 
 #[test]
 fn evaluate_runs_strictly_after_execute_release_runs_last() {
@@ -149,7 +148,7 @@ fn evaluate_runs_strictly_after_execute_release_runs_last() {
 
 #[test]
 fn two_evaluate_calls_over_one_frozen_instance_agree() {
-    // Direct trait-level check: evaluate is a pure read-only projection (NE-4).
+    // Direct trait-level check: evaluate is a pure read-only projection.
     let env = StubEnvironment;
     let inst = env.open(&"__stub__".to_string(), 1);
     let r1 = env.evaluate(&inst);
@@ -158,7 +157,7 @@ fn two_evaluate_calls_over_one_frozen_instance_agree() {
     env.release(inst);
 }
 
-// ─── NE-10 manifest fail-fast — no instance opened on rejection ─────────────
+// ─── manifest fail-fast — no instance opened on rejection ─────────────
 
 #[test]
 fn missing_environment_role_rejects_before_open() {
@@ -193,7 +192,7 @@ fn missing_environment_role_rejects_before_open() {
     assert_eq!(
         *env.opened.lock().unwrap(),
         0,
-        "env.open must never be called when the manifest is unsatisfiable (NE-10)"
+        "env.open must never be called when the manifest is unsatisfiable"
     );
     assert!(
         env.calls.lock().unwrap().is_empty(),
@@ -223,7 +222,7 @@ fn builtin_host_satisfies_environment_role() {
     );
 }
 
-// ─── NE-11 hybrid grading floor (composition, exercised via public `grade`) ──
+// ─── hybrid grading floor (composition, exercised via public `grade`) ──
 
 #[test]
 fn hybrid_floor_end_to_end() {
@@ -247,7 +246,7 @@ fn hybrid_floor_end_to_end() {
     );
 }
 
-// ─── NE-13 budget halt is a normal outcome, not an error ─────────────────────
+// ─── budget halt is a normal outcome, not an error ─────────────────────
 
 #[test]
 fn max_steps_budget_halts_with_partial_status() {
@@ -305,7 +304,7 @@ fn max_steps_budget_halts_with_partial_status() {
     assert_eq!(
         result.result.status,
         Status::Partial,
-        "a budget halt is a normal graded outcome (NE-13), never Failed"
+        "a budget halt is a normal graded outcome, never Failed"
     );
     assert_eq!(
         result.result.log.len(),
@@ -313,7 +312,7 @@ fn max_steps_budget_halts_with_partial_status() {
         "exactly max_steps steps may execute; log: {:?}",
         result.result.log
     );
-    // evaluate still runs over the partial run and produces a reward (NE-4/NE-13).
+    // evaluate still runs over the partial run and produces a reward.
     assert_eq!(result.reward.score, Some(0.5));
 }
 
@@ -340,7 +339,7 @@ fn no_budget_behaves_as_today() {
     );
 }
 
-// ─── NE-12 candidate digest ───────────────────────────────────────────────────
+// ─── candidate digest ───────────────────────────────────────────────────
 
 #[test]
 fn candidate_digest_deterministic_and_content_addressed() {
@@ -403,7 +402,7 @@ impl AuditProvider for ManifestCapture {
 
 #[test]
 fn candidate_digest_agrees_with_repro_recipe_digest() {
-    // NE-12/HO-20 unification: CandidateResult.workflow_digest and
+    // Digest unification: CandidateResult.workflow_digest and
     // ReproRecipe.workflow_digest are built from two independent call sites
     // (environment.rs vs. executor.rs) and never cross-checked in production
     // code — this is the test that makes "they agree" a proven fact rather
@@ -467,7 +466,7 @@ fn candidate_carries_token_measure() {
     );
 }
 
-// ─── NE-14 declared budget measure ────────────────────────────────────────────
+// ─── declared budget measure ────────────────────────────────────────────
 
 /// Same call-tracking shape as `InstrumentedEnv`, but its `profile()` is
 /// configurable so a test can declare a `max_tokens` budget with or without a
@@ -547,7 +546,7 @@ fn max_tokens_with_no_measure_rejects_before_workflow_runs() {
         &"t1".to_string(),
         1,
     )
-    .expect("the NE-14 gate returns an EnvRunResult, not a parse error");
+    .expect("the gate returns an EnvRunResult, not a parse error");
 
     assert_eq!(result.result.status, Status::Failed);
     assert!(
@@ -566,13 +565,13 @@ fn max_tokens_with_no_measure_rejects_before_workflow_runs() {
     assert_eq!(
         *env.opened.lock().unwrap(),
         1,
-        "env.open already ran for the frozen-boundary reset-observation shape (NE-14's check is after profile(), not before open)"
+        "env.open already ran for the frozen-boundary reset-observation shape (the check is after profile(), not before open)"
     );
     assert_eq!(
         *env.calls.lock().unwrap(),
         vec!["reset", "release"],
         "reset ran, then the rejection short-circuits before any workflow step or evaluate — \
-         but release still fires via the guard's Drop (NE-7 unaffected); calls: {:?}",
+         but release still fires via the guard's Drop (release unaffected); calls: {:?}",
         env.calls.lock().unwrap()
     );
 }
@@ -618,7 +617,7 @@ fn max_tokens_with_measure_runs_normally() {
 fn no_max_tokens_budget_is_unaffected_by_ne14() {
     // A profile with no token budget at all (or no budget) carries no measure
     // and is unaffected — the regression every other environment test already
-    // exercises implicitly; this one asserts it explicitly for NE-14.
+    // exercises implicitly; this one asserts it explicitly for the token-measure check.
     let env = MeasureEnv::new(EnvironmentProfile::empty());
     let host = HostCapabilities::builtin();
 
@@ -636,11 +635,11 @@ fn no_max_tokens_budget_is_unaffected_by_ne14() {
     assert_eq!(result.result.status, Status::Ok);
     assert!(
         env.calls.lock().unwrap().contains(&"evaluate"),
-        "an unbudgeted profile must run to completion unaffected by NE-14"
+        "an unbudgeted profile must run to completion unaffected by the token-measure check"
     );
 }
 
-// ─── Idempotent, guaranteed release (NE-7) — through the public combinator ───
+// ─── Idempotent, guaranteed release — through the public combinator ───
 
 #[test]
 fn release_runs_exactly_once_via_combinator() {

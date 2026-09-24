@@ -1,5 +1,5 @@
 /**
- * The layout record (AS-12 / spec §4.5) — the shell's restorable arrangement,
+ * The layout record — the shell's restorable arrangement,
  * versioned and kept strictly separate from content.
  *
  * `restoreLayout` is field-wise by contract: an unknown field is ignored, a

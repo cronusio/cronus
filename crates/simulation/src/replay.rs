@@ -1,6 +1,6 @@
 //! Replaying a pinned route with no agent in the loop.
 //!
-//! Realizes the guarding half of `l1-usage-simulation` USM-7: a route
+//! The guarding half of route replay: a route
 //! discovered by the expensive free-route agent runner is distilled into a
 //! [`ReplayCase`], and replaying it costs nothing more than an ordinary
 //! `cargo test` — no vantage, no judgement, no inference. Everything
@@ -155,7 +155,7 @@ mod tests {
         crate::product::test_cronus_binary();
         let mut case = init_then_status_case();
         // Deliberately wrong on purpose: `init` cannot exit 99. This is the
-        // positive control the AO-5 discipline asks for — if this test ever
+        // positive control the discipline asks for — if this test ever
         // passes, `run()` has stopped checking anything.
         case.steps[0].expect_exit = 99;
 

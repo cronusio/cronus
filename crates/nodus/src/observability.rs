@@ -43,7 +43,7 @@ impl AuditProvider for NoopAuditProvider {
     fn run_complete(&self, _manifest: RunManifest) {}
 }
 
-// ─── Aggregation-safe measurement (HO-14) ─────────────────────────────────────
+// ─── Aggregation-safe measurement ─────────────────────────────────────
 
 /// A numeric that was either genuinely measured, or explicitly could not be.
 ///
@@ -59,11 +59,11 @@ pub enum Measurement {
     Unavailable,
 }
 
-// ─── Event annotations (HO-9, HO-11, HO-16, HO-17) ────────────────────────────
+// ─── Event annotations ────────────────────────────
 
 /// Host-supplied verdict on an event's measurement, relative to that step's
-/// own history (HO-16). nodus computes no verdict, holds no history, and
-/// names no model, threshold, or window (LP-2) — it reserves only the
+/// own history. nodus computes no verdict, holds no history, and
+/// names no model, threshold, or window — it reserves only the
 /// carrier. `Unscored` is **never** `Normal`: an absent verdict is emitted as
 /// absence, matching [`Measurement::Unavailable`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ pub enum Anomaly {
 }
 
 /// Durable (part of the record) vs. transient (a live affordance, never
-/// persisted or positioned in the sequence) — HO-17. A transient event must
+/// persisted or positioned in the sequence). A transient event must
 /// **never** consume a `seq` (see [`crate::executor::Executor::emit`]'s doc
 /// comment for the load-bearing consequence). Default `Durable` — nodus
 /// emits no transients today.
@@ -88,39 +88,39 @@ pub enum Durability {
 /// Annotations that may ride any [`ExecutionEvent`] — **one carrier field per
 /// variant** rather than a separate field per concern, so the all-variant
 /// churn happens once and a future annotation is a struct field, not a
-/// tenth-variant edit. Most fields are host-supplied (HO-9 receipt, HO-11
-/// message, HO-16 anomaly, HO-17 durability); [`Self::dialog_provenance`] is
+/// tenth-variant edit. Most fields are host-supplied (receipt,
+/// message, anomaly, durability); [`Self::dialog_provenance`] is
 /// the first the crate's own dispatch logic populates directly, since only
 /// the executor — not a host observing the stream after the fact — knows
-/// which `DialogOutcome` variant resolved a step (DG-9).
+/// which `DialogOutcome` variant resolved a step.
 ///
 /// `Default` is all-`None` + `Durable`: a host declaring nothing produces a
-/// stream identical to one with no annotations at all (HO-5 preserved).
+/// stream identical to one with no annotations at all (observer neutrality preserved).
 #[derive(Debug, Clone, Default)]
 pub struct EventAnnotations {
-    /// HO-11: host-rendered one-line human projection of *this event's own*
+    /// Host-rendered one-line human projection of *this event's own*
     /// structured fields. Adds no fact the fields lack; contradicts none —
-    /// a faithful projection, not a second record. Within §4.4 (descriptors
+    /// a faithful projection, not a second record. Within the data-safety boundary (descriptors
     /// and counts, never raw content). No renderer/locale vocabulary in core.
     pub message: Option<String>,
-    /// HO-16: host-supplied verdict. `None` = not annotated at all
+    /// Host-supplied verdict. `None` = not annotated at all
     /// (distinct from `Some(Anomaly::Unscored)` = annotated as "no verdict").
     pub anomaly: Option<Anomaly>,
-    /// HO-9: opaque, secret-free, host-supplied authenticity token binding
-    /// step identity to observed result. No crypto in core (LP-2, the LP-9
+    /// Opaque, secret-free, host-supplied authenticity token binding
+    /// step identity to observed result. No crypto in core (the
     /// attestation precedent); the signing secret never enters a trace,
     /// prompt, or context.
     pub receipt: Option<String>,
-    /// HO-17: durable vs. transient.
+    /// Durable vs. transient.
     pub durability: Durability,
-    /// DG-9: whether a dialog step's `StepEnd` resolved fresh or from a host
+    /// Whether a dialog step's `StepEnd` resolved fresh or from a host
     /// durable prior decision. `None` for every non-dialog event and for a
     /// dialog step that did not resolve (`Pause`/`Timeout`/`Rejected` decide
     /// nothing, so they carry no provenance).
     pub dialog_provenance: Option<DialogProvenance>,
 }
 
-/// DG-9: the provenance of a resolved dialog answer.
+/// The provenance of a resolved dialog answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogProvenance {
     /// Resolved fresh — by a human, or a `+default`.
@@ -131,18 +131,18 @@ pub enum DialogProvenance {
 }
 
 /// A reference to the source element a produced element derived from
-/// (HO-13) — an index within the mapping domain, **never** a copy of element
-/// content (LN-8, staying inside §4.4).
+///  — an index within the mapping domain, **never** a copy of element
+/// content (staying inside the data-safety boundary).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceRef {
     pub producing_step: u32,
     pub source_index: u32,
 }
 
-// ─── Trace completeness (HO-10) ────────────────────────────────────────────────
+// ─── Trace completeness ────────────────────────────────────────────────
 
 /// Whether a persisted trace is trustworthy as a whole run, decidable from
-/// the trace alone (HO-10).
+/// the trace alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceCompleteness {
     /// A terminal manifest is present and the durable sequence has no gap.
@@ -158,10 +158,10 @@ pub enum TraceCompleteness {
 }
 
 /// Classify a trace from its durable events and (if present) terminal
-/// manifest — pure, read-side, no new emission (HO-5 untouched). Reuses
-/// §4.8's `event_count == highest seq + 1` identity as the gap test.
+/// manifest — pure, read-side, no new emission (observer neutrality untouched). Reuses
+/// the `event_count == highest seq + 1` identity as the gap test.
 ///
-/// `durable_events` must already exclude any transient events (HO-17) — this
+/// `durable_events` must already exclude any transient events — this
 /// function does not filter for you; passing a stream that still contains
 /// transients would misclassify a healthy trace as gap-damaged, since
 /// transients never consume a `seq` and would appear as holes.
@@ -183,7 +183,7 @@ pub fn classify_trace(
     }
 }
 
-/// Extract `seq` from any `ExecutionEvent` variant — every one carries it (HO-7).
+/// Extract `seq` from any `ExecutionEvent` variant — every one carries it.
 fn event_seq(event: &ExecutionEvent) -> u64 {
     match event {
         ExecutionEvent::StepStart { seq, .. }
@@ -208,7 +208,7 @@ pub enum LoopType {
     For,
     /// A `~UNTIL MAX:n` conditional loop.
     Until,
-    /// A `~MAP` collection transform (HO-13: each iteration is a true
+    /// A `~MAP` collection transform (each iteration is a true
     /// element-to-element mapping, distinct from plain iteration).
     Map,
 }
@@ -249,12 +249,12 @@ impl FieldDescriptor {
 }
 
 /// Closed set of observable execution events. Adding a new variant is a
-/// spec-level minor-version amendment (HO-6).
+/// spec-level minor-version amendment.
 ///
-/// Every variant carries `seq` (run-monotonic, dense, gap-free — HO-7),
+/// Every variant carries `seq` (run-monotonic, dense, gap-free),
 /// `correlation_id` (shared by every event of one run, equal to
-/// `RunManifest.run_id` — HO-7), and `annotations` (host-supplied receipt /
-/// message / anomaly / durability — HO-9/11/16/17). All three are assigned by
+/// `RunManifest.run_id`), and `annotations` (host-supplied receipt /
+/// message / anomaly / durability). All three are assigned by
 /// [`crate::executor::Executor`]'s single emission choke point, never by a
 /// caller — there is no public constructor that lets a caller pick any of them.
 #[derive(Debug, Clone)]
@@ -265,7 +265,7 @@ pub enum ExecutionEvent {
         step_command: String,
         /// Snapshot of variable names bound at this point (no values).
         input_vars: Vec<String>,
-        /// Definition-derived, stable cross-run identity (HO-15).
+        /// Definition-derived, stable cross-run identity.
         step_identity: String,
         seq: u64,
         correlation_id: String,
@@ -278,7 +278,7 @@ pub enum ExecutionEvent {
         /// Pipeline target names written by this step (empty if no `→`).
         output_vars: Vec<String>,
         elapsed_ms: Measurement,
-        /// Definition-derived, stable cross-run identity (HO-15).
+        /// Definition-derived, stable cross-run identity.
         step_identity: String,
         seq: u64,
         correlation_id: String,
@@ -291,9 +291,9 @@ pub enum ExecutionEvent {
         /// NODUS:* error code from the vocabulary taxonomy.
         error_code: String,
         error_detail: String,
-        /// Definition-derived, stable cross-run identity (HO-15).
+        /// Definition-derived, stable cross-run identity.
         step_identity: String,
-        /// Stable, message-independent grouping input (HO-19).
+        /// Stable, message-independent grouping input.
         fault_identity: FaultIdentity,
         seq: u64,
         correlation_id: String,
@@ -326,9 +326,9 @@ pub enum ExecutionEvent {
         iteration_number: Measurement,
         /// Variables bound for this iteration (e.g. the `~FOR` loop variable).
         bound_vars: Vec<String>,
-        /// HO-13: for a collection-mapping construct (`~MAP`), the source
+        /// For a collection-mapping construct (`~MAP`), the source
         /// element(s) this iteration's produced element derived from —
-        /// indices only, never content (LN-8). `None` for plain iteration
+        /// indices only, never content. `None` for plain iteration
         /// (`~FOR`/`~UNTIL`), which produces no mapped output to derive.
         derivation: Option<Vec<SourceRef>>,
         seq: u64,
@@ -370,7 +370,7 @@ pub enum ExecutionEvent {
         /// Structural descriptor of the response — no raw content.
         output_summary: FieldDescriptor,
         elapsed_ms: Measurement,
-        /// HO-8 cost-attribution token classes. All `Unavailable` in core
+        /// Cost-attribution token classes. All `Unavailable` in core
         /// today — `ModelProvider` exposes no token-accounting seam, so
         /// there is nothing to report; never fabricated as `0`. Extending
         /// `ModelProvider` with a token-reporting method is a separate,
@@ -385,16 +385,16 @@ pub enum ExecutionEvent {
     },
 }
 
-// ─── Environment trajectory side-band (NE-3) ──────────────────────────────────
+// ─── Environment trajectory side-band ──────────────────────────────────
 
 /// Discriminant for an environment-lifecycle interaction recorded in the
-/// trajectory (NE-3). `Step` is reserved for a host that drives
+/// trajectory. `Step` is reserved for a host that drives
 /// [`crate::environment::EnvironmentProvider::step`] directly; the built-in
 /// `run_with_environment` combinator emits `Reset` only (v1 scope — see
 /// `crate::environment` module docs). `evaluate`'s outcome is not represented
 /// here: it occurs after the run is frozen — after `run_complete` has already
-/// fired — and is delivered directly as the environment run's `Reward` instead
-/// (NE-4/NE-5), not duplicated into the trajectory.
+/// fired — and is delivered directly as the environment run's `Reward` instead,
+/// not duplicated into the trajectory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvInteractionKind {
     Reset,
@@ -402,8 +402,8 @@ pub enum EnvInteractionKind {
 }
 
 /// One environment-lifecycle interaction, carried through [`RunManifest`]
-/// rather than a parallel store (NE-3) — no new [`ExecutionEvent`] variant is
-/// added, so HO-6's closed taxonomy is preserved (the HO-8/HO-13 additive-field
+/// rather than a parallel store — no new [`ExecutionEvent`] variant is
+/// added, so the closed taxonomy is preserved (the additive-field
 /// discipline). `observation`/`action` are structural descriptors only — never
 /// raw content, matching the [`FieldDescriptor`] data-safety boundary used
 /// elsewhere.
@@ -414,14 +414,14 @@ pub struct EnvInteraction {
     pub action: Option<FieldDescriptor>,
 }
 
-// ─── Run-manifest identity & reproducibility (HO-12/15/18/19/20) ─────────────
+// ─── Run-manifest identity & reproducibility ─────────────
 
-/// Definition-derived, stable step identity (HO-15) — NOT per-run allocated.
-/// The same value across repeated runs, retries/resumes (NL-12), and recursive
-/// children (NL-18); it changes only when the step's own definition changes
-/// (its number or its command name). Deterministic (NL-6).
+/// Definition-derived, stable step identity — NOT per-run allocated.
+/// The same value across repeated runs, retries/resumes, and recursive
+/// children; it changes only when the step's own definition changes
+/// (its number or its command name). Deterministic.
 ///
-/// Distinct from HO-7's within-run `(correlation_id, seq)` ordering: this is
+/// Distinct from the within-run `(correlation_id, seq)` ordering: this is
 /// the cross-run comparison key, not a within-run position.
 ///
 /// Takes `(step_number, command_name)` rather than a `&Step` reference — the
@@ -432,7 +432,7 @@ pub fn step_identity(step_number: u32, command_name: &str) -> String {
     format!("{step_number}:{command_name}")
 }
 
-/// A stable, message-independent grouping input for a failing step (HO-19).
+/// A stable, message-independent grouping input for a failing step.
 ///
 /// Composed only from stable inputs — [`step_identity`], the emitted
 /// `NODUS:*` code, and an optional workflow-declared discriminator that
@@ -452,11 +452,11 @@ pub struct FaultIdentity {
     pub discriminator: Option<String>,
 }
 
-/// The execution mode a run declared (HO-12): real, or simulated at a stated
+/// The execution mode a run declared: real, or simulated at a stated
 /// fidelity. nodus substitutes no providers itself — a host that wires
 /// modeled providers for a simulation declares the mode; nodus only records
 /// what was declared. Absent/default is `Real` (today's behaviour), so a
-/// caller declaring nothing is unaffected (HO-5).
+/// caller declaring nothing is unaffected.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ExecutionMode {
     #[default]
@@ -466,7 +466,7 @@ pub enum ExecutionMode {
     },
 }
 
-/// Declared fidelity of a simulated run (HO-12).
+/// Declared fidelity of a simulated run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimFidelity {
     Structural,
@@ -474,9 +474,9 @@ pub enum SimFidelity {
     Shadow,
 }
 
-/// Whether re-running the recorded workflow reproduces the same outcome
-/// (HO-20). **Stated, never inferred** from the mere presence of a
-/// [`ReproRecipe`] — nodus's own evaluation is deterministic (NL-6), but a run
+/// Whether re-running the recorded workflow reproduces the same outcome.
+/// **Stated, never inferred** from the mere presence of a
+/// [`ReproRecipe`] — nodus's own evaluation is deterministic, but a run
 /// that made any model call is not, and the recipe must say which of the two
 /// it is rather than let a reader assume exactness.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -487,25 +487,25 @@ pub enum Determinism {
 }
 
 /// What re-executing this run requires, recorded from the manifest alone
-/// (HO-20) — the host reconstructs nothing. nodus embeds nothing into
+///  — the host reconstructs nothing. nodus embeds nothing into
 /// produced artifacts, names no file format, and performs no replay; it only
-/// records what it itself resolved (LP-1/LP-2).
+/// records what it itself resolved.
 ///
 /// An uncapturable field is `None` — **never silently omitted** — since a
-/// short recipe must not read as a complete one (the HO-14 honesty rule
+/// short recipe must not read as a complete one (the honesty rule
 /// applied at the manifest grain). `needs_vocabulary` is `None` today because
 /// `@needs` selective vocabulary loading is not yet implemented; this is a
 /// declared omission, not a defect.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ReproRecipe {
     /// Content identity of the workflow definition (a `std`-only digest —
-    /// the [`crate::environment::CandidateResult`] precedent; zero-dep, LP-1).
+    /// the [`crate::environment::CandidateResult`] precedent; zero-dep).
     pub workflow_digest: String,
-    /// The LP-8 capability-manifest roles/commands that satisfied this run.
+    /// The capability-manifest roles/commands that satisfied this run.
     pub capability_set: Vec<String>,
-    /// Mirrors [`RunManifest::exposure_switches`] (HO-18) into the recipe.
+    /// Mirrors [`RunManifest::exposure_switches`] into the recipe.
     pub exposure_switches: Vec<(String, String)>,
-    /// Mirrors [`RunManifest::execution_mode`] (HO-12) into the recipe.
+    /// Mirrors [`RunManifest::execution_mode`] into the recipe.
     pub execution_mode: ExecutionMode,
     /// The producing crate version (`env!("CARGO_PKG_VERSION")`).
     pub nodus_version: String,
@@ -553,20 +553,20 @@ pub struct RunManifest {
     /// Number of steps that reached execution (excludes unentered branches).
     pub total_steps: u32,
     /// Total events emitted to [`AuditProvider::record_event`] during this run.
-    /// Doubles as the HO-7 gap-check: for an undamaged trace this equals the
+    /// Doubles as the gap-check: for an undamaged trace this equals the
     /// highest emitted `seq` + 1 (both derive from the same counter through
     /// the executor's single emission choke point).
     pub event_count: u32,
-    /// Environment-lifecycle interactions for this run (NE-3). Empty for every
+    /// Environment-lifecycle interactions for this run. Empty for every
     /// run that did not go through [`crate::environment`]'s combinators —
-    /// additive field, HO-5 observer neutrality preserved for the common case.
+    /// additive field, observer neutrality preserved for the common case.
     pub env_trajectory: Vec<EnvInteraction>,
-    /// Real vs. simulated, and at what fidelity (HO-12). Default `Real`.
+    /// Real vs. simulated, and at what fidelity. Default `Real`.
     pub execution_mode: ExecutionMode,
     /// Resolved `(switch_name, value)` pairs the host froze once at run start
-    /// (HO-18, LP-19 non-straddling). Empty = prevailing defaults.
+    /// (non-straddling). Empty = prevailing defaults.
     pub exposure_switches: Vec<(String, String)>,
-    /// What re-executing this run requires, from the manifest alone (HO-20).
+    /// What re-executing this run requires, from the manifest alone.
     pub repro: ReproRecipe,
 }
 
@@ -980,7 +980,7 @@ mod tests {
         assert_eq!(manifests[0].execution_mode, ExecutionMode::Real);
     }
 
-    // ── Measurement (HO-14) ──────────────────────────────────────────────────
+    // ── Measurement ──────────────────────────────────────────────────
 
     #[test]
     fn measurement_unavailable_is_not_taken_zero() {
@@ -1011,7 +1011,7 @@ mod tests {
         ));
     }
 
-    // ── EventAnnotations carrier (HO-9/11/16/17, DG-9) ───────────────────────
+    // ── EventAnnotations carrier ───────────────────────
 
     #[test]
     fn event_annotations_default_is_all_none_and_durable() {
@@ -1033,7 +1033,7 @@ mod tests {
         assert_ne!(Anomaly::Unscored, Anomaly::Normal);
     }
 
-    // ── HO-13 derivation lineage ─────────────────────────────────────────────
+    // ── derivation lineage ─────────────────────────────────────────────
 
     #[test]
     fn source_ref_carries_indices_only() {
@@ -1045,7 +1045,7 @@ mod tests {
         assert_eq!(r.source_index, 5);
     }
 
-    // ── HO-10 classify_trace ─────────────────────────────────────────────────
+    // ── classify_trace ─────────────────────────────────────────────────
 
     fn sample_manifest(event_count: u32) -> RunManifest {
         RunManifest {

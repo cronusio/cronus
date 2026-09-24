@@ -1,4 +1,4 @@
-//! Facade composition for the invocable registry (§4.3, EP-12): assembles
+//! Facade composition for the invocable registry: assembles
 //! the registry and dispatcher, and registers every core invocable through
 //! the same [`InvocableRegistry::register`] a contribution calls — no
 //! private, privileged registration path exists here or anywhere else.
@@ -75,7 +75,7 @@ fn core_id(tail: &str) -> InvocableId {
         .expect("core-authored literal identity must be well-formed — a bug if it isn't")
 }
 
-/// Read one required, already-bound `Text` argument. `bind()` (IB-2)
+/// Read one required, already-bound `Text` argument. `bind()`
 /// guarantees this argument exists and matches its declared `BinderKind`
 /// before the handler ever runs, so a miss here is a bug elsewhere, not a
 /// caller condition to report gracefully — the empty-string fallback keeps

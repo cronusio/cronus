@@ -1,16 +1,16 @@
 //! Automation pipeline engine — the runtime behind implicit (`@ON:`) and explicit
-//! (canvas) automation, one engine for both (AP-1).
+//! (canvas) automation, one engine for both.
 //!
-//! Foundation: the node taxonomy, the deduplication window (AP-2), payload
-//! isolation (AP-4), scoped state over a volatile/durable backend registry
-//! (AP-8/AP-14), the control plane separate from the data plane (AP-9), and
-//! in-graph lifecycle observers with scoped-precedes-catch-all routing (AP-15).
+//! Foundation: the node taxonomy, the deduplication window, payload
+//! isolation, scoped state over a volatile/durable backend registry,
+//! the control plane separate from the data plane, and
+//! in-graph lifecycle observers with scoped-precedes-catch-all routing.
 //! Full topological execution + action dispatch to subsystems is the documented
 //! seam; `action` nodes delegate to kanban/orchestration/inbox in production.
 
 use std::collections::{HashMap, HashSet};
 
-/// A node in the pipeline DAG (AP §4.1 taxonomy).
+/// A node in the pipeline DAG.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeType {
     Trigger,
@@ -26,14 +26,14 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    /// `transform` is pure and stateless (AP-8): it declares no scoped state and is
-    /// therefore freely retryable (AP-3).
+    /// `transform` is pure and stateless: it declares no scoped state and is
+    /// therefore freely retryable.
     pub fn is_pure(self) -> bool {
         matches!(self, NodeType::Transform)
     }
 }
 
-/// The deduplication window (AP-2): within the window, an event activates at most
+/// The deduplication window: within the window, an event activates at most
 /// one run per trigger definition. Distinct triggers fire independently.
 #[derive(Debug, Default)]
 pub struct DedupWindow {
@@ -64,7 +64,7 @@ impl DedupWindow {
     }
 }
 
-/// Content classes forbidden in an event payload (AP-4). Descriptors are permitted;
+/// Content classes forbidden in an event payload. Descriptors are permitted;
 /// verbatim content is not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExcludedContent {
@@ -74,7 +74,7 @@ pub enum ExcludedContent {
     MemoryStoreContents,
 }
 
-/// Validate an event payload's fields against the AP-4 exclusion set. A field whose
+/// Validate an event payload's fields against the exclusion set. A field whose
 /// value carries an excluded content class rejects the payload before propagation.
 pub fn validate_payload(fields: &[(&str, ContentClass)]) -> Result<(), ExcludedContent> {
     for (_name, class) in fields {
@@ -85,7 +85,7 @@ pub fn validate_payload(fields: &[(&str, ContentClass)]) -> Result<(), ExcludedC
     Ok(())
 }
 
-/// The classification of a payload field's content (AP-4).
+/// The classification of a payload field's content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentClass {
     /// A descriptor — field name, type, count. Permitted.
@@ -94,7 +94,7 @@ pub enum ContentClass {
     Excluded(ExcludedContent),
 }
 
-/// The persistence backend for a scoped store (AP-14).
+/// The persistence backend for a scoped store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// In-process; lost on restart — caches, within-run scratch.
@@ -103,7 +103,7 @@ pub enum Backend {
     Durable,
 }
 
-/// The scope of automation state (AP-14): node-private is the AP-8 default;
+/// The scope of automation state: node-private is the default;
 /// pipeline-shared is visible to every node of one pipeline definition.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scope {
@@ -112,7 +112,7 @@ pub enum Scope {
 }
 
 /// A scoped key/value store over a named backend. Office-scoped, schema-bounded,
-/// individually resettable (AP-14). Not the office memory store.
+/// individually resettable. Not the office memory store.
 #[derive(Debug)]
 pub struct ScopeStore {
     default_backend: Backend,
@@ -152,7 +152,7 @@ impl ScopeStore {
             .map(String::as_str)
     }
 
-    /// Reset one scope's state (individually resettable, AP-14).
+    /// Reset one scope's state (individually resettable).
     pub fn reset(&mut self, scope: &Scope) {
         self.values.retain(|(s, _), _| s != scope);
     }
@@ -169,7 +169,7 @@ impl ScopeStore {
     }
 }
 
-/// A control-plane verb (AP-9). Control edges carry these; data edges never do.
+/// A control-plane verb. Control edges carry these; data edges never do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlVerb {
     Enable,
@@ -178,7 +178,7 @@ pub enum ControlVerb {
 }
 
 /// The control graph — pipeline enable/disable/trigger state, separate from the
-/// data plane (AP-9). A control edge never carries an event payload.
+/// data plane. A control edge never carries an event payload.
 #[derive(Debug, Default)]
 pub struct ControlGraph {
     disabled: HashSet<String>,
@@ -211,7 +211,7 @@ impl ControlGraph {
     }
 }
 
-/// A lifecycle-observer kind (AP-15).
+/// A lifecycle-observer kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObserverKind {
     Error,
@@ -219,7 +219,7 @@ pub enum ObserverKind {
     Completion,
 }
 
-/// An observer subscription (AP-15): a kind + a scope of covered nodes, or the
+/// An observer subscription: a kind + a scope of covered nodes, or the
 /// catch-all *unhandled* set.
 #[derive(Debug, Clone)]
 pub struct Observer {
@@ -235,9 +235,9 @@ impl Observer {
     }
 }
 
-/// Route a node's lifecycle event to an observer (AP-15): a scoped observer covering
+/// Route a node's lifecycle event to an observer: a scoped observer covering
 /// the node takes precedence over a catch-all one. Returns the chosen observer id,
-/// or `None` if no observer handles it (AP-3 stop-on-failure then stands).
+/// or `None` if no observer handles it (stop-on-failure then stands).
 pub fn route_observer<'a>(
     observers: &'a [Observer],
     node: &str,
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn transform_is_pure_others_may_be_stateful() {
-        // AP-8: transform declares no state; a stateful node may.
+        // Transform declares no state; a stateful node may.
         assert!(NodeType::Transform.is_pure());
         assert!(!NodeType::Aggregate.is_pure());
         assert!(!NodeType::Action.is_pure());
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn dedup_suppresses_duplicate_but_allows_distinct_triggers() {
-        // AP-2: same (trigger, event) within window suppressed; distinct fire.
+        // Same (trigger, event) within window suppressed; distinct fire.
         let mut w = DedupWindow::new(1000);
         assert!(w.admit("t1", "evt-a", 0));
         assert!(!w.admit("t1", "evt-a", 500)); // duplicate within window
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn payload_rejects_excluded_content() {
-        // AP-4: descriptors pass; verbatim excluded content is rejected.
+        // Descriptors pass; verbatim excluded content is rejected.
         let ok = validate_payload(&[
             ("event_type", ContentClass::Descriptor),
             ("count", ContentClass::Descriptor),
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn scoped_state_durable_survives_restart_volatile_does_not() {
-        // AP-14: volatile lost on restart; durable survives; per-scope override.
+        // Volatile lost on restart; durable survives; per-scope override.
         let mut store = ScopeStore::new(Backend::Volatile);
         let cache = Scope::NodePrivate("dedup-cache".into());
         let baseline = Scope::PipelineShared("baseline".into());
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn control_plane_governs_enabled_state_separately() {
-        // AP-9: control verbs change enabled state / fire; distinct from data flow.
+        // Control verbs change enabled state / fire; distinct from data flow.
         let mut cg = ControlGraph::new();
         assert!(cg.is_enabled("p1"));
         cg.apply("p1", ControlVerb::Disable);
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn observer_scoped_precedes_catch_all_else_unhandled() {
-        // AP-15: scoped covering observer wins; else catch-all; else None (AP-3).
+        // Scoped covering observer wins; else catch-all; else None.
         let scoped = Observer {
             id: "scoped-err".into(),
             kind: ObserverKind::Error,
@@ -355,7 +355,7 @@ mod tests {
             route_observer(&observers, "node-b", ObserverKind::Error),
             Some("catch-all-err")
         );
-        // No completion observer exists -> unhandled (AP-3 stop-on-failure stands).
+        // No completion observer exists -> unhandled (stop-on-failure stands).
         assert_eq!(
             route_observer(&observers, "node-a", ObserverKind::Completion),
             None

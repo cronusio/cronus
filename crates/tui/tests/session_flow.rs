@@ -154,7 +154,7 @@ fn an_unregistered_verb_in_a_known_group_is_silently_ignored() {
     assert_eq!(
         feedback, None,
         "an unrecognized verb inside a known group must clear feedback \
-         silently (SP-13) — the same deliberate behavior app.rs's own \
+         silently — the same deliberate behavior app.rs's own \
          doc comment on `pending_dispatch` handling describes, now proven \
          through the real bootstrapped registry rather than a stub"
     );

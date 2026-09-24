@@ -47,7 +47,7 @@ function tempFile(name: string, body: string): string {
   return p;
 }
 
-describe("craft lint (DI-3 must-fix subset)", () => {
+describe("craft lint (must-fix subset)", () => {
   it("fails a build on a literal colour in a component", () => {
     const file = tempFile(
       "bad.tsx",

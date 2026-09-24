@@ -55,7 +55,7 @@ describe("view store — the shell's view domain", () => {
     expect(store.snapshot().activeFacet).toBeUndefined();
   });
 
-  it("one mutation is visible to every reader of the same store — single authority (AS-1)", () => {
+  it("one mutation is visible to every reader of the same store — single authority", () => {
     const store = createViewStore();
     // two independent readers, as two shell regions would each subscribe
     const menuBarReads = () => store.snapshot().sidebarOpen;

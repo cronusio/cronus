@@ -3,9 +3,9 @@
 //! An archetype changes what the manager *expects* (a candidate pool, an org
 //! shape adopted only if the work grows, a bounded seed, domain norms), never
 //! how it *decides*. Two structural properties are load-bearing: the closed
-//! four-key schema makes "no authority" (OA-4) unrepresentable rather than
+//! four-key schema makes "no authority" unrepresentable rather than
 //! merely forbidden, and the candidate pool is read by the deviation recorder,
-//! never by the hire gate (OA-3).
+//! never by the hire gate.
 
 pub mod catalog;
 pub mod deviation;

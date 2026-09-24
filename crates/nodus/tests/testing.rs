@@ -1,4 +1,4 @@
-// Integration tests for the @test: block contract — NT-1…NT-7 compliance.
+// Integration tests for the @test: block contract.
 //
 // Each test maps to one or more invariants from the testing spec. Fixtures are
 // inline strings to keep the test file self-contained and immune to fixture
@@ -8,7 +8,7 @@ use nodus::workflows::{self};
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
 
-// Workflow used by block_isolation (NT-1) and expected_assertion_pass (NT-3).
+// Workflow used by block_isolation and expected_assertion_pass.
 // Two blocks with different query inputs and matching expected values.
 const ISOLATION_WF: &str = "\
 §wf:isolation_wf v1.0
@@ -33,7 +33,7 @@ const ISOLATION_WF: &str = "\
 }
 ";
 
-// Workflow used by input_override (NT-2).
+// Workflow used by input_override.
 const OVERRIDE_WF: &str = "\
 §wf:override_wf v1.0
 §runtime: { core: schema.nodus }
@@ -51,7 +51,7 @@ const OVERRIDE_WF: &str = "\
 }
 ";
 
-// Workflow used by expected_assertion_fail (NT-4).
+// Workflow used by expected_assertion_fail.
 const FAIL_WF: &str = "\
 §wf:fail_wf v1.0
 §runtime: { core: schema.nodus }
@@ -73,7 +73,7 @@ const FAIL_WF: &str = "\
 }
 ";
 
-// Workflow used by tag_filter (NT-6).
+// Workflow used by tag_filter.
 const TAG_WF: &str = "\
 §wf:tag_wf v1.0
 §runtime: { core: schema.nodus }
@@ -90,7 +90,7 @@ const TAG_WF: &str = "\
 }
 ";
 
-// Workflow used by ordered_report (NT-7).
+// Workflow used by ordered_report.
 const ORDER_WF: &str = "\
 §wf:order_wf v1.0
 §runtime: { core: schema.nodus }
@@ -104,7 +104,7 @@ const ORDER_WF: &str = "\
 @test: third {}
 ";
 
-// ── NT-1: Block isolation ─────────────────────────────────────────────────────
+// ── Block isolation ─────────────────────────────────────────────────────
 
 #[test]
 fn block_isolation() {
@@ -126,7 +126,7 @@ fn block_isolation() {
     assert_eq!(report.failed, 0);
 }
 
-// ── NT-2: Input override ──────────────────────────────────────────────────────
+// ── Input override ──────────────────────────────────────────────────────
 
 #[test]
 fn input_override() {
@@ -142,7 +142,7 @@ fn input_override() {
     );
 }
 
-// ── NT-3: Expected assertion binding ─────────────────────────────────────────
+// ── Expected assertion binding ─────────────────────────────────────────
 
 #[test]
 fn expected_assertion_pass() {
@@ -151,7 +151,7 @@ fn expected_assertion_pass() {
     assert_eq!(report.passed, 2, "both assertion blocks should pass");
 }
 
-// ── NT-4: Assertion failure semantics ────────────────────────────────────────
+// ── Assertion failure semantics ────────────────────────────────────────
 
 #[test]
 fn expected_assertion_fail() {
@@ -186,7 +186,7 @@ fn expected_assertion_fail() {
     assert_eq!(report.passed, 1);
 }
 
-// ── NT-6: Tag metadata ────────────────────────────────────────────────────────
+// ── Tag metadata ────────────────────────────────────────────────────────
 
 #[test]
 fn tag_filter_skips_unmatched() {
@@ -203,7 +203,7 @@ fn tag_filter_skips_unmatched() {
 
 #[test]
 fn tag_filter_empty_runs_all() {
-    // An empty tag filter is equivalent to "run all blocks" (NT-6).
+    // An empty tag filter is equivalent to "run all blocks".
     let report = workflows::test_with_tags(TAG_WF, &[]).expect("test_with_tags empty");
     assert_eq!(
         report.results.len(),
@@ -212,7 +212,7 @@ fn tag_filter_empty_runs_all() {
     );
 }
 
-// ── NT-7: Ordered reporting ───────────────────────────────────────────────────
+// ── Ordered reporting ───────────────────────────────────────────────────
 
 #[test]
 fn ordered_report() {

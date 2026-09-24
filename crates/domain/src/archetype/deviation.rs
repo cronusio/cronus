@@ -1,4 +1,4 @@
-//! Deviation recording (OA-3, OA-9): the three counters that make an
+//! Deviation recording: the three counters that make an
 //! archetype falsifiable, and the load-bearing discipline that the candidate
 //! **pool is read by the recorder, never by the hire gate**.
 //!
@@ -17,7 +17,7 @@ pub struct OfficeDeviations {
 }
 
 impl OfficeDeviations {
-    /// OA-3: classify a hire the gate has **already allowed**. The pool is
+    /// Classify a hire the gate has **already allowed**. The pool is
     /// consulted only to record whether the hire fell outside the archetype's
     /// anticipated pool — this method has no return value, so it *cannot*
     /// refuse the hire, and the pool identifier reaches it only here, never
@@ -41,7 +41,7 @@ impl OfficeDeviations {
     }
 }
 
-/// OA-9: an archetype's validation status. The distinction between "no
+/// An archetype's validation status. The distinction between "no
 /// deviations recorded" and "no offices observed" is the distinction between
 /// a validated prior and a guess — collapsing them would let an unexamined
 /// default accumulate authority it never earned.
@@ -60,7 +60,7 @@ pub enum ValidationStatus {
 }
 
 /// The per-archetype aggregate: signals sum across every office that adopted
-/// the archetype (OA-9), keyed by the archetype identity.
+/// the archetype, keyed by the archetype identity.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ArchetypeDeviations {
     offices_observed: u32,
@@ -80,7 +80,7 @@ impl ArchetypeDeviations {
         self.shape_never_grown += office.shape_never_grown;
     }
 
-    /// OA-9: report the validation status — `Unvalidated` until at least one
+    /// Report the validation status — `Unvalidated` until at least one
     /// office has been observed, never "correct" by default.
     pub fn status(&self) -> ValidationStatus {
         if self.offices_observed == 0 {
@@ -107,7 +107,7 @@ mod tests {
             .collect()
     }
 
-    // --- OA-3: a hire outside the pool succeeds and is recorded, never refused
+    // --- A hire outside the pool succeeds and is recorded, never refused
 
     #[test]
     fn a_hire_outside_the_pool_is_recorded_and_never_refused() {
@@ -125,7 +125,7 @@ mod tests {
         assert_eq!(dev.hired_outside_pool, 0);
     }
 
-    // --- OA-9: unvalidated until an office is observed -----------------------
+    // --- Unvalidated until an office is observed -----------------------
 
     #[test]
     fn an_archetype_with_no_observed_offices_reports_unvalidated_not_correct() {
@@ -148,7 +148,7 @@ mod tests {
         );
     }
 
-    // --- OA-9: counters aggregate per archetype identity across offices -----
+    // --- Counters aggregate per archetype identity across offices -----
 
     #[test]
     fn counters_aggregate_across_every_office_that_adopted_the_archetype() {

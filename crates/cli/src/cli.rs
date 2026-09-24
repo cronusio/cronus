@@ -28,7 +28,7 @@ Diagnostics and --format:
 /// ships now comes from one of two projections built at runtime
 /// (`crate::installation`'s hand-declared grammar, `crate::generated`'s
 /// registry-derived one) rather than from a field on this struct — a
-/// compile-time subcommand enum is exactly the shape INV-9 forbids as a
+/// compile-time subcommand enum is exactly the shape forbidden as a
 /// source of truth, since an unshipped action would need to be representable
 /// in it.
 #[derive(Parser)]

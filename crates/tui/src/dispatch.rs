@@ -2,7 +2,7 @@
 //! raw arguments, dispatches through the real, shared `Dispatcher`, and
 //! renders the result into the one feedback string the command bar shows.
 //!
-//! This is where INV-7 masking, the dispatch journal, and rejection handling
+//! This is where secret masking, the dispatch journal, and rejection handling
 //! all happen exactly once, at the one boundary every surface shares — this
 //! module never re-implements any of them; it only ever constructs the
 //! typed `ArgValues` a raw slash line does not yet carry, and turns whatever
@@ -32,7 +32,7 @@ use crate::command::SlashCommand;
 ///
 /// A slash-shaped line naming no invocable is not an error (l2-tui's own
 /// v1.2.0 clause): resolution answers `Dispatched::Unknown` separately from
-/// any outcome (SP-13), and this surface's response is to treat the line as
+/// any outcome, and this surface's response is to treat the line as
 /// ordinary input — `None` here, rendering nothing at all — rather than
 /// fabricate a failure. Folding that answer into a rendered error would make
 /// every message beginning with a slash-shaped token an error, which is
@@ -84,7 +84,7 @@ pub fn dispatch_command(
 /// Bind a slash command's raw, whitespace-split arguments against `binders`,
 /// producing the [`ArgValues`] a dispatch needs.
 ///
-/// This is the raw-string→typed step IB-4 leaves to whichever surface
+/// This is the raw-string→typed step the binder contract leaves to whichever surface
 /// constructs `ArgValues` from raw input — the domain tier's own
 /// bind-before-invoke `bind()` only ever validates already-typed values, so
 /// it can never itself produce [`RejectionMode::Malformed`] (a value present
@@ -244,7 +244,7 @@ fn too_many_positionals(extra: &[&str]) -> Rejection {
 /// distinguishable in what the user actually sees — the same discipline the
 /// sibling CLI frontend's own renderer already holds to. `Value` recurses
 /// through the same shape `OutcomeValue` can take; reimplemented locally
-/// (not imported from the CLI, which this crate must not depend on, INV-2).
+/// (not imported from the CLI, which this crate must not depend on).
 pub fn render_outcome(outcome: Outcome) -> Option<String> {
     match outcome {
         Outcome::Value(OutcomeValue::Empty) => None,

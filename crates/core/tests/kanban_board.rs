@@ -228,7 +228,7 @@ fn archived_card_is_still_readable_after_archive() {
         .unwrap();
     board.archive_done_cards().unwrap();
 
-    // Archived card is still readable (KAN-4)
+    // Archived card is still readable
     let card = board.get_archived_card("c9").unwrap();
     assert!(card.is_some(), "archived card should be readable");
     assert_eq!(card.unwrap().id, "c9");

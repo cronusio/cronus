@@ -10,7 +10,7 @@
 //! Schema (`§schema:`) file parsing is deferred — the parity corpus is
 //! workflows; that entry point returns a parse error for now rather than being
 //! silently mishandled. Config (`§config:`) files parse through the dedicated
-//! [`Parser::parse_config`] entry point (NL-20); `parse`/`parse_with_schema`
+//! [`Parser::parse_config`] entry point; `parse`/`parse_with_schema`
 //! stay typed to [`WorkflowFile`] and reject a `§config` header with a redirect
 //! naming `parse_config`, since a config file is not a workflow.
 
@@ -29,14 +29,14 @@ pub struct Parser {
     pos: usize,
     /// A `~COMPENSATE: CMD(args)` clause trailing a command's pipeline target,
     /// stashed here by `parse_command_call` and drained by `parse_step` right
-    /// after parsing the step's own body (NL-22). `Step.compensation` has no
+    /// after parsing the step's own body. `Step.compensation` has no
     /// natural slot inside `parse_command_call`'s `CommandCall`-only return
     /// type, so this is the escape hatch — mirrors how `~RETRY:n` is read as
     /// a preceding modifier in `parse_step` itself rather than threaded
     /// through every command-parsing call.
     pending_compensation: Option<CommandCall>,
     /// Depth inside a `~FOR`/`~UNTIL`/`~PARALLEL` body. `~COMPENSATE` only
-    /// attaches to a step's own top-level action (NL-23(b)'s reasoning
+    /// attaches to a step's own top-level action (the restart rule's reasoning
     /// applies here too — attaching it to a per-item/per-branch command would
     /// be ambiguous about which iteration's compensation actually ran), so
     /// `parse_command_call` only stashes one when this is `0`.
@@ -141,7 +141,7 @@ impl Parser {
 
     // ── Config file (§config:) ──────────────────────────────────────────────
 
-    /// Parse `source` into a [`ConfigDecl`] (NL-20).
+    /// Parse `source` into a [`ConfigDecl`].
     ///
     /// Errors if the source is empty, does not open with a `§` declaration, or
     /// declares a file type other than `§config:`.
@@ -971,7 +971,7 @@ impl Parser {
                         target = Some(self.cur_val());
                         self.advance();
                         // ~COMPENSATE trails the pipeline target on the same
-                        // line (NL-22); only a step's own top-level action may
+                        // line; only a step's own top-level action may
                         // carry one, never a nested loop/parallel body command.
                         // No skip_noise() here — that would cross a newline
                         // into the next line/step looking for a clause that,
@@ -2267,7 +2267,7 @@ mod tests {
         assert_eq!(tb.tags, vec!["unit".to_owned()]);
     }
 
-    // ── §config: parsing (NL-20) ────────────────────────────────────────────
+    // ── §config: parsing ────────────────────────────────────────────
 
     const CONFIG_SAMPLE: &str = "\
 §config:settings v1.0

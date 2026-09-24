@@ -1,5 +1,4 @@
-//! Integration tests for the bounded whole-run self-restart (
-//! NL-23).
+//! Integration tests for the bounded whole-run self-restart.
 //!
 //! bound/ceiling exhaustion, run-boundary authority (validator
 //! rejection of a nested request), `$restart_count` progression, fresh
@@ -60,7 +59,7 @@ impl AuditProvider for RecordingProvider {
 // a second arrow within the re-parsed action string (confirmed by inspecting
 // the parsed AST directly — every inline `?IF` action's `pipeline_target`
 // came back `None` regardless of source text). Since fixed by
-// (the NL-10 conformance pass, which also covers `?SWITCH`
+// (the conformance pass, which also covers `?SWITCH`
 // arm targets); this fixture is now real nodus source run through the full
 // parse → validate → run_with_audit path.
 
@@ -185,7 +184,7 @@ fn restart_count_progresses_and_context_is_fresh_each_attempt() {
     );
     // The final (second) attempt must see restart_count == 1.
     assert_eq!(result.vars.get("restart_count"), Some(&Value::Int(1)));
-    // Fresh reconstruction (LG-5): $attempt0_marker was set only on the first
+    // Fresh reconstruction: $attempt0_marker was set only on the first
     // attempt's guard; the second attempt's context must not carry it over.
     assert_eq!(
         result.vars.get("attempt0_marker"),
@@ -221,12 +220,12 @@ fn no_restart_max_is_byte_identical_to_the_pre_nl23_path() {
         result.vars.get("restart_count"),
         None,
         "restart_count must not be seeded unless restart_max is declared \
-         (additivity, NL-23(d)); vars: {:?}",
+         (additivity); vars: {:?}",
         result.vars
     );
 }
 
-// ─── Transpiler round-trip (NL-6) ─────────────────────────────────────────────
+// ─── Transpiler round-trip ─────────────────────────────────────────────
 
 #[test]
 fn restart_max_survives_compact_round_trip() {

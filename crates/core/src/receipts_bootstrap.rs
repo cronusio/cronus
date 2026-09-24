@@ -1,7 +1,7 @@
-//! Facade wiring for tool receipts (TR-1, TR-5, TR-7, TR-9): the ephemeral
+//! Facade wiring for tool receipts: the ephemeral
 //! per-session key's birth via OS entropy — the one non-deterministic act
 //! in the subsystem — plus the dispatch seam wired to the real
-//! `ToolPolicy` gate and the existing SEC-7 audit sink. Follows the
+//! `ToolPolicy` gate and the existing audit sink. Follows the
 //! `activation_bootstrap` / `knowledge_bootstrap` / `loop_bootstrap`
 //! precedent exactly: everything deterministic lives in
 //! `cronus_domain::tool_receipts`, only entropy and dispatch I/O live here.
@@ -29,11 +29,11 @@ pub struct ReceiptSession {
 
 impl ReceiptSession {
     /// Generate a fresh session key from the OS CSPRNG. This is the only
-    /// non-deterministic act tool-receipts needs (TR-5) — `getrandom` is
+    /// non-deterministic act tool-receipts needs — `getrandom` is
     /// deliberately absent from `cronus-domain`'s boundary-guard allowlist,
     /// so entropy is read here and the domain crate receives only the
     /// already-random key. Never persisted: rotation is implicit in
-    /// process restart (§4.3), and no field of this struct — or of
+    /// process restart, and no field of this struct — or of
     /// anything holding one — is ever passed to a serializer.
     pub fn new() -> Self {
         let mut bytes = [0u8; 32];
@@ -56,10 +56,10 @@ impl Default for ReceiptSession {
     }
 }
 
-/// The only public tool-execution path (TR-1): `invoke` gates through the
+/// The only public tool-execution path: `invoke` gates through the
 /// real `ToolPolicy::is_permitted` first and unchanged, executes the
 /// action only when permitted, binds the *observed* outcome into the MAC,
-/// and appends the mint to the existing SEC-7 audit log. A caller can
+/// and appends the mint to the existing audit log. A caller can
 /// obtain the wrapped value only together with its receipt — there is no
 /// path that returns one without the other.
 pub struct ReceiptedDispatch {
@@ -77,8 +77,8 @@ impl ReceiptedDispatch {
         }
     }
 
-    /// This session's ledger — the sole authority on "did this happen"
-    /// (TR-4), e.g. for a `status`/coverage surface.
+    /// This session's ledger — the sole authority on "did this happen",
+    /// e.g. for a `status`/coverage surface.
     pub fn ledger(&self) -> &ReceiptLedger {
         &self.ledger
     }
@@ -87,8 +87,8 @@ impl ReceiptedDispatch {
     /// audit chain and return the exact [`ActionBinding`] alongside the
     /// receipted outcome, so a caller can independently re-verify what was
     /// actually bound. `is_permitted` runs first and its verdict is bound
-    /// as an *input* to the receipt, never an output (TR-7) — a blocked
-    /// call still mints a receipt witnessing the refusal, because TR-1
+    /// as an *input* to the receipt, never an output — a blocked
+    /// call still mints a receipt witnessing the refusal, because the receipt requirement
     /// covers blocked calls too, not just successes. Fails closed: if the
     /// audit write itself fails, the whole call fails rather than letting
     /// an action proceed unaudited.
@@ -143,7 +143,7 @@ impl ReceiptedDispatch {
         // `ts`/`layer`/`category`/`severity`/`outcome` today (the same
         // shipped-behavior boundary `dev_office_workspace.rs` already
         // disclosed) — `tool_name`/`finding_id` would be silently dropped,
-        // so the token that TR-9 requires the audit trail to carry rides
+        // so the token the audit trail must carry rides
         // `category` instead, the field that actually reaches disk.
         let entry = AuditEntry {
             timestamp: timestamp_ms,
@@ -161,7 +161,7 @@ impl ReceiptedDispatch {
     }
 
     /// Verify `receipt` against `binding`, auditing a `receipt_mismatch`
-    /// event when verification fails (TR-9) — a detected fabrication is a
+    /// event when verification fails — a detected fabrication is a
     /// recorded event, never a bare `false` the caller might silently
     /// discard.
     pub fn verify(&self, binding: &ActionBinding, receipt: &Receipt) -> bool {
@@ -229,7 +229,7 @@ mod tests {
     }
 
     /// No code path writes the key to the state tier: reviewed by
-    /// inspection of this module's full surface (the same TR-4-style
+    /// inspection of this module's full surface (the same default-deny-style
     /// absence argument `tool_receipts::ledger` makes for its own API) —
     /// `ReceiptSession` has exactly one public constructor and no
     /// `Serialize`/persistence method, `ReceiptedDispatch` never stores a

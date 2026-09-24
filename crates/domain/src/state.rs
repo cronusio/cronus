@@ -1,7 +1,7 @@
 //! State-tier bootstrap: create the mutable state skeleton, idempotently.
 //!
-//! Only the state tier is written; the program tier is never touched (STO-1).
-//! Secrets are seeded as `.env.example` only — never `.env` (STO-6).
+//! Only the state tier is written; the program tier is never touched.
+//! Secrets are seeded as `.env.example` only — never `.env`.
 
 use crate::paths::{Paths, Root};
 use std::fs;

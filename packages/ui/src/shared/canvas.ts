@@ -2,11 +2,11 @@
  * Automation canvas — pure projection logic for the visual pipeline editor.
  *
  * Presentation only: the canvas is a projection of the automation engine and adds
- * no execution semantics (AC-3). Live node state and traces arrive from the engine
+ * no execution semantics. Live node state and traces arrive from the engine
  * over the bridge; this module holds the render/validation rules — projection
- * fidelity (AC-1), connection-rule validation for editing (AC §4.3), dev-run
- * request construction that never executes (AC-7/AC-3), and observer scope
- * resolution (AC-8).
+ * fidelity, connection-rule validation for editing, dev-run
+ * request construction that never executes, and observer scope
+ * resolution.
  */
 
 /** A node type in the pipeline (mirrors the engine taxonomy). */
@@ -28,7 +28,7 @@ export interface CanvasNode {
 }
 
 /**
- * Projection fidelity check (AC-1): the canvas graph must faithfully represent the
+ * Projection fidelity check: the canvas graph must faithfully represent the
  * engine's node set. Returns the ids present in one side but not the other; a
  * non-empty result is a consistency violation the canvas must refresh away.
  */
@@ -52,7 +52,7 @@ export interface Edge {
   to: string;
 }
 
-/** A connection-rule violation surfaced during editing (AC §4.3). */
+/** A connection-rule violation surfaced during editing. */
 export type ConnectionIssue =
   | {
       kind: "trigger-has-inbound";
@@ -64,7 +64,7 @@ export type ConnectionIssue =
     };
 
 /**
- * Validate the connection rules for an explicit pipeline (AC §4.3): a trigger node
+ * Validate the connection rules for an explicit pipeline: a trigger node
  * may have only outbound edges; an action node must be a leaf unless it is followed
  * by an error branch. Returns all violations (empty = valid).
  */
@@ -106,7 +106,7 @@ export function validateConnections(
   return issues;
 }
 
-/** A development partial-run request the canvas hands to the engine (AC-7). */
+/** A development partial-run request the canvas hands to the engine. */
 export interface DevRunRequest {
   pinnedNode: string;
   fromNode: string;
@@ -114,8 +114,8 @@ export interface DevRunRequest {
 }
 
 /**
- * Construct a dev-run request (AC-7). The canvas only *requests* a partial run from
- * a pinned node; it never executes (AC-3). Actions run dry unless explicitly opted
+ * Construct a dev-run request. The canvas only *requests* a partial run from
+ * a pinned node; it never executes. Actions run dry unless explicitly opted
  * live downstream in the engine — that is not the canvas's concern.
  */
 export function requestDevRun(pinnedNode: string, fromNode: string): DevRunRequest {
@@ -134,9 +134,9 @@ export interface ObserverView {
 }
 
 /**
- * Resolve which observer catches a node's lifecycle event of a given kind (AC-8):
+ * Resolve which observer catches a node's lifecycle event of a given kind:
  * a scoped observer covering the node wins over a catch-all one; `null` if none
- * handles it (AP-3 stop-on-failure then applies).
+ * handles it (stop-on-failure then applies).
  */
 export function observerFor(
   observers: readonly ObserverView[],

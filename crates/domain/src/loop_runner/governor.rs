@@ -1,5 +1,5 @@
-//! The single enforcement point every loop runner calls (LG-2, LG-3, LG-4,
-//! LG-6): the ceiling check, the mutation-manifest write guard, and the
+//! The single enforcement point every loop runner calls:
+//! the ceiling check, the mutation-manifest write guard, and the
 //! oracle dispatch. Concentrating all three here means there is exactly one
 //! place ceilings and oracles are enforced, not one per subsystem.
 
@@ -7,7 +7,7 @@ use crate::budget::BudgetStatus;
 use crate::loop_runner::Ceiling;
 use crate::loop_runner::spec::{MutableArtifact, MutationManifest, Oracle, Verdict};
 
-/// LG-6: the ceiling's verdict for one iteration boundary, independent of
+/// The ceiling's verdict for one iteration boundary, independent of
 /// what the actor or the oracle reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlFlow {
@@ -23,7 +23,7 @@ pub enum StopReason {
     NoProgress,
 }
 
-/// LG-6: evaluated before every iteration. Checks max-iterations, budget,
+/// Evaluated before every iteration. Checks max-iterations, budget,
 /// deadline, and patience — none of which depend on the actor's "I'm done"
 /// claim or the oracle's verdict, so a loop can never talk its way past its
 /// own ceiling.
@@ -58,14 +58,14 @@ pub struct Mutation {
     pub summary: String,
 }
 
-/// LG-2 / LG-3: an attempt to write an artifact kind the manifest does not
+/// An attempt to write an artifact kind the manifest does not
 /// declare mutable. Since `MutableArtifact` has no `Criteria` variant, a
 /// criteria write can never even be constructed here — it is unreachable,
 /// not merely rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IllegalMutation(pub MutableArtifact);
 
-/// LG-2: every mutation's artifact kind must be declared in the manifest's
+/// Every mutation's artifact kind must be declared in the manifest's
 /// mutable set, or the whole batch is rejected before it reaches disk —
 /// a recorded event (the caller ledgers `IllegalMutation`), never a silent
 /// drop.
@@ -92,7 +92,7 @@ pub struct TurnResult {
     pub feedback: Option<String>,
 }
 
-/// LG-4: dispatch to the declared oracle kind and stamp `reduced_confidence`
+/// Dispatch to the declared oracle kind and stamp `reduced_confidence`
 /// when the oracle's lineage matches the actor's — a permitted but weaker
 /// termination, recorded rather than hidden. Only a `Judge` oracle has a
 /// lineage to compare; `Deterministic` and `Human` are never reduced.
@@ -122,7 +122,7 @@ mod tests {
         }
     }
 
-    // --- LG-6: the ceiling stops independent of actor/oracle -----------------
+    // --- The ceiling stops independent of actor/oracle -----------------
 
     #[test]
     fn check_ceiling_stops_on_max_iterations() {
@@ -183,7 +183,7 @@ mod tests {
         );
     }
 
-    // --- LG-2/LG-3: illegal writes are rejected, never silently dropped -----
+    // --- Illegal writes are rejected, never silently dropped -----
 
     #[test]
     fn guard_writes_rejects_a_mutation_outside_the_manifest() {
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(guard_writes(&mutations, &manifest), Ok(()));
     }
 
-    // --- LG-4: oracle dispatch + lineage-matched reduced_confidence ---------
+    // --- Oracle dispatch + lineage-matched reduced_confidence ---------
 
     #[test]
     fn judge_stamps_reduced_confidence_only_when_the_judge_shares_the_actors_lineage() {

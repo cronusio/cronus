@@ -128,7 +128,7 @@ pub fn validate(source: &str, filename: &str) -> Result<ValidationReport, Error>
 /// Parse `source`, validate it, then execute it against optional caller `input`.
 ///
 /// Fails fast with `Err(diagnostics)` when the validation report contains any
-/// block-class error (WFL-5: validate-before-run guarantee). On a clean report
+/// block-class error (validate-before-run guarantee). On a clean report
 /// it delegates to [`Executor`] and returns the [`RunResult`].
 ///
 /// Execution uses the built-in [`crate::executor::StubProvider`]; real model integration is
@@ -217,27 +217,27 @@ impl RunOptions {
         self
     }
 
-    /// The per-effect authorization gate (LP-11).
+    /// The per-effect authorization gate.
     pub fn policy(mut self, policy: impl PolicyProvider + 'static) -> Self {
         self.executor = self.executor.policy(policy);
         self
     }
 
-    /// The rail a permitted `SETTLE` step pays through (LP-17).
+    /// The rail a permitted `SETTLE` step pays through.
     pub fn settlement(mut self, rail: impl SettlementRail + 'static) -> Self {
         self.executor = self.executor.settlement(rail);
         self
     }
 
-    /// Extend the builtin vocabulary with the host's commands and variables
-    /// (LP-4): the workflow is parsed and validated against it.
+    /// Extend the builtin vocabulary with the host's commands and variables:
+    /// the workflow is parsed and validated against it.
     pub fn schema(mut self, provider: &dyn SchemaProvider) -> Self {
         self.schema = Some(crate::vocab::Schema::with_provider(provider));
         self
     }
 
     /// Reject the run before any step executes unless `host` satisfies
-    /// `manifest` (LP-8).
+    /// `manifest`.
     pub fn capability_gate(mut self, manifest: CapabilityManifest, host: HostCapabilities) -> Self {
         self.capability = Some((manifest, host));
         self
@@ -250,14 +250,14 @@ impl RunOptions {
         self
     }
 
-    /// The execution mode the host declares (HO-12). A run answered by the
+    /// The execution mode the host declares. A run answered by the
     /// built-in stub model is recorded as simulated whatever is declared here.
     pub fn execution_mode(mut self, mode: ExecutionMode) -> Self {
         self.execution_mode = mode;
         self
     }
 
-    /// The exposure switches the host froze for this run (HO-18).
+    /// The exposure switches the host froze for this run.
     pub fn exposure_switches(mut self, switches: Vec<(String, String)>) -> Self {
         self.exposure_switches = switches;
         self
@@ -268,8 +268,8 @@ impl RunOptions {
 ///
 /// The composed entry point: it does what each `run_with_*` does for its one
 /// seam, for any combination of them. Fast-fails with `Err(diagnostics)` on a
-/// parse error, a validation error (NL-4) or an input that breaks the declared
-/// `@in:` contract (NL-9); an unsatisfiable capability manifest returns a
+/// parse error, a validation error or an input that breaks the declared
+/// `@in:` contract; an unsatisfiable capability manifest returns a
 /// `NODUS:CAPABILITY_UNMET` result before any step runs, exactly as
 /// [`run_with_manifest`] does.
 pub fn run_with_options(
@@ -332,7 +332,7 @@ pub fn run_with_options(
     ))
 }
 
-/// The caller-input half of the pre-run gate (NL-9): the input against the
+/// The caller-input half of the pre-run gate: the input against the
 /// workflow's declared `@in:` contract, reported as validation errors so a run
 /// never starts on input it was not written for. `host_keys` are the keys the
 /// entry point adds itself after this check (`config`, `observation`).
@@ -363,23 +363,23 @@ pub fn transpile(source: &str, mode: TranspileMode) -> Result<String, Error> {
 
 /// Parse `source` and execute each `@test:` block, returning a [`TestReport`].
 ///
-/// Each block runs in a fresh executor context (NT-1). Input fields declared
+/// Each block runs in a fresh executor context. Input fields declared
 /// in `@in:` are seeded from the block's `input:` section; unspecified fields
-/// keep their declared defaults (NT-2). Assertions in `expected:` are checked
-/// against the final variable environment (NT-3/NT-4). All blocks execute
-/// regardless of individual failures (NT-4). Results are in declaration order
-/// (NT-7). A `tags` predicate may be supplied to filter blocks (NT-6).
+/// keep their declared defaults. Assertions in `expected:` are checked
+/// against the final variable environment. All blocks execute
+/// regardless of individual failures. Results are in declaration order.
+/// A `tags` predicate may be supplied to filter blocks.
 ///
 /// The workflow is validated first, exactly as for an ordinary run: a workflow
 /// that could not run in production cannot pass its tests either, so an error
 /// diagnostic (including a `@test:` block naming something that cannot exist,
-/// NT-9) fails the file before any block executes.
+/// which is treated the same) fails the file before any block executes.
 pub fn test(source: &str, filename: &str) -> Result<TestReport, Error> {
     test_impl(source, Some(filename), &[])
 }
 
 /// Like [`test()`] but only runs blocks whose `tags:` list contains at least one
-/// of `tag_filter`. If `tag_filter` is empty, all blocks run (NT-6).
+/// of `tag_filter`. If `tag_filter` is empty, all blocks run.
 pub fn test_with_tags(source: &str, tag_filter: &[&str]) -> Result<TestReport, Error> {
     test_impl(source, None, tag_filter)
 }
@@ -438,16 +438,16 @@ fn test_impl(
     Ok(TestReport::from_results(results))
 }
 
-/// Execute a single `@test:` block in an isolated context (NT-1) and evaluate
-/// its assertions (NT-3/NT-4).
+/// Execute a single `@test:` block in an isolated context and evaluate
+/// its assertions.
 fn run_test_block(ast: &WorkflowFile, tb: &TestBlock) -> TestResult {
-    // NT-2: build input by overlaying the block's `input:` over @in: defaults.
+    // Build input by overlaying the block's `input:` over @in: defaults.
     let input = build_test_input(ast, &tb.input);
 
-    // NT-1/NT-5: fresh executor with stub provider per block.
+    // Fresh executor with stub provider per block.
     let run_result = Executor::with_stub().execute(ast, Some(input));
 
-    // NT-3/NT-4: evaluate assertions; status failure is also a test failure.
+    // Evaluate assertions; status failure is also a test failure.
     let (passed, message) = evaluate_test_block(&run_result.vars, &run_result.status, &tb.expected);
 
     TestResult {
@@ -458,7 +458,7 @@ fn run_test_block(ast: &WorkflowFile, tb: &TestBlock) -> TestResult {
 }
 
 /// Merge `@in:` declared defaults with the test block's `input:` overrides.
-/// Keys not present in `@in:` are silently ignored (§4.2 step 2).
+/// Keys not present in `@in:` are silently ignored.
 fn build_test_input(ast: &WorkflowFile, block_input: &[(String, String)]) -> Value {
     let mut map: Vec<(String, Value)> = Vec::new();
 
@@ -499,7 +499,7 @@ fn build_test_input(ast: &WorkflowFile, block_input: &[(String, String)]) -> Val
 ///
 /// Returns `(passed, message)`. An absent `expected:` section means the test
 /// passes on `Status::Ok` alone. The first failing assertion determines the
-/// message (NT-4).
+/// message.
 fn evaluate_test_block(
     vars: &HashMap<String, Value>,
     status: &Status,
@@ -526,7 +526,7 @@ fn evaluate_test_block(
         let key = var_name.trim_start_matches('$');
         let actual = vars.get(key).cloned().unwrap_or(Value::Null);
 
-        // NT-3: absent variable → assertion fail.
+        // Absent variable → assertion fail.
         if !vars.contains_key(key) {
             return (
                 false,
@@ -684,7 +684,7 @@ pub fn run_with_provider_and_audit(
 /// [`StubProvider`] for model calls.
 ///
 /// Fast-fails with `Err(diagnostics)` when the validation report contains any
-/// block-class error (LP-4, NL-4).
+/// block-class error.
 pub fn run_with_schema(
     source: &str,
     filename: &str,
@@ -751,12 +751,12 @@ pub fn run_with_schema_and_audit(
 
 /// Parse, validate, check the capability manifest against `host`, then execute.
 ///
-/// The manifest gate (LP-8) runs after lint validation but before the executor
+/// The manifest gate runs after lint validation but before the executor
 /// boots: if the host cannot satisfy every required role, command, and
 /// capability, the run is rejected fail-fast — no step executes — and the
 /// returned [`RunResult`] carries a `NODUS:CAPABILITY_UNMET` error naming the
 /// missing capabilities. A satisfiable manifest delegates to the built-in stub
-/// executor. This is the machine-checkable two-host portability contract (LP-3):
+/// executor. This is the machine-checkable two-host portability contract:
 /// a workflow is portable to a host exactly when that host satisfies its manifest.
 pub fn run_with_manifest(
     source: &str,
@@ -799,7 +799,7 @@ pub fn run_with_manifest(
 // Composes two orthogonal extension points (the capability gate: `manifest` +
 // `host`, and the audit sink: `audit` + `run_id` + `started_at`); each argument
 // is independent, matching the `run_with_*_and_audit` family. Grouping them
-// would obscure that orthogonality (LP-5).
+// would obscure that orthogonality.
 #[allow(clippy::too_many_arguments)]
 pub fn run_with_manifest_and_audit(
     source: &str,
@@ -901,7 +901,7 @@ pub fn run_with_dialog_and_audit(
 }
 
 /// Parse, validate, and execute with a [`PolicyProvider`] gating every
-/// model-call and deferred effect before it happens (LP-11). Uses the
+/// model-call and deferred effect before it happens. Uses the
 /// built-in stub model and no-op audit.
 ///
 /// A denied effect never runs: its pipeline target stays unbound, a
@@ -968,11 +968,11 @@ pub fn run_with_policy_and_audit(
 }
 
 /// Parse, validate, and execute with a [`SettlementRail`] settling every
-/// gate-permitted `SETTLE` step (LP-17). Uses the built-in stub model and
+/// gate-permitted `SETTLE` step. Uses the built-in stub model and
 /// no-op audit.
 ///
 /// A `SETTLE` step is first gated by `PolicyProvider::evaluate("settlement",
-/// ..)`, the same LP-11 seam every other effect uses; a permitted step then
+/// ..)`, the same policy seam every other effect uses; a permitted step then
 /// asks `rail.settle(cmd)` for a receipt. `None` records
 /// `NODUS:SETTLEMENT_UNACCOUNTED` and leaves the pipeline target unbound —
 /// non-halting, distinct from a `!!`-rule violation. With no policy or rail
@@ -1038,14 +1038,13 @@ pub fn run_with_settlement_and_audit(
 }
 
 /// Parse, validate, gate on the `Environment` capability, then run the whole
-/// workflow as one graded unit against `env`
-/// (NE-1…NE-13).
+/// workflow as one graded unit against `env`.
 ///
 /// Sequence: `env.open(task, seed)` → `env.reset` (its `Observation` seeds the
 /// workflow's `$in.observation`) → execute the workflow → **frozen** →
-/// `env.evaluate` → `env.release` (always, via a drop guard — NE-7). Calling
+/// `env.evaluate` → `env.release` (always, via a drop guard). Calling
 /// this function is itself the workflow's declaration that it needs the
-/// `Environment` role (NE-10): the manifest is gated against `host` before
+/// `Environment` role: the manifest is gated against `host` before
 /// `env.open` is ever called, so a host without the role never leaks an
 /// instance. On a satisfiable host, `HostCapabilities::builtin()` provides
 /// `Environment` via [`crate::environment::StubEnvironment`].
@@ -1066,7 +1065,7 @@ pub fn run_with_environment(
 
 /// Like [`run_with_environment`] but with a custom [`AuditProvider`]. `run_id`
 /// and `started_at` are forwarded to the run manifest, which carries the
-/// reset [`EnvInteraction`] in its `env_trajectory` (NE-3).
+/// reset [`EnvInteraction`] in its `env_trajectory`.
 #[allow(clippy::too_many_arguments)]
 pub fn run_with_environment_and_audit(
     source: &str,
@@ -1128,7 +1127,7 @@ fn run_with_environment_impl(
     }
     check_input(&ast, filename, input.as_ref(), &["observation"])?;
 
-    // NE-10: calling this function is the declaration; gate before env.open.
+    // Calling this function is the declaration; gate before env.open.
     let manifest = CapabilityManifest::from_workflow(&ast).require_role(ExtensionRole::Environment);
     let missing = validate_manifest(&manifest, host);
     if !missing.is_empty() {
@@ -1139,11 +1138,11 @@ fn run_with_environment_impl(
         });
     }
 
-    // NE-7: fresh isolated instance; the guard guarantees release on every
+    // Fresh isolated instance; the guard guarantees release on every
     // exit path (including a panic inside env.evaluate).
     let mut guard = crate::environment::InstanceGuard::new(env, env.open(task, seed));
 
-    // NE-2: reset — deterministic, produces the seed observation.
+    // Reset — deterministic, produces the seed observation.
     let observation = env.reset(guard.get_mut());
     let reset_entry = EnvInteraction {
         kind: EnvInteractionKind::Reset,
@@ -1153,12 +1152,12 @@ fn run_with_environment_impl(
 
     let profile = env.profile();
 
-    // NE-14: a declared token budget with no identified measure is a
+    // A declared token budget with no identified measure is a
     // fail-fast rejection — checked here (after open/reset already ran for
     // the frozen-boundary reset-observation shape, before the workflow's own
     // steps execute) rather than "before env.open", since env.profile() is
     // not reachable any earlier. `guard`'s Drop still releases the instance
-    // on this early return (NE-7 unaffected).
+    // on this early return (release unaffected).
     let wants_tokens = profile.budget.as_ref().and_then(|b| b.max_tokens).is_some();
     if wants_tokens && profile.token_measure.is_none() {
         return Ok(EnvRunResult {
@@ -1189,10 +1188,10 @@ fn run_with_environment_impl(
     );
 
     // FROZEN — evaluate is strictly after execute returns, and is read-only
-    // over the completed run (NE-4).
+    // over the completed run.
     let reward = env.evaluate(guard.get());
 
-    // `guard` drops here -> env.release(inst), unconditionally (NE-7).
+    // `guard` drops here -> env.release(inst), unconditionally.
     Ok(EnvRunResult {
         result,
         reward,
@@ -1232,8 +1231,7 @@ fn value_descriptor(v: &Value) -> FieldDescriptor {
 }
 
 /// Parse, validate, shape-check + host-gate a `§config` value set, then
-/// execute with the accepted non-secret values merged into `$in.config`
-/// (NL-20).
+/// execute with the accepted non-secret values merged into `$in.config`.
 ///
 /// Sequence: parse workflow → lint validate → `check_config_values` (pure
 /// shape check) → `provider.accept` (host acceptance) → executor boot. A
@@ -1340,7 +1338,7 @@ fn run_with_config_impl(
 /// key onto `input` — mirroring `merge_observation`'s `"observation"` overlay.
 /// `secret` fields are deliberately excluded: this is the only projection
 /// merged into the workflow's variable surface, so an ordinary `GEN`/`REFINE`
-/// step has no path to a secret value at all (DC-9's write-only guarantee).
+/// step has no path to a secret value at all (the write-only guarantee).
 fn merge_config(
     input: Option<Value>,
     accepted: &crate::validator::AcceptedConfig,
@@ -1426,7 +1424,7 @@ fn capability_rejection(ast: &WorkflowFile, missing: &[Missing]) -> RunResult {
 }
 
 /// Build the fail-fast rejection result for an `EnvironmentProfile` that
-/// declares a `max_tokens` budget with no identified `token_measure` (NE-14):
+/// declares a `max_tokens` budget with no identified `token_measure`:
 /// status `Failed`, no steps logged, one `NODUS:ENV_MEASURE_UNKNOWN` error.
 /// Mirrors [`capability_rejection`]'s shape exactly — the same pre-run,
 /// non-`Diagnostic` rejection channel.
@@ -1826,7 +1824,7 @@ mod tests {
 
     #[test]
     fn test_all_blocks_run_regardless_of_failure() {
-        // NT-4: all blocks execute even when some fail
+        // All blocks execute even when some fail
         let report = test(WF_WITH_STRUCTURED_TESTS, "test_wf.nodus").expect("test");
         assert_eq!(
             report.results.len(),
@@ -1846,7 +1844,7 @@ mod tests {
 
     #[test]
     fn test_results_in_declaration_order() {
-        // NT-7: TestResult entries are in declaration order
+        // TestResult entries are in declaration order
         let report = test(WF_WITH_STRUCTURED_TESTS, "test_wf.nodus").expect("test");
         assert_eq!(report.results[0].name, "no_assertions");
         assert_eq!(report.results[1].name, "assertion_pass");
@@ -1855,7 +1853,7 @@ mod tests {
 
     #[test]
     fn test_with_tags_filters_by_tag() {
-        // NT-6: tag filtering skips non-matching blocks
+        // Tag filtering skips non-matching blocks
         let wf = "\
 §wf:tagged_wf v1.0
 §runtime: { core: schema.nodus }
@@ -1878,7 +1876,7 @@ mod tests {
 
     #[test]
     fn test_with_tags_empty_filter_runs_all() {
-        // empty tag filter ≡ run all (NT-6)
+        // empty tag filter ≡ run all
         let wf = "\
 §wf:tagged_wf2 v1.0
 §runtime: { core: schema.nodus }
@@ -1909,7 +1907,7 @@ mod tests {
         assert!(result.vars.contains_key("out"), "vars must include $out");
     }
 
-    // ── run_with_config (NL-20) ─────────────────────────────────────────────
+    // ── run_with_config ─────────────────────────────────────────────
 
     fn sample_config_decl_for_workflows() -> ConfigDecl {
         use crate::ast::ConfigField;

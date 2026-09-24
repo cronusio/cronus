@@ -1,7 +1,7 @@
 //! Inter-actor inbox — SQLite-backed send/drain pipeline with GC and bus events.
 //!
 //! The `BusSender` stub implementations (`NoOpBusSender`, `CaptureBusSender`)
-//! stay in the domain tier (§4.2) — they hold no infrastructure dependency;
+//! stay in the domain tier — they hold no infrastructure dependency;
 //! only this SQLite-backed pipeline moved here.
 
 use rusqlite::{Connection, params};

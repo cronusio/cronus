@@ -1,12 +1,12 @@
-//! Prompt synthesis (§4.4 "Prompt synthesis"): the office authors SKILL.md
+//! Prompt synthesis: the office authors SKILL.md
 //! and, for a procedural skill, a `workflow.nd` directly against the loaded
 //! nodus schema; the result is linted then validated before landing as
 //! `source: generated`, `status: discovered`.
 //!
-//! The authoring model call itself is a seam (§4.4 Notes) — this module
+//! The authoring model call itself is a seam — this module
 //! takes already-authored content as input and owns linting + landing, not
 //! generation. Workflow *content* validation against the nodus schema
-//! (WFL-2/5) is the runtime's own contract, exactly like the transpile stage
+//!  is the runtime's own contract, exactly like the transpile stage
 //! of the conversion pipeline ([`crate::skills::convert`]); this module's
 //! lint only catches an authoring-shape defect a package-shape check would
 //! not: an incomplete workflow pair.
@@ -20,7 +20,7 @@ pub struct AuthoredSkill {
     pub manifest: ExtensionManifest,
     /// The office authored a `workflow.nd` procedure for this skill.
     pub workflow_nd: bool,
-    /// The human-rendered counterpart (§4.2: "generated, lossless") exists.
+    /// The human-rendered counterpart ("generated, lossless") exists.
     pub workflow_md: bool,
     /// Support material, as canonical-relative paths landing under `assets/`.
     pub assets: Vec<String>,
@@ -29,14 +29,14 @@ pub struct AuthoredSkill {
 #[derive(Debug, PartialEq, Eq)]
 pub enum LintError {
     /// `workflow.nd` and `workflow.md` must land together or not at all
-    /// (§4.2: the `.md` is a *generated* rendering of the `.nd`) — freshly
+    /// (the `.md` is a *generated* rendering of the `.nd`) — freshly
     /// authored content has no excuse for carrying only half the pair.
     IncompleteWorkflowPair,
 }
 
 /// Whether a synthesized skill may activate immediately for the requesting
 /// user, or must wait for the standard review gate. The spec leaves this an
-/// open TBD (§4.4); resolved conservatively as always-review until the spec
+/// open TBD; resolved conservatively as always-review until the spec
 /// amends — there is no "auto-activate" outcome to select.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationPolicy {

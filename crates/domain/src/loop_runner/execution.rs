@@ -1,4 +1,4 @@
-//! The execution-loop runner (LG-5, LG-8): re-attempts a fixed task until
+//! The execution-loop runner: re-attempts a fixed task until
 //! the oracle says done or the ceiling fires. The actor's own "I'm done" is
 //! advisory — only `governor::judge` sets `Verdict.done`.
 
@@ -20,13 +20,13 @@ pub trait ExecutionBackend {
     fn budget_status(&self) -> Option<BudgetStatus>;
 
     /// Run one iteration attempt. `plan`/`status` are the durable,
-    /// reconstructed-fresh-each-time artifacts (LG-5) — never the growing
+    /// reconstructed-fresh-each-time artifacts — never the growing
     /// transcript of prior iterations. Returns the mutations attempted and
     /// the oracle's raw signal for this attempt (already computed by
     /// whichever mechanism the declared `Oracle` names).
     fn run_turn(&mut self, plan: &str, status: &str) -> (Vec<Mutation>, TurnResult);
 
-    /// Discard the attempt (VC-4 rollback) and return the compact status
+    /// Discard the attempt (rollback) and return the compact status
     /// note the next iteration reconstructs from.
     fn rollback(&mut self, feedback: Option<&str>) -> String;
 
@@ -35,7 +35,7 @@ pub trait ExecutionBackend {
 }
 
 /// The outcome of a full execution-loop run: the final result, the
-/// append-only mutation ledger (LG-8), and how many iterations it took.
+/// append-only mutation ledger, and how many iterations it took.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionReport {
     pub outcome: LoopOutcome,
@@ -130,7 +130,7 @@ mod tests {
     /// A scripted backend: each call to `run_turn` pops the next scripted
     /// response. Records every `status` it was called with, so a test can
     /// prove the runner reconstructs fresh from the compact note rather than
-    /// threading a growing transcript (LG-5).
+    /// threading a growing transcript.
     struct FakeBackend {
         responses: Vec<(Vec<Mutation>, TurnResult)>,
         call_index: usize,
@@ -220,7 +220,7 @@ mod tests {
         }
     }
 
-    // --- LG-5: a failed attempt rolls back to a fresh, compact status -------
+    // --- A failed attempt rolls back to a fresh, compact status -------
 
     #[test]
     fn a_failed_attempt_rolls_back_and_the_next_iteration_reconstructs_from_the_compact_status() {
@@ -237,7 +237,7 @@ mod tests {
         assert_eq!(backend.statuses_seen[1], "not there yet");
     }
 
-    // --- LG-6: the ceiling stops the loop independent of the actor ----------
+    // --- The ceiling stops the loop independent of the actor ----------
 
     #[test]
     fn the_ceiling_stops_the_loop_even_though_the_backend_never_reports_done() {
@@ -250,7 +250,7 @@ mod tests {
         assert!(!backend.finalized);
     }
 
-    // --- LG-8: every applied mutation appends to the ledger -----------------
+    // --- Every applied mutation appends to the ledger -----------------
 
     #[test]
     fn every_applied_mutation_appends_to_the_ledger() {
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(report.ledger[0].summary, "narrowed the plan");
     }
 
-    // --- LG-2/LG-3: an out-of-manifest write never reaches the backend's committed state
+    // --- An out-of-manifest write never reaches the backend's committed state
 
     #[test]
     fn an_out_of_manifest_write_is_rejected_and_rolled_back_not_finalized() {

@@ -1,4 +1,4 @@
-//! The installation half of the command surface (§4.1.1): workspace
+//! The installation half of the command surface: workspace
 //! initialization, diagnostics, and developer-office admission — verbs that
 //! configure or inspect the product itself rather than act on the user's
 //! work.
@@ -456,7 +456,7 @@ pub fn declared_invocables() -> Vec<Invocable> {
         },
         // `Installation`, not `Semantic`/`ClientLocal`: launching the
         // terminal UI has no meaning inside an already-running session, the
-        // same reasoning that places every other verb here (LH-10).
+        // same reasoning that places every other verb here.
         // Answerable with zero composition, matching every other
         // installation verb — the terminal UI composes its own registry and
         // dispatcher internally the moment it starts, so this launcher never
@@ -475,7 +475,7 @@ pub fn declared_invocables() -> Vec<Invocable> {
         // product runs and must be answerable from this frontend's own
         // grammar. The generated script is emitted from the composed command
         // tree once, at install time — the script itself does the
-        // per-keystroke work without calling back (LH-6's pre-composition
+        // per-keystroke work without calling back (a pre-composition
         // artifact refinement is future work; this verb still composes once).
         Invocable {
             id: id("completion"),
@@ -624,7 +624,7 @@ pub fn build_installation_tree(invocables: &[&Invocable]) -> (Vec<Command>, Hash
 /// with `Cli`'s derive-generated definition: the two are genuinely two
 /// consumers of the same **flag**, not the verb grammar this module's own
 /// "declared once" property is about, and it is the one launcher-owned flag
-/// LH-1 names explicitly ("which configuration overlays to apply").
+/// that is called out explicitly ("which configuration overlays to apply").
 pub fn format_arg() -> Arg {
     Arg::new("format")
         .long("format")
@@ -643,7 +643,7 @@ pub fn format_arg() -> Arg {
 
 /// Launch the terminal UI and map its result to a process exit code — the
 /// one function both spellings of "start the terminal UI" call: `cronus tui`
-/// through [`dispatch_leaf`]'s own `"tui"` arm, and a bare invocation (LH-4's
+/// through [`dispatch_leaf`]'s own `"tui"` arm, and a bare invocation (the
 /// default composition) directly from `main`, before any composition of
 /// this launcher's own tree runs. One function, two callers, rather than the
 /// same `cronus_tui::run()` call and error mapping written out twice.
@@ -1189,7 +1189,7 @@ mod tests {
     }
 
     /// SDD reference containment: a requirement-clause id
-    /// ("KB-1", "OA-10", "BA-8", "DVO-3", ...) resolves to nothing once
+    /// (a capitalized prefix, a hyphen and a number) resolves to nothing once
     /// `.design/` is absent from a release — printing one in a `--help`
     /// summary a user reads leaves dead, unexplained text behind. Scans
     /// every `summary` across both grammar halves (installation's own

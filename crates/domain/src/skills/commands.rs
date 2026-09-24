@@ -1,18 +1,18 @@
 //! Built-in command surface — the bridge between skill workflows and core
-//! operations (§4.3). A closed, versioned registry of `CommandSpec`s; every
+//! operations. A closed, versioned registry of `CommandSpec`s; every
 //! dispatch validates its input against the command's schema, then the
-//! caller's manifest grants, before the call is allowed through (EXT-4/6).
+//! caller's manifest grants, before the call is allowed through.
 //!
 //! Registering these commands into the nodus vocabulary
 //! (`SchemaProvider::host_commands`) is the runtime wiring seam this module
 //! feeds, not something it performs itself — no changes to the runtime
-//! crate are made here (§4.3 Notes: a genuine runtime gap routes through
+//! crate are made here (a genuine runtime gap routes through
 //! that crate's own workspace, not this phase).
 
 use crate::extensions::ExtensionPermissions;
 use std::collections::HashMap;
 
-/// WFL vocabulary categories a built-in command can belong to (§4.3).
+/// WFL vocabulary categories a built-in command can belong to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandCategory {
     DataIo,
@@ -21,7 +21,7 @@ pub enum CommandCategory {
     Validation,
 }
 
-/// A typed input parameter (§4.3: "typed parameters, validated before dispatch").
+/// A typed input parameter ("typed parameters, validated before dispatch").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParamType {
     String,
@@ -105,7 +105,7 @@ impl InputSchema {
     }
 
     /// Validate `args`: every required param present and type-matched, no
-    /// unrecognized params (§4.3 "validated before dispatch").
+    /// unrecognized params ("validated before dispatch").
     pub fn validate(&self, args: &HashMap<String, ParamValue>) -> Result<(), SchemaError> {
         for spec in &self.params {
             match args.get(&spec.name) {
@@ -127,7 +127,7 @@ impl InputSchema {
 }
 
 /// A scope required from the calling skill's manifest before a command may
-/// dispatch (§4.3: "fs / network / secrets scopes checked against the skill
+/// dispatch ("fs / network / secrets scopes checked against the skill
 /// manifest").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredGrant {
@@ -147,11 +147,11 @@ impl RequiredGrant {
 }
 
 /// The built-in command surface version. Bumped only by core releases, never
-/// by skill installation (§2, §4.3) — the lockstep test in this module's
+/// by skill installation — the lockstep test in this module's
 /// `tests` pins the current value so an accidental bump fails loudly.
 pub const SURFACE_VERSION: &str = "1.0.0";
 
-/// One entry in the built-in command surface (§4.3).
+/// One entry in the built-in command surface.
 #[derive(Debug, Clone)]
 pub struct CommandSpec {
     pub id: String,
@@ -200,7 +200,7 @@ impl std::fmt::Display for DispatchError {
 
 impl std::error::Error for DispatchError {}
 
-/// The closed, versioned registry of built-in commands (§4.3).
+/// The closed, versioned registry of built-in commands.
 #[derive(Debug, Default)]
 pub struct CommandRegistry {
     commands: HashMap<String, CommandSpec>,
@@ -221,7 +221,7 @@ impl CommandRegistry {
 
     /// Check that a dispatch is allowed: the command exists, `args` validate
     /// against its schema, and every required grant is present in the
-    /// caller's manifest permissions (§4.3, EXT-4/6). Schema is checked
+    /// caller's manifest permissions. Schema is checked
     /// before grants — input shape is invalid regardless of who is calling.
     /// Invocation itself belongs to the execution model (a separate task).
     pub fn check_dispatch(

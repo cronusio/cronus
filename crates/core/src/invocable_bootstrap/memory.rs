@@ -131,7 +131,7 @@ fn register_search(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher
                 Err(reason) => return Outcome::Unavailable { reason },
             };
             // A zero-item list and a genuinely empty result are different
-            // facts (§4.5's zero-count-list fixture guards exactly this):
+            // facts (a zero-count-list fixture guards exactly this):
             // a completed search that matched nothing is still a List, not
             // Empty — Empty would claim the search itself produced nothing
             // to report, which is not what a clean zero-match search means.

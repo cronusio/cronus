@@ -1,6 +1,6 @@
 //! Registers this shell's real projection against the shared conformance
 //! corpus — the first time the corpus runs from a workspace detached from
-//! the main engine workspace at all (§2/§4.4's own reason the corpus is a
+//! the main engine workspace at all (the reason the corpus is a
 //! library, not one central suite, finally proven rather than only
 //! asserted).
 //!
@@ -148,7 +148,7 @@ fn attach_handlers(dispatcher: &mut Dispatcher) {
         fixture_id("absent-required"),
         // Unreachable in this corpus's own run: the fixture supplies no
         // value for its one required `id` binder at all, so `bind()`
-        // rejects before this handler could ever be called (IB-2). Attached
+        // rejects before this handler could ever be called. Attached
         // anyway for uniformity with every other fixture.
         Arc::new(|_args| Outcome::Unavailable {
             reason: "unreachable: bind() rejects this fixture before dispatch".to_string(),
@@ -181,9 +181,9 @@ mod tests {
 
     use super::*;
 
-    /// This shell registers against the full corpus (§4.5) — every
+    /// This shell registers against the full corpus — every
     /// assertion family, driven through its real `Bridge`. The harness is
-    /// expected to fail on any real surface's first run (§4.4's own
+    /// expected to fail on any real surface's first run (the harness's own
     /// callout); this test makes that expectation precise rather than
     /// vague: this bridge is composed exactly like production's own
     /// `core_bridge()`, which never populates a non-empty secret list — the

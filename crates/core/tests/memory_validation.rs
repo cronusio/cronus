@@ -1,6 +1,6 @@
 //! Cross-layer validation for the memory L2 pair: proves the consolidation
-//! (MC-1..10) and intelligence — both query-surface (MI-1/2/3/4/5/7/8/9/13)
-//! and capture-path (MI-6/10/11/12) — invariants hold
+//! and intelligence — both query-surface
+//! and capture-path — invariants hold
 //! together on the built tier, through the real facade and the real SQLite
 //! adapter, not each task's own isolated stub/unit tests.
 
@@ -15,7 +15,7 @@ use cronus_core::memory_capture::{
 use cronus_core::memory_intelligence::{self, AnswerVerdict, ExperienceDecision, RunTrace};
 use cronus_store_local::memory::{CaptureOutcome, ConsolidationAction, SignalKind};
 
-// ── MC-1/MC-2/MC-4 + MI-1: capture consolidates and becomes answerable ──────
+// ── Capture consolidates and becomes answerable ──────
 
 #[test]
 fn raw_capture_consolidates_and_becomes_answerable_end_to_end() {
@@ -41,7 +41,7 @@ fn raw_capture_consolidates_and_becomes_answerable_end_to_end() {
     );
 }
 
-// ── MC-5/MC-8 cold start: no signal ever computed, ranking still works ──────
+// ── cold start: no signal ever computed, ranking still works ──────
 
 #[test]
 fn cold_start_ranking_degrades_to_base_relevance_with_no_signals_computed() {
@@ -78,7 +78,7 @@ fn cold_start_ranking_degrades_to_base_relevance_with_no_signals_computed() {
     }
 }
 
-// ── MC-8/MEM-2: the ranking-time signal read never re-walks the live graph ──
+// ── The ranking-time signal read never re-walks the live graph ──
 
 #[test]
 fn centrality_signal_is_precomputed_not_rewalked_on_every_read() {
@@ -144,7 +144,7 @@ fn centrality_signal_is_precomputed_not_rewalked_on_every_read() {
         .unwrap();
     assert_eq!(
         factor_after_one_edge, factor_still,
-        "a ranking-time signal read must not silently re-walk the live edge graph (MC-8/MEM-2)"
+        "a ranking-time signal read must not silently re-walk the live edge graph"
     );
 
     // Confirm the graph really did change underneath the stale signal —
@@ -159,7 +159,7 @@ fn centrality_signal_is_precomputed_not_rewalked_on_every_read() {
     );
 }
 
-// ── MC-5: the fact/derived boundary holds through the public write path ────
+// ── The fact/derived boundary holds through the public write path ────
 
 #[test]
 fn signal_writes_never_touch_the_authored_fact_columns() {
@@ -180,7 +180,7 @@ fn signal_writes_never_touch_the_authored_fact_columns() {
     assert_eq!(after.body, "authored body text");
 }
 
-// ── MI-7/MI-13: a distilled experience round-trips through the real adapter ─
+// ── A distilled experience round-trips through the real adapter ─
 
 #[test]
 fn distilled_experience_round_trips_through_the_real_store_and_is_reused() {
@@ -215,7 +215,7 @@ fn distilled_experience_round_trips_through_the_real_store_and_is_reused() {
     }
 }
 
-// ── MI-6: capture policy with full metadata, through the real adapter ──────
+// ── Capture policy with full metadata, through the real adapter ──────
 
 #[test]
 fn a_fully_attributed_capture_persists_metadata_and_cross_ref_edges_for_real() {
@@ -254,7 +254,7 @@ fn a_fully_attributed_capture_persists_metadata_and_cross_ref_edges_for_real() {
     let edges = store.edges_from(&id).unwrap();
     assert!(
         edges.iter().any(|(target, _)| *target == hub_id),
-        "the cross-ref edge must be readable through the real MC-3 graph"
+        "the cross-ref edge must be readable through the real graph"
     );
 }
 
@@ -276,7 +276,7 @@ fn a_below_floor_capture_is_refused_through_the_real_adapter_and_writes_nothing(
     assert!(hits.is_empty(), "a refused capture must not be recallable");
 }
 
-// ── MI-10/MI-12: a raw capture with no generator is immediately recallable ──
+// ── A raw capture with no generator is immediately recallable ──
 
 #[test]
 fn a_raw_capture_with_no_generator_bound_flows_through_to_real_recall() {
@@ -309,7 +309,7 @@ fn a_raw_capture_with_no_generator_bound_flows_through_to_real_recall() {
     );
 }
 
-// ── MI-11: directives shape what actually lands in the real store ──────────
+// ── Directives shape what actually lands in the real store ──────────
 
 #[test]
 fn directive_shaped_content_lands_in_the_real_store_with_the_safety_guard_intact() {

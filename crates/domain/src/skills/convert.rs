@@ -1,20 +1,20 @@
-//! Conversion pipeline (§4.4): verify → classify → retain → transpile →
+//! Conversion pipeline: verify → classify → retain → transpile →
 //! degrade → report. Turns a foreign skill package into a canonical one.
 //! Deterministic command-surface mapping is in scope; the LLM-assisted
-//! transpile assist is a seam (deferred model wiring, §4.4 Notes).
+//! transpile assist is a seam (deferred model wiring.4 Notes).
 //!
 //! Atomicity is structural, not a rollback mechanism: [`convert`] is a pure
 //! function with no side effects of its own. On `Err`, nothing has been
 //! written anywhere, because nothing is written until a caller lands the
 //! returned `Ok` value in the mutable store — a separate step this module
-//! does not perform (§4.4: "a package that fails ... lands nothing").
+//! does not perform ("a package that fails... lands nothing").
 
 use crate::extensions::{ExtensionManifest, ExtensionSource};
 use crate::skills::exec::Degradation;
 use crate::skills::package::{PackageError, PackageListing, SkillPackage, validate_package};
 use std::collections::HashMap;
 
-/// EXT-11: an imported package's signed witness, verified before conversion
+/// An imported package's signed witness, verified before conversion
 /// begins. The signature mechanism itself is a separate attestation
 /// concept's concern (no implementation yet); this pipeline only branches
 /// on the outcome.
@@ -25,7 +25,7 @@ pub enum WitnessStatus {
     Invalid,
 }
 
-/// The four content classes §4.4 partitions a foreign package into. Assigned
+/// The four content classes a foreign package is partitioned into. Assigned
 /// by the source adapter at ingestion — the same boundary `agent_migration`
 /// draws for its own `ItemKind` — so this module classifies by the tag it is
 /// given; it does not sniff foreign file formats.
@@ -47,7 +47,7 @@ pub struct ForeignItem {
     pub content: String,
 }
 
-/// A foreign package partitioned by content class (§4.4 stage 2).
+/// A foreign package partitioned by content class.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Classified {
     pub instructions: Vec<ForeignItem>,
@@ -56,7 +56,7 @@ pub struct Classified {
     pub assets: Vec<ForeignItem>,
 }
 
-/// Partition `items` by their pre-assigned kind (§4.4 stage 2).
+/// Partition `items` by their pre-assigned kind.
 pub fn classify(items: &[ForeignItem]) -> Classified {
     let mut c = Classified::default();
     for item in items {
@@ -72,22 +72,22 @@ pub fn classify(items: &[ForeignItem]) -> Classified {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConvertError {
-    /// EXT-11: a missing or failed witness stops the pipeline before
+    /// A missing or failed witness stops the pipeline before
     /// anything else is inspected (default-deny).
     WitnessDenied(WitnessStatus),
     /// The resulting canonical shape failed validation — nothing lands
-    /// (atomicity: §4.4 "a package that fails ... lands nothing").
+    /// (atomicity: "a package that fails ... lands nothing").
     InvalidResult(PackageError),
 }
 
-/// One foreign item successfully mapped onto the command surface (§4.4 stage 4).
+/// One foreign item successfully mapped onto the command surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MappedStep {
     pub source_path: String,
     pub command_id: String,
 }
 
-/// The conversion report persisted with the landed package (§4.4 stage 6, EXT-8).
+/// The conversion report persisted with the landed package.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConversionReport {
     pub mapped: Vec<MappedStep>,
@@ -96,8 +96,8 @@ pub struct ConversionReport {
 }
 
 /// A successfully converted package: its canonical shape, whether any item
-/// degraded (which demotes the *whole* package to instruction-only — §4.4
-/// stage 5 speaks of "the skill", not the item), and the audit report.
+/// degraded (which demotes the *whole* package to instruction-only —
+/// the last stage speaks of "the skill", not the item), and the audit report.
 #[derive(Debug, Clone)]
 pub struct ConversionOutcome {
     pub package: SkillPackage,
@@ -118,7 +118,7 @@ pub struct ConversionOutcome {
 /// `transpile_map` supplies the deterministic mapping from a procedural-step
 /// or script item's path to a built-in command id (stage 4); a path absent
 /// from the map degrades (stage 5). Every foreign item — mapped, degraded,
-/// instruction, or asset — is preserved verbatim under `origin/` (EXT-8),
+/// instruction, or asset — is preserved verbatim under `origin/`,
 /// regardless of outcome.
 pub fn convert(
     witness: WitnessStatus,

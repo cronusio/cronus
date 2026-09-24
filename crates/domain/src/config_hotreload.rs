@@ -1,4 +1,4 @@
-//! Configuration hot-reload (DOC-2/DOC-4, SEC-5): diff two config snapshots
+//! Configuration hot-reload (DOC-2/DOC-4): diff two config snapshots
 //! into changed key-paths, classify each path through a prefix-ordered rule
 //! table into a restart/hot/none reload plan, invalidate the skills snapshot
 //! when applicable, and recover a failing file watcher through bounded
@@ -6,7 +6,7 @@
 //!
 //! Config *values* never appear here — a snapshot diff yields key-paths
 //! only, so secret fields are structurally excluded from every log-worthy
-//! artifact this module produces (SEC-5), with no separate redaction step
+//! artifact this module produces, with no separate redaction step
 //! needed.
 
 use std::collections::BTreeMap;
@@ -18,7 +18,7 @@ use std::time::Instant;
 pub type ConfigSnapshot = BTreeMap<String, String>;
 
 /// Diff two snapshots into the flat set of key-paths that differ (added,
-/// removed, or changed value) — never the values themselves (§2, SEC-5).
+/// removed, or changed value) — never the values themselves.
 pub fn diff_config(old: &ConfigSnapshot, new: &ConfigSnapshot) -> Vec<String> {
     let mut changed: Vec<String> = old
         .iter()
@@ -45,7 +45,7 @@ pub enum ReloadKind {
     None,
 }
 
-/// A subsystem action dispatched for a `Hot` reload (§4.1).
+/// A subsystem action dispatched for a `Hot` reload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadAction {
     ReloadHooks,
@@ -57,7 +57,7 @@ pub enum ReloadAction {
     RestartChannel(String),
 }
 
-/// One entry of the prefix-ordered rule table (§4.2). The first entry whose
+/// One entry of the prefix-ordered rule table. The first entry whose
 /// `prefix` matches a changed path wins.
 #[derive(Debug, Clone)]
 pub struct ReloadRule {
@@ -81,7 +81,7 @@ fn prefix_matches(prefix: &str, path: &str) -> bool {
     path == prefix || path.starts_with(&format!("{prefix}."))
 }
 
-/// The built-in rule table (§4.2), in priority order. More specific prefixes
+/// The built-in rule table, in priority order. More specific prefixes
 /// (`hooks.gmail`) are listed before their broader parents (`hooks`) so
 /// first-match-wins resolves correctly; custom rules may be prepended by a
 /// caller to take precedence over these.
@@ -101,7 +101,7 @@ pub fn builtin_rules() -> Vec<ReloadRule> {
         rule("agents.defaults.model", Hot, vec![RestartHeartbeat]),
         rule("models.pricing", Restart, vec![]),
         rule("models", Hot, vec![]),
-        rule("skills", Hot, vec![]), // skills snapshot invalidation is separate, §4.3
+        rule("skills", Hot, vec![]), // skills snapshot invalidation is separate.3
         rule("mcp", Hot, vec![DisposeMcpRuntimes]),
         rule("plugins", Hot, vec![ReloadPlugins]),
         rule("cron", Hot, vec![RestartCron]),
@@ -119,7 +119,7 @@ fn channel_rule_for(path: &str) -> Option<(ReloadKind, Vec<ReloadAction>)> {
     ))
 }
 
-/// The reload planner's output (§4.1).
+/// The reload planner's output.
 #[derive(Debug, Clone, Default)]
 pub struct ConfigReloadPlan {
     pub changed_paths: Vec<String>,
@@ -132,7 +132,7 @@ pub struct ConfigReloadPlan {
 
 /// Build a reload plan by matching every changed path against `rules`
 /// (first-match-wins), falling back to `restart` for anything unmatched —
-/// the safe default for unknown config changes (§4.2).
+/// the safe default for unknown config changes.
 pub fn build_plan(changed_paths: &[String], rules: &[ReloadRule]) -> ConfigReloadPlan {
     let mut plan = ConfigReloadPlan {
         changed_paths: changed_paths.to_vec(),
@@ -169,12 +169,12 @@ pub fn build_plan(changed_paths: &[String], rules: &[ReloadRule]) -> ConfigReloa
     plan
 }
 
-/// A plan requiring no subsystem notification at all (§4.4).
+/// A plan requiring no subsystem notification at all.
 pub fn is_noop(plan: &ConfigReloadPlan) -> bool {
     !plan.restart_daemon && plan.hot_reasons.is_empty() && plan.actions.is_empty()
 }
 
-/// Prefixes whose change invalidates the skills snapshot (§4.3).
+/// Prefixes whose change invalidates the skills snapshot.
 const SKILLS_INVALIDATION_PREFIXES: &[&str] = &["skills"];
 
 /// Whether any changed path falls under a skills-invalidating prefix.
@@ -206,7 +206,7 @@ impl SkillsSnapshotVersion {
     }
 }
 
-// --- File watcher lifecycle (§4.5) ---
+// --- File watcher lifecycle ---
 
 pub const WATCHER_RECREATE_MAX_RETRIES: u8 = 3;
 pub const WATCHER_RECREATE_BACKOFF_MS: [u64; 3] = [500, 2_000, 5_000];
@@ -235,7 +235,7 @@ pub enum RecoveryStep {
     Continue,
 }
 
-/// The bounded backoff → polling → disabled state machine (§4.5), driven by
+/// The bounded backoff → polling → disabled state machine, driven by
 /// caller-reported outcomes rather than owning any real OS watcher — this
 /// keeps the recovery *logic* testable without spawning inotify/FSEvents.
 #[derive(Debug)]
@@ -258,7 +258,7 @@ impl WatcherRecovery {
         Self::default()
     }
 
-    /// Force polling mode from the start (`CONFIG_WATCHER_POLL=1`, §4.5).
+    /// Force polling mode from the start (`CONFIG_WATCHER_POLL=1`).
     pub fn force_polling() -> Self {
         Self {
             status: WatcherStatus::Polling,
@@ -303,8 +303,8 @@ impl WatcherRecovery {
     }
 }
 
-/// The reload status exposed through health/diagnostics (§4.6). `last_plan`
-/// carries only key-paths and action names — never values (SEC-5).
+/// The reload status exposed through health/diagnostics. `last_plan`
+/// carries only key-paths and action names — never values.
 #[derive(Debug, Clone, Default)]
 pub struct HotReloadStatus {
     pub watcher_status: Option<WatcherStatus>,
@@ -323,7 +323,7 @@ impl HotReloadStatus {
     }
 }
 
-/// Convenience: run the full reload sequence (§4.7) for one detected change,
+/// Convenience: run the full reload sequence for one detected change,
 /// returning the plan and whether it was a no-op. Skills invalidation is
 /// applied as a side effect on `skills_version` before the caller dispatches
 /// hot actions, matching the documented ordering.
@@ -566,6 +566,6 @@ mod tests {
         );
         // The recorded status carries paths/actions only — no value ever
         // appears anywhere in ConfigReloadPlan or HotReloadStatus by
-        // construction (SEC-5).
+        // construction.
     }
 }

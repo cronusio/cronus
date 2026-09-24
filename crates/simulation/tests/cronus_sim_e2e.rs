@@ -91,7 +91,7 @@ fn world_new(scenario_path: &Path) -> String {
 
 /// A minimal, valid scenario with `obligation_ids.len()` obligations, no
 /// perturbations (perturbation count is irrelevant to this test file —
-/// only `l1-usage-simulation` USM-6's smoke-labelling reads it, exercised
+/// only the smoke-labelling reads it, exercised
 /// in `scenario.rs`'s own tests), and the given bound.
 fn write_scenario(
     file_stem: &str,
@@ -577,7 +577,7 @@ fn a_classified_discovery_with_a_proposed_remedy_survives_into_the_finish_report
     let finished = run_sim(&["finish", &world_id]);
     assert_eq!(
         finished.code, 0,
-        "a defect-free run stays pass regardless of an unrelated classified discovery (USM-3): {}",
+        "a defect-free run stays pass regardless of an unrelated classified discovery: {}",
         finished.stdout
     );
     assert!(finished.stdout.contains("outcome: pass"));

@@ -10,7 +10,7 @@
 //! code.
 //!
 //! This task's own scope is the surface-set family and the declared-locus-
-//! difference mechanism (SP-8) — proving `DeclaredExclusion` is
+//! difference mechanism — proving `DeclaredExclusion` is
 //! load-bearing, not merely documented in prose. The full corpus run
 //! (schema + outcome families, the accepted-residual assertion, and finding
 //! F-2's repayment) is a separate, later obligation this registration is
@@ -141,7 +141,7 @@ fn attach_handlers(dispatcher: &mut Dispatcher) {
         fixture_id("absent-required"),
         // Unreachable in this corpus's own run: the fixture supplies no
         // value for its one required `id` binder at all, so `bind()`
-        // rejects before this handler could ever be called (IB-2). Attached
+        // rejects before this handler could ever be called. Attached
         // anyway for uniformity with every other fixture.
         Arc::new(|_args| Outcome::Unavailable {
             reason: "unreachable: bind() rejects this fixture before dispatch".to_string(),
@@ -250,10 +250,10 @@ mod tests {
         assert_eq!(check_surface_set(&projection, &data, &[]), Vec::new());
     }
 
-    /// This surface registers against the full corpus (§4.5) — every
+    /// This surface registers against the full corpus — every
     /// assertion family, not only the surface-set family the two tests
     /// above prove. The harness is expected to fail on any real surface's
-    /// first run (§4.4's own callout); this test makes that expectation
+    /// first run (the harness's own callout); this test makes that expectation
     /// precise rather than vague: this dispatcher is built exactly like
     /// production's own `run()`, which never calls `Dispatcher::set_secrets`
     /// — the already-disclosed, project-wide residual that every surface's

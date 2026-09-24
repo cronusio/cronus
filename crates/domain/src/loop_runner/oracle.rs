@@ -1,10 +1,10 @@
-//! Oracle selection (LG-4, LG-9): which oracle an execution loop's inner
+//! Oracle selection: which oracle an execution loop's inner
 //! done-check uses, and how a `Human` oracle behaves where no one can
 //! actually approve anything.
 
 use crate::loop_runner::spec::Oracle;
 
-/// LG-9: prefer the cheapest trustworthy oracle. A declared deterministic
+/// Prefer the cheapest trustworthy oracle. A declared deterministic
 /// validator is used for the inner done-check whenever one exists;
 /// judge/human are reserved for conditions that cannot be checked
 /// mechanically. Advisory — this is a preference, not a hard gate, so the
@@ -14,7 +14,7 @@ pub fn select_oracle(deterministic: Option<Oracle>, fallback: Oracle) -> Oracle 
     deterministic.unwrap_or(fallback)
 }
 
-/// LG-4: pick a judge binding whose lineage differs from the actor's, out of
+/// Pick a judge binding whose lineage differs from the actor's, out of
 /// whatever bindings are available. If none is distinct, degrade to the
 /// actor's own lineage rather than failing — `governor::judge` then stamps
 /// `reduced_confidence` for this oracle, a recorded weakness, not a silent
@@ -36,7 +36,7 @@ pub enum ApprovalContext {
     Background,
 }
 
-/// LG-4: a `Human` oracle's resolved behavior for the current context.
+/// A `Human` oracle's resolved behavior for the current context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HumanFallback {
     UseHuman,
@@ -66,7 +66,7 @@ mod tests {
     use super::*;
     use crate::loop_runner::governor::{TurnResult, judge};
 
-    // --- LG-9: deterministic is preferred over judge/human when declared ----
+    // --- Deterministic is preferred over judge/human when declared ----
 
     #[test]
     fn a_deterministic_oracle_is_preferred_over_the_fallback_when_declared() {
@@ -83,7 +83,7 @@ mod tests {
         assert_eq!(chosen, Oracle::Human);
     }
 
-    // --- LG-4: judge lineage selection + reduced_confidence composition ----
+    // --- Judge lineage selection + reduced_confidence composition ----
 
     #[test]
     fn a_distinct_lineage_binding_is_selected_when_available() {
@@ -122,7 +122,7 @@ mod tests {
         assert!(judge(&oracle, &turn).reduced_confidence);
     }
 
-    // --- LG-4: a Human oracle never silently self-approves in the background
+    // --- A Human oracle never silently self-approves in the background
 
     #[test]
     fn an_interactive_context_uses_the_human_oracle_directly() {

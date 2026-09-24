@@ -1,4 +1,4 @@
-//! Loop-runner invariant acceptance sweep (LG-1…LG-10) —
+//! Loop-runner invariant acceptance sweep —
 //! The closing validation for this subsystem. Each testable invariant maps to
 //! one named test, exercised through the **real facade export chain**
 //! (`cronus_core::loop_runner::{...}`) — proving the assembled facade
@@ -87,7 +87,7 @@ fn exec_spec(max_iterations: u32, mutable: impl IntoIterator<Item = MutableArtif
     }
 }
 
-// --- LG-1: a loop runs only under its declared class ------------------------
+// --- A loop runs only under its declared class ------------------------
 
 #[test]
 fn lg1_a_loop_spec_carries_exactly_the_class_it_declared() {
@@ -96,7 +96,7 @@ fn lg1_a_loop_spec_carries_exactly_the_class_it_declared() {
     assert_ne!(spec.class, LoopClass::Evolution);
 }
 
-// --- LG-2: mutation-rights manifest — an out-of-manifest write is recorded --
+// --- Mutation-rights manifest — an out-of-manifest write is recorded --
 
 #[test]
 fn lg2_a_write_outside_the_manifest_is_rejected_not_silently_dropped() {
@@ -112,12 +112,12 @@ fn lg2_a_write_outside_the_manifest_is_rejected_not_silently_dropped() {
     );
 }
 
-// --- LG-3: criteria are structurally unreachable through MutableArtifact ---
+// --- Criteria are structurally unreachable through MutableArtifact ---
 
 #[test]
 fn lg3_the_mutable_artifact_taxonomy_has_no_criteria_variant() {
     // Exhaustive match compiles only because these six variants are the
-    // whole enum — a `Criteria` arm would not compile. LG-3 holds by
+    // whole enum — a `Criteria` arm would not compile. The guarantee holds by
     // construction through the facade's re-exported type, not by this
     // assertion alone.
     for artifact in [
@@ -139,7 +139,7 @@ fn lg3_the_mutable_artifact_taxonomy_has_no_criteria_variant() {
     }
 }
 
-// --- LG-4: oracle ownership — separated vs. same-lineage reduced_confidence
+// --- Oracle ownership — separated vs. same-lineage reduced_confidence
 
 #[test]
 fn lg4_a_judge_sharing_the_actors_lineage_is_recorded_reduced_confidence() {
@@ -156,7 +156,7 @@ fn lg4_a_judge_sharing_the_actors_lineage_is_recorded_reduced_confidence() {
     assert!(!judge(&different_lineage, &t).reduced_confidence);
 }
 
-// --- LG-5: state reconstructs fresh each iteration, never inherits ---------
+// --- State reconstructs fresh each iteration, never inherits ---------
 
 #[test]
 fn lg5_the_next_iteration_reconstructs_from_the_compact_status_not_a_transcript() {
@@ -171,7 +171,7 @@ fn lg5_the_next_iteration_reconstructs_from_the_compact_status_not_a_transcript(
     assert_eq!(backend.statuses_seen[1], "2 of 5 checks passing");
 }
 
-// --- LG-6: the ceiling stops independent of actor and oracle --------------
+// --- The ceiling stops independent of actor and oracle --------------
 
 #[test]
 fn lg6_the_ceiling_stops_the_loop_regardless_of_actor_or_oracle_state() {
@@ -190,7 +190,7 @@ fn lg6_the_ceiling_stops_the_loop_regardless_of_actor_or_oracle_state() {
     );
 }
 
-// --- LG-7: escalation promotes only on held-out gain with hard preconditions
+// --- Escalation promotes only on held-out gain with hard preconditions
 
 #[test]
 fn lg7_escalation_refuses_on_shared_lineage_even_with_a_winning_metric() {
@@ -247,7 +247,7 @@ fn lg7_escalation_promotes_on_a_real_held_out_gain_with_both_preconditions_met()
     assert_eq!(outcome, EscalationOutcome::Promoted);
 }
 
-// --- LG-8: the mutation ledger is append-only ------------------------------
+// --- The mutation ledger is append-only ------------------------------
 
 #[test]
 fn lg8_every_applied_mutation_appends_to_the_ledger_across_iterations() {
@@ -278,7 +278,7 @@ fn lg8_every_applied_mutation_appends_to_the_ledger_across_iterations() {
     assert_eq!(report.ledger[1].summary, "second pass");
 }
 
-// --- LG-9: the cheapest trustworthy oracle is preferred when present ------
+// --- The cheapest trustworthy oracle is preferred when present ------
 
 #[test]
 fn lg9_a_declared_deterministic_oracle_is_preferred_over_the_fallback() {
@@ -289,7 +289,7 @@ fn lg9_a_declared_deterministic_oracle_is_preferred_over_the_fallback() {
     assert_eq!(chosen, deterministic);
 }
 
-// --- LG-10: the objective survives in-session reduction and resumes -------
+// --- The objective survives in-session reduction and resumes -------
 
 #[test]
 fn lg10_the_objective_survives_aggressive_trimming_and_resumes_with_current_progress() {

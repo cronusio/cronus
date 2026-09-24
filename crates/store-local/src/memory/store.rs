@@ -176,7 +176,7 @@ impl MemoryStore {
         // The SQL trust_score filter is the gate — effective_trust is not applied
         // here so that newly added entries (Untested verification state) still
         // surface in search results at their raw trust_score.
-        // MI-9: recall defaults to the `active` lifecycle state only; a
+        // Recall defaults to the `active` lifecycle state only; a
         // caller wanting paused/archived items uses a dedicated lookup
         // (e.g. `get`), not the default search path.
         let mut out = Vec::with_capacity(ids.len());
@@ -199,15 +199,15 @@ impl MemoryStore {
         Ok(out)
     }
 
-    /// Ranked recall for MC-8 consumers: fuses `base_text_relevance` (this
+    /// Ranked recall for consumers: fuses `base_text_relevance` (this
     /// method's own FTS5/BM25-derived score) with the derived signals from
-    /// `memory_signal` (MC-5) **multiplicatively** — a near-zero derived
+    /// `memory_signal` **multiplicatively** — a near-zero derived
     /// factor vetoes rather than being averaged away. Every factor is either
     /// the FTS5 engine's own score or a precomputed table lookup: no model
-    /// call, no graph walk (MC-8/MEM-2).
+    /// call, no graph walk.
     ///
     /// Distinct from [`MemoryStore::search_fts`] (the unranked `MemorySearch`
-    /// seam implementation, unchanged) — this is the richer surface MC-8
+    /// seam implementation, unchanged) — this is the richer surface ranking
     /// consumers (the intelligence layer's `answer`/temporal recall) call.
     /// Multi-script lexical robustness (a MATCH-miss substring fallback) is
     /// a separate, unrealized concern — this method inherits whatever
@@ -256,7 +256,7 @@ impl MemoryStore {
         Ok(out)
     }
 
-    /// MI-2: temporal recall modes over the bi-temporal record. Composes
+    /// Temporal recall modes over the bi-temporal record. Composes
     /// with the same active/trusted defaults as `search_fts`, except
     /// `as-of` deliberately does **not** exclude since-superseded records —
     /// the question is "what was true then," not "what is true now."
@@ -304,7 +304,7 @@ impl MemoryStore {
         Ok(rows)
     }
 
-    /// MI-8: the closed structured-predicate vocabulary, compiled to a
+    /// The closed structured-predicate vocabulary, compiled to a
     /// parameterized SQL `WHERE` fragment (the `predicate` module).
     pub fn recall_structured(
         &self,
@@ -362,28 +362,28 @@ impl MemoryStore {
         vec![0.0f32; 256]
     }
 
-    // ── derived signals (MC-5) ───────────────────────────────────────────────
+    // ── derived signals ───────────────────────────────────────────────
 
     /// Write (overwrite) a derived ranking signal for `id`, stamped with the
-    /// current build's algorithm version and the current time (MC-5).
+    /// current build's algorithm version and the current time.
     pub fn set_signal(&self, id: &MemoryId, kind: SignalKind, value: f64) -> Result<()> {
         signal::write(&self.conn, id, kind, value, now_secs())
     }
 
     /// Read a derived signal's ranking factor for `id` — [`signal::NEUTRAL_FACTOR`]
-    /// when absent or version-stale (MC-5/MC-8), never an error.
+    /// when absent or version-stale, never an error.
     pub fn signal_factor(&self, id: &MemoryId, kind: SignalKind) -> Result<f64> {
         signal::factor(&self.conn, id, kind)
     }
 
-    /// Remove every derived signal for `id` (e.g. before a MC-6 merge discards it).
+    /// Remove every derived signal for `id` (e.g. before a merge discards it).
     pub fn clear_signals(&self, id: &MemoryId) -> Result<()> {
         signal::clear(&self.conn, id)
     }
 
-    // ── consolidation write path (MC-2/3/4/7/9/10) ───────────────────────────
+    // ── consolidation write path ───────────────────────────
 
-    /// Add a relationship/provenance edge (MC-3, additive-only — no way to
+    /// Add a relationship/provenance edge (additive-only — no way to
     /// remove or update an edge through this API by design).
     pub fn add_edge(&self, source: &MemoryId, target: &MemoryId, predicate: &str) -> Result<()> {
         consolidate::add_edge(&self.conn, source, target, predicate, now_secs())
@@ -394,14 +394,14 @@ impl MemoryStore {
         consolidate::edges_from(&self.conn, id)
     }
 
-    /// Recompute the `Centrality` derived signal from the MC-3 edge graph's
+    /// Recompute the `Centrality` derived signal from the edge graph's
     /// in-degree (the half of "recompute derived signals" `recompute_recency`
     /// does not cover).
     pub fn recompute_centrality(&self) -> Result<usize> {
         consolidate::recompute_centrality(&self.conn, now_secs())
     }
 
-    /// The routine consolidation write (MC-4): create or corroborate,
+    /// The routine consolidation write: create or corroborate,
     /// depending on whether an active consolidated item already matches
     /// `candidate` after normalization.
     pub fn consolidate(
@@ -413,11 +413,11 @@ impl MemoryStore {
         consolidate::consolidate(&self.conn, candidate, provenance, actor, now_secs())
     }
 
-    /// MI-6: the salience-gated capture policy — a confidence-honest gate in
+    /// The salience-gated capture policy — a confidence-honest gate in
     /// front of the same create/corroborate decision `consolidate` makes,
-    /// plus MI-6 cross-reference edges to `related`. `entry.actor`/
+    /// plus cross-reference edges to `related`. `entry.actor`/
     /// `.expiry`/`.subject` (set via the existing builders) flow through
-    /// untouched; `audit_actor` is the MC-4 action-algebra's own audit-trail
+    /// untouched; `audit_actor` is the action-algebra's own audit-trail
     /// actor, independent of `entry.actor`.
     pub fn capture(
         &self,
@@ -428,8 +428,8 @@ impl MemoryStore {
         capture::capture(&self.conn, entry, related, audit_actor, now_secs())
     }
 
-    /// Explicit refine (MC-4): append `addition` to `target`'s body
-    /// (additive-only, MC-3), optimistic-concurrency guarded (MC-9) against
+    /// Explicit refine: append `addition` to `target`'s body
+    /// (additive-only), optimistic-concurrency guarded against
     /// `expected_body` — what the caller read before deciding to refine.
     pub fn refine(
         &self,
@@ -450,8 +450,8 @@ impl MemoryStore {
         )
     }
 
-    /// Explicit correct (MC-4): non-destructively supersede `target` with
-    /// `corrected`, transactionally (MC-9). Returns the new item's id.
+    /// Explicit correct: non-destructively supersede `target` with
+    /// `corrected`, transactionally. Returns the new item's id.
     pub fn correct(
         &self,
         target: &MemoryId,
@@ -461,7 +461,7 @@ impl MemoryStore {
         consolidate::correct(&self.conn, target, corrected, actor, now_secs())
     }
 
-    /// Run the incremental consolidation pass (MC-2) over every `raw`/
+    /// Run the incremental consolidation pass over every `raw`/
     /// `working` item past the checkpoint watermark. Advances the watermark
     /// only over inputs that committed — a failed input retries next pass.
     pub fn run_incremental_consolidation(
@@ -471,18 +471,18 @@ impl MemoryStore {
         consolidate::run_incremental_pass(&self.conn, actor, now_secs())
     }
 
-    /// Synthesize emergent topic summaries (MC-7) over the current MC-3 edge
+    /// Synthesize emergent topic summaries over the current edge
     /// graph. Returns the new summary items' ids.
     pub fn synthesize_summaries(&self, actor: &str) -> Result<Vec<MemoryId>> {
         consolidate::synthesize_summaries(&self.conn, actor, now_secs())
     }
 
-    /// Advisory interest topics (MC-10) — bounded, deduplicated, read-only.
+    /// Advisory interest topics — bounded, deduplicated, read-only.
     pub fn extract_interest_topics(&self, limit: usize) -> Result<Vec<InterestTopic>> {
         consolidate::extract_interest_topics(&self.conn, limit)
     }
 
-    // ── lifecycle transitions (MI-9) ─────────────────────────────────────────
+    // ── lifecycle transitions ─────────────────────────────────────────
 
     /// Read `id`'s current lifecycle state. `None` when the item does not exist.
     pub fn lifecycle_state(&self, id: &MemoryId) -> Result<Option<LifecycleState>> {
@@ -497,48 +497,48 @@ impl MemoryStore {
         Ok(raw.and_then(|s| LifecycleState::from_db_str(&s)))
     }
 
-    // ── corpus maintenance (MC-6) ────────────────────────────────────────────
+    // ── corpus maintenance ────────────────────────────────────────────
 
     /// Recompute the `Recency` derived signal for every active item
-    /// (step 1 of the maintenance pass; centrality/cluster need the MC-3
+    /// (step 1 of the maintenance pass; centrality/cluster need the
     /// edge graph, computed separately). Returns the count updated.
     pub fn recompute_recency(&self) -> Result<usize> {
         maintenance::recompute_recency(&self.conn, now_secs())
     }
 
     /// Archive active items whose cushioned recency has decayed past the
-    /// threshold (auto-applies — reversible, MC-6). Returns the archived ids.
+    /// threshold (auto-applies — reversible). Returns the archived ids.
     pub fn sweep_archive(&self, actor: &str) -> Result<Vec<MemoryId>> {
         maintenance::sweep_archive(&self.conn, actor, now_secs())
     }
 
-    /// Auto-thaw an archived item on touch (MC-6). No-op for any other state.
+    /// Auto-thaw an archived item on touch. No-op for any other state.
     pub fn touch(&self, id: &MemoryId, actor: &str) -> Result<bool> {
         maintenance::touch(&self.conn, id, actor, now_secs())
     }
 
     /// Flag active items whose content crosses the overload threshold
-    /// (MC-6 split candidates). Does not split them — that needs a
+    /// (split candidates). Does not split them — that needs a
     /// generator; flagging is the complete no-generator behavior.
     pub fn flag_split_candidates(&self) -> Result<Vec<MemoryId>> {
         maintenance::flag_split_candidates(&self.conn)
     }
 
     /// Find pairs of active items that are exact duplicates after
-    /// normalization (MC-6 merge candidates, elevated-gate stand-in).
+    /// normalization (merge candidates, elevated-gate stand-in).
     pub fn find_merge_candidates(&self) -> Result<Vec<(MemoryId, MemoryId)>> {
         maintenance::find_merge_candidates(&self.conn)
     }
 
     /// Merge `discard` into `keep`: re-point chain edges, drop derived
-    /// signals, hard-delete `discard`, all transactionally (MC-6/MC-9).
+    /// signals, hard-delete `discard`, all transactionally.
     pub fn merge_pair(&self, keep: &MemoryId, discard: &MemoryId, actor: &str) -> Result<()> {
         maintenance::merge_pair(&self.conn, keep, discard, actor, now_secs())
     }
 
     /// Transition `id` to `new_state`, recording an append-only audit row
     /// (actor, instant, old→new) so "who shelved this and when" is
-    /// answerable (MI-9). Returns the prior state, or `Ok(None)` if `id`
+    /// answerable. Returns the prior state, or `Ok(None)` if `id`
     /// does not exist (no transition, no audit row).
     pub fn set_lifecycle_state(
         &self,
@@ -568,7 +568,7 @@ impl MemoryStore {
         Ok(Some(old_state))
     }
 
-    /// Every stored entry, unfiltered. Backs `UserDataStore::export` (DN-7:
+    /// Every stored entry, unfiltered. Backs `UserDataStore::export` (
     /// always able to come home) — unlike `search_fts`, this applies no
     /// trust-score gate, since export is an operator/backup action, not a
     /// ranked retrieval.
@@ -671,7 +671,7 @@ impl MemoryStore {
 
 // ── MemorySearch (ports tier) ────────────────────────────────────────────────
 //
-// The pivot (§4.6): `MemoryStore` is the concrete, SQLite-backed
+// The pivot: `MemoryStore` is the concrete, SQLite-backed
 // implementation of the `MemorySearch` seam declared in `cronus-contract`.
 // `ContextRouter` depends on the trait, never on this type — this `impl`
 // block is the only place that still names both sides.
@@ -768,7 +768,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
             PRIMARY KEY (source_id, target_id)
         )",
     )?;
-    // MI-9: append-only audit of every lifecycle-state transition.
+    // Append-only audit of every lifecycle-state transition.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS lifecycle_audit (
             item_id    TEXT    NOT NULL,

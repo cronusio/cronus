@@ -1,5 +1,5 @@
-//! The shared fixture data every surface's test drives through the harness
-//! (§4.4). Written **from the divergence, not the feature**: each fixture
+//! The shared fixture data every surface's test drives through the harness.
+//! Written **from the divergence, not the feature**: each fixture
 //! exists because it is a shape where two correct-looking implementations
 //! diverge, not because it exercises a capability. A fixture drawn from the
 //! happy path proves nothing, since the happy path is where implementations
@@ -18,7 +18,7 @@ use cronus_contract::{
 };
 
 /// The identity every canonical fixture registers under. Not `"core"`
-/// (EP-11's reserved identity — colliding with it here would shadow a real
+/// (a reserved identity — colliding with it here would shadow a real
 /// surface's actual core invocables the moment a test registers both into
 /// the same registry) and not a name a real extension would plausibly pick.
 pub const FIXTURE_IDENTITY: &str = "conformance";
@@ -28,7 +28,7 @@ pub const FIXTURE_IDENTITY: &str = "conformance";
 /// surface's test must configure its dispatcher's secret list to include
 /// this value before running those two fixtures — omitting it is not a
 /// harness bug, it is the currently-true, deliberately-carried residual
-/// (SP-10) that every surface's redaction is fed an empty secret list.
+///  that every surface's redaction is fed an empty secret list.
 /// Until a surface's real secret store is wired into its dispatcher, these
 /// two fixtures are **expected to fail**, and that failure is the finding,
 /// not a defect in the corpus.
@@ -71,7 +71,7 @@ pub struct OutcomeFixture {
 pub struct Corpus {
     /// The canonical, `Shipped` invocable set — what a conforming surface's
     /// `exposed()` should equal, once the caller's own declared exclusions
-    /// are subtracted (§4.4). A `Stability::Retired` descriptor is never a
+    /// are subtracted. A `Stability::Retired` descriptor is never a
     /// member of this set by construction: retirement and shipped status
     /// are the same field's two mutually exclusive values, so a retired
     /// fixture belongs to [`retired_pair`], not here.
@@ -79,7 +79,7 @@ pub struct Corpus {
     pub outcome_fixtures: Vec<OutcomeFixture>,
 }
 
-/// The shared corpus (§4.4). Callers register their own declared exclusions
+/// The shared corpus. Callers register their own declared exclusions
 /// separately — this data is what a **conforming** surface would expose in
 /// full, before any surface-specific carve-out is subtracted.
 pub fn corpus() -> Corpus {
@@ -159,7 +159,7 @@ pub fn corpus() -> Corpus {
                 // A zero-item List and a genuinely Empty result look the
                 // same to a casual reader and must not look the same to
                 // dispatch: collapsing either into the other is exactly the
-                // kind of quiet re-derivation SP-2 forbids.
+                // kind of quiet re-derivation that is forbidden.
                 name: "zero-count-list",
                 id: id("zero-count-list"),
                 args: ArgValues::new(),
@@ -226,7 +226,7 @@ fn oversized_text() -> String {
     "x".repeat(10_000)
 }
 
-/// A retired invocable and the replacement it names (INV-9's declared-
+/// A retired invocable and the replacement it names (the declared-
 /// retirement rule): still registered and still resolvable — never a silent
 /// unknown-command failure — but off the canonical shipped set, since
 /// `Stability` is `Shipped` xor `Retired`, never both. Not part of
@@ -252,7 +252,7 @@ pub fn retired_pair() -> (Invocable, Invocable) {
 }
 
 /// Two invocables under two different identities sharing one bare tail
-/// (EP-4's declared *contribute* collision rule, EP-11's identity
+/// (the declared *contribute* collision rule and the identity
 /// namespace) — a standard, shared pair so multiple surfaces test the
 /// identical shadowing scenario rather than each inventing its own. Which
 /// one wins the bare form depends on registration order (the earlier

@@ -1,5 +1,5 @@
 /**
- * The capability-admission pass (spec §4.3 / §5, INV-9, INV-3).
+ * The capability-admission pass.
  *
  * Every method on the core seam must bind something that already exists — a core
  * capability another surface exercises, or a host-owned facility — and every
@@ -35,8 +35,8 @@ const ADMITTED: Record<string, string> = {
     "shared invocable registry (cronus_contract::Invocable; CLI/TUI project the same registry through their own catalogs)",
   invoke:
     "shared invocable dispatcher (cronus_contract::Outcome; CLI/TUI dispatch through the same Dispatcher)",
-  settings: "host-owned facility (apps/desktop/tauri settings store; §4.3 1.0.1)",
-  subscribe: "core event-channel class (§4.3 push edge; no channel emits yet)",
+  settings: "host-owned facility (apps/desktop/tauri settings store)",
+  subscribe: "core event-channel class (push edge; no channel emits yet)",
 };
 
 describe("capability admission — the seam", () => {
@@ -54,7 +54,7 @@ describe("capability admission — the seam", () => {
 });
 
 describe("capability admission — the surfaces", () => {
-  it("every sidebar surface is an explicit placeholder while nothing binds it (INV-9)", () => {
+  it("every sidebar surface is an explicit placeholder while nothing binds it", () => {
     for (const tab of [
       ...SIDEBAR_PRIMARY,
       ...SIDEBAR_UTILITY,

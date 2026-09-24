@@ -1,4 +1,4 @@
-//! `Receipted<T>` — an outcome that cannot exist without a receipt (TR-1).
+//! `Receipted<T>` — an outcome that cannot exist without a receipt.
 //! There is no public constructor and no `From<T>`: the only way to obtain
 //! one is [`mint_receipted`], which requires the caller to already hold a
 //! [`ReceiptKey`] and a filled [`ActionBinding`] carrying the real observed
@@ -11,7 +11,7 @@ use super::key::ReceiptKey;
 use super::mac::{self, Receipt};
 
 /// `Receipted<T>` cannot be constructed directly — there is no public
-/// constructor and no `From<T>` impl (TR-1). Attempting to build one from
+/// constructor and no `From<T>` impl. Attempting to build one from
 /// outside this module fails to compile:
 ///
 /// ```compile_fail

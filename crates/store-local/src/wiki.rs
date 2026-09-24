@@ -1,7 +1,7 @@
-//! SQLite-backed project-wiki store — a derived projection CACHE
-//! (§4.1). Rows are written only by the office regeneration
+//! SQLite-backed project-wiki store — a derived projection CACHE.
+//! Rows are written only by the office regeneration
 //! pipeline (later phase tasks); this module owns the schema and the
-//! persistence round-trip. Per PW-3 the store is a rebuildable cache, never a
+//! persistence round-trip. Per the store is a rebuildable cache, never a
 //! source of truth — dropping `wiki.db` loses nothing durable.
 
 use std::path::Path;
@@ -17,11 +17,11 @@ pub enum WikiError {
     Database(rusqlite::Error),
     /// A stored row held data the type system rejects (an unknown page kind or
     /// malformed citations JSON) — a corrupt/incompatible cache row. Because
-    /// the wiki is a rebuildable projection (PW-3), the recovery for this is a
+    /// the wiki is a rebuildable projection, the recovery for this is a
     /// rebuild, not a restore.
     Corrupt(String),
     /// The cache file's schema version could not be reconciled with the one
-    /// this build understands. The cache is droppable (PW-3), so a file this
+    /// this build understands. The cache is droppable, so a file this
     /// build refuses can be deleted and rebuilt rather than migrated.
     Schema(crate::versioning::SchemaError),
 }
@@ -79,8 +79,8 @@ impl WikiStore {
     }
 
     /// Write a page (insert or replace by id) and keep the FTS index in sync.
-    /// The client never calls this — only the office regeneration pipeline
-    /// (PW-2); it lives here as the store's write half for that pipeline.
+    /// The client never calls this — only the office regeneration pipeline;
+    /// it lives here as the store's write half for that pipeline.
     pub fn upsert_page(&self, page: &WikiPage) -> Result<()> {
         upsert_page_on(&self.conn, page)
     }
@@ -99,12 +99,12 @@ impl WikiStore {
             .transpose()
     }
 
-    /// Append a change-history entry (PW-5, newest-first by `at`).
+    /// Append a change-history entry (newest-first by `at`).
     pub fn append_changelog(&self, entry: &WikiChangelogEntry) -> Result<()> {
         append_changelog_on(&self.conn, entry)
     }
 
-    /// Apply a regeneration transactionally (PW-3): upsert every page and
+    /// Apply a regeneration transactionally: upsert every page and
     /// append every changelog entry inside one SQLite transaction, so a
     /// failure part-way rolls the whole batch back and the prior rows stay
     /// intact. `unchecked_transaction` is used because the store holds the
@@ -126,7 +126,7 @@ impl WikiStore {
         Ok(())
     }
 
-    /// Rebuild an office's wiki (PW-3): transactionally drop every existing
+    /// Rebuild an office's wiki: transactionally drop every existing
     /// page + changelog + FTS row for `office_id`, then write the freshly
     /// re-derived set. All-or-nothing — a failure part-way rolls back and the
     /// prior rows stay intact, so a failed rebuild never leaves a half-cleared
@@ -180,7 +180,7 @@ impl WikiStore {
         Ok(pages)
     }
 
-    /// Flip the `stale` flag on the given pages (PW-5), transactionally.
+    /// Flip the `stale` flag on the given pages, transactionally.
     pub fn mark_stale(&self, page_ids: &[String]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         for id in page_ids {
@@ -190,7 +190,7 @@ impl WikiStore {
         Ok(())
     }
 
-    /// Change history newest-first (PW-5), at most `limit` entries.
+    /// Change history newest-first, at most `limit` entries.
     pub fn changelog(&self, office_id: &str, limit: usize) -> Result<Vec<WikiChangelogEntry>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, office_id, page_id, change, at
@@ -214,7 +214,7 @@ impl WikiStore {
     }
 
     /// Direct children of `parent_id` (roots when `None`), ordered by `ord`
-    /// (PW-6 navigation tree).
+    /// (navigation tree).
     pub fn children(&self, office_id: &str, parent_id: Option<&str>) -> Result<Vec<WikiPage>> {
         // `IS` is null-safe: binds NULL → matches root rows, binds a value →
         // matches that parent.
@@ -233,7 +233,7 @@ impl WikiStore {
         Ok(pages)
     }
 
-    /// Full-text search over title + body, best matches first (PW-6).
+    /// Full-text search over title + body, best matches first.
     pub fn search(&self, office_id: &str, query: &str, limit: usize) -> Result<Vec<WikiPage>> {
         let mut stmt = self.conn.prepare(
             "SELECT p.id, p.office_id, p.parent_id, p.ord, p.kind, p.title, p.body,
@@ -871,7 +871,7 @@ mod schema {
     fn read_surface_is_read_only_by_construction() {
         // `&dyn WikiReadSurface` exposes ONLY read methods — there is no
         // upsert/mark_stale/apply_regeneration on it, so the client
-        // structurally cannot mutate the wiki (PW-2). This compiles; a write
+        // structurally cannot mutate the wiki. This compiles; a write
         // call like `reader.upsert_page(..)` would not.
         let store = WikiStore::open_in_memory().expect("open");
         seed_tree(&store);

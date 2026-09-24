@@ -1,18 +1,18 @@
 /**
- * The action registry — the command vocabulary (AS-6).
+ * The action registry — the command vocabulary.
  *
  * A `ShellAction` is a named command independent of how it is triggered (a menu
  * leaf, a keybinding, a palette row, or code). A control invokes an action by id
  * and never holds the behaviour, so the same action is renderable in a menu, the
  * palette, and the keymap surface without bespoke wiring. Two gates decide
- * whether a surface may show an action: `bound` (is the capability shipped —
- * INV-9) and `when` (is it live in the current context — AS-7).
+ * whether a surface may show an action: `bound` (is the capability shipped)
+ * and `when` (is it live in the current context).
  *
  * This module is still narrow: it carries the vocabulary and the two gates. The
  * keystroke resolution that consumes `when` lives in `../shared/keymap`. The one
  * IPC-adjacent piece it does carry is {@link actionsFromCatalog} — deriving
  * `Semantic` actions from the core's own catalog is what keeps this registry
- * from becoming a second, hand-maintained copy of it (AS-6, §4.4).
+ * from becoming a second, hand-maintained copy of it.
  */
 
 import type { Invocable } from "../shared/bridge";
@@ -46,16 +46,16 @@ export function resolveLabel(msg: (key: MessageKey) => string, label: ActionLabe
 export interface ShellAction {
   /** Stable namespaced id, e.g. `"file.settings"`. */
   id: string;
-  /** The user-visible label. Mandatory (AS-6) — an action is always describable. */
+  /** The user-visible label. Mandatory — an action is always describable. */
   label: ActionLabel;
   /** What the action does. Presentation-only callers pass a no-op or an intent. */
   run: () => void;
   /** Current keybinding, display-only (e.g. `"Ctrl ,"`). */
   binding?: string;
   /** Whether the action is bound to a shipped capability. An unbound action is
-   *  hidden from every surface (INV-9) — never rendered as a dead control. */
+   *  hidden from every surface — never rendered as a dead control. */
   bound?: boolean;
-  /** Where the action is live (AS-7). Absent means everywhere. A predicate that
+  /** Where the action is live. Absent means everywhere. A predicate that
    *  is false for the current context hides the action and drops its binding. */
   when?: ContextPredicate;
 }
@@ -63,9 +63,9 @@ export interface ShellAction {
 /** An immutable lookup over registered actions. */
 export interface ActionRegistry {
   get(id: string): ShellAction | undefined;
-  /** All actions that are bound (INV-9) — the only ones any surface may render. */
+  /** All actions that are bound — the only ones any surface may render. */
   bound(): ShellAction[];
-  /** The bound actions whose `when` predicate holds over `stack` (AS-7). */
+  /** The bound actions whose `when` predicate holds over `stack`. */
   live(stack: ContextStack): ShellAction[];
   has(id: string): boolean;
 }
@@ -91,14 +91,14 @@ export function createActionRegistry(actions: readonly ShellAction[]): ActionReg
   };
 }
 
-/** Whether an action id resolves to a bound command (render gate, INV-9). */
+/** Whether an action id resolves to a bound command (render gate). */
 export function isBound(registry: ActionRegistry, id: string): boolean {
   return registry.get(id)?.bound !== false && registry.has(id);
 }
 
 /**
  * Build one `ShellAction` per `Semantic` descriptor in `catalog` — the
- * registry is not a second catalog (AS-6, §4.4): an id is visible here
+ * registry is not a second catalog: an id is visible here
  * because, and only because, the fed-in catalog snapshot currently reports
  * it. There is no separate `bound: false` entry for an id the catalog
  * dropped — it simply produces no `ShellAction` at all, so a stale caller

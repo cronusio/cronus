@@ -1,4 +1,4 @@
-//! KAN-8 — custom columns and saved board views as mapped extensions over the
+//! Custom columns and saved board views as mapped extensions over the
 //! canonical pipeline. The canonical `CardState` set stays the non-removable
 //! backbone; custom structures extend it, never replace it.
 //!
@@ -100,7 +100,7 @@ impl BoardExtensions {
     }
 
     /// Resolve a custom column to the canonical state cross-cutting consumers read.
-    /// This is the KAN-8 guarantee: archival/analytics never see a non-canonical state.
+    /// This is the guarantee: archival/analytics never see a non-canonical state.
     pub fn anchor_of(&self, column_id: &str) -> Option<CardState> {
         self.columns
             .iter()
@@ -152,7 +152,7 @@ impl BoardExtensions {
     }
 
     /// Remove a saved view. Returns whether one was removed. Views are disposable;
-    /// this never touches any card (KAN-4 analog).
+    /// this never touches any card.
     pub fn remove_view(&mut self, id: &str) -> bool {
         let before = self.views.len();
         self.views.retain(|v| v.id != id);
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn custom_column_resolves_to_canonical_anchor() {
-        // KAN-8: a custom column anchors to exactly one canonical state; consumers
+        // A custom column anchors to exactly one canonical state; consumers
         // read the anchor (a card in `review` is `running` for archival/analytics).
         let mut ext = BoardExtensions::new();
         ext.add_column("review", "In Review", CardState::Running)
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn saved_view_is_a_filter_not_a_store() {
-        // KAN-8: a view scopes the single card set; deleting it touches no cards.
+        // A view scopes the single card set; deleting it touches no cards.
         let mut ext = BoardExtensions::new();
         ext.add_view(
             "active",

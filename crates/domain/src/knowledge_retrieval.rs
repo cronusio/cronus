@@ -1,4 +1,4 @@
-//! Hybrid semantic + keyword retrieval (§4.3, KB-1/KB-6/KB-7).
+//! Hybrid semantic + keyword retrieval.
 //!
 //! Composes the already-KB-1-scoped store primitives
 //! ([`KnowledgeStore::ann_search`], [`KnowledgeStore::fts_search`],
@@ -33,10 +33,10 @@ impl std::fmt::Display for RetrievalError {
 
 impl std::error::Error for RetrievalError {}
 
-/// Reciprocal Rank Fusion constant (§4.3: "RRF, k=60").
+/// Reciprocal Rank Fusion constant ("RRF, k=60").
 const RRF_K: f64 = 60.0;
 
-/// KB-11: an optional pre-retrieval query transformation — keyword
+/// An optional pre-retrieval query transformation — keyword
 /// extraction/expansion and/or compound-query decomposition. Implementations
 /// MAY return the input unchanged; [`resolve_query`] enforces the
 /// fallback-floor guarantee regardless (never an empty search), so a
@@ -45,7 +45,7 @@ pub trait QueryPreparer {
     fn prepare(&self, raw: &str) -> PreparedQuery;
 }
 
-/// The result of query preparation (KB-11), always carrying the raw query
+/// The result of query preparation, always carrying the raw query
 /// alongside whatever was derived — the transparency requirement ("a reader
 /// sees exactly what was searched").
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,7 +70,7 @@ impl PreparedQuery {
 }
 
 /// Resolve the query (or queries) to actually search: run `preparer` if
-/// given, then enforce the KB-11 fallback floor — an empty `retrieval_query`
+/// given, then enforce the fallback floor — an empty `retrieval_query`
 /// with no sub-queries degrades to `raw`, so a buggy or overzealous
 /// preparer can never turn a real query into an empty search. `preparer:
 /// None` is the no-op path (identity, embedded directly — matching pre-KB-11
@@ -86,29 +86,29 @@ fn resolve_query(preparer: Option<&dyn QueryPreparer>, raw: &str) -> PreparedQue
     prepared
 }
 
-/// Run a hybrid retrieval request: resolve the query via `preparer` (KB-11;
+/// Run a hybrid retrieval request: resolve the query via `preparer` (optional;
 /// `None` skips preparation), embed and search every resulting query
 /// (`retrieval_query` plus each sub-query, each independently) against both
 /// modalities (over-fetched at `top_k * 2` beyond the final cut, giving RRF
 /// enough candidates per list to rank cross-modal matches well), fuse *all*
 /// lists by Reciprocal Rank Fusion, then hydrate the fused top `top_k` ids
-/// into fully attributed [`RetrievedChunk`]s (KB-6) — `hydrate_chunks` also
-/// applies the KB-10 `min_curation` floor, so a chunk RRF ranked highly can
+/// into fully attributed [`RetrievedChunk`]s — `hydrate_chunks` also
+/// applies the `min_curation` floor, so a chunk RRF ranked highly can
 /// still be absent from the final set if it falls below the requested
 /// curation level. Returns the results alongside the [`PreparedQuery`] used,
-/// so the caller can inspect/log exactly what was searched (KB-11
+/// so the caller can inspect/log exactly what was searched (query-preparation
 /// transparency).
 ///
 /// `request.min_score` filters on the **fused RRF score** — a relative
 /// ranking signal (small positive reciprocals), not a normalized probability;
-/// the default `None` applies no floor. KB-1 (never implicit "search
+/// the default `None` applies no floor. Collection scoping (never implicit "search
 /// everything") is enforced by delegating to `ann_search`/`fts_search`
 /// unconditionally on `request.collection_ids` — an empty list short-circuits
-/// to an empty result without touching the store at all. KB-7 (non-
+/// to an empty result without touching the store at all. Recall (non-
 /// authoritative recall) holds by construction: [`RetrievedChunk`] carries
 /// only `(text, source_ref, score)`, never an assertion of correctness.
-/// Preparation never alters `source_ref` (KB-6) nor widens `collection_ids`
-/// (KB-4): every query variant searches the exact same `collection_ids`, and
+/// Preparation never alters `source_ref` nor widens `collection_ids`:
+/// every query variant searches the exact same `collection_ids`, and
 /// attribution comes from the store unchanged.
 pub fn retrieve(
     store: &dyn KnowledgeStore,
@@ -158,7 +158,7 @@ pub fn retrieve(
         .filter(|c| request.min_score.is_none_or(|floor| c.score >= floor))
         .collect();
     // `hydrate_chunks` may return rows in an arbitrary (e.g. SQL) order and
-    // may drop some ids (the KB-10 curation floor) — re-sort by the fused
+    // may drop some ids (the curation floor) — re-sort by the fused
     // rank so the caller sees best-match-first regardless.
     results.sort_by(|a, b| b.score.total_cmp(&a.score));
     Ok((results, prepared))
@@ -353,7 +353,7 @@ mod tests {
             retrieve(&store, &FakeEmbedder, None, &request).expect("retrieve");
         assert!(
             results.is_empty(),
-            "KB-1: no implicit search-everything on an empty collection scope"
+            "no implicit search-everything on an empty collection scope"
         );
         assert!(
             store.last_ann_collections.borrow().is_empty(),
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn a_chunk_ranked_by_rrf_but_dropped_at_hydration_is_simply_absent() {
-        // Simulates hydrate_chunks applying the KB-10 curation floor: "b" is
+        // Simulates hydrate_chunks applying the curation floor: "b" is
         // RRF-ranked but never returned by hydrate_chunks (as if filtered).
         let store = ScriptedStore {
             ann: vec![("a".into(), 0.0), ("b".into(), 0.0)],
@@ -528,7 +528,7 @@ mod tests {
         impl QueryPreparer for WideningAttemptPreparer {
             fn prepare(&self, raw: &str) -> PreparedQuery {
                 // A preparer has no field to name collections at all — its
-                // output type structurally cannot widen KB-4's scope. This
+                // output type structurally cannot widen the collection scope. This
                 // test documents that guarantee via the type shape, plus
                 // confirms the searched scope matches the request exactly.
                 PreparedQuery::identity(raw)

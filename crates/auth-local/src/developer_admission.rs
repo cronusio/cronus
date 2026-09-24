@@ -1,4 +1,4 @@
-//! Developer-office admission (DVO-3) — the sole write-gated record on this
+//! Developer-office admission — the sole write-gated record on this
 //! project's human-write-only authority plane for the dev office.
 //!
 //! Mint and revoke take a [`HumanPrincipal`], constructible only in this
@@ -41,12 +41,12 @@ impl DeveloperAdmissionStore {
         DeveloperAdmissionStore { path: path.into() }
     }
 
-    /// Grant admission. Human-principal-only by construction (DVO-3).
+    /// Grant admission. Human-principal-only by construction.
     pub fn mint(&self, _human: &HumanPrincipal) -> io::Result<()> {
         self.write(true)
     }
 
-    /// Revoke admission. Human-principal-only by construction (DVO-3).
+    /// Revoke admission. Human-principal-only by construction.
     pub fn revoke(&self, _human: &HumanPrincipal) -> io::Result<()> {
         self.write(false)
     }

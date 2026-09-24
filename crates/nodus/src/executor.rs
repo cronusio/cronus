@@ -126,8 +126,8 @@ pub struct RuntimeError {
     pub reason: String,
 }
 
-/// Renders a [`RuntimeError`] as the `$error` value an `@err:` handler sees
-/// (NL-9). Called only at the point of dispatch — `$error` stays at its
+/// Renders a [`RuntimeError`] as the `$error` value an `@err:` handler sees.
+/// Called only at the point of dispatch — `$error` stays at its
 /// seeded empty map for the rest of a run that never reaches one.
 /// Split `input` into what may be bound and the runtime-owned names withheld
 /// from it. A name the workflow declares in `@in:` is the workflow's own
@@ -179,7 +179,7 @@ fn error_to_value(err: &RuntimeError) -> Value {
     ])
 }
 
-/// Snapshot a paused run hands to its host so the run can be resumed (DG-4).
+/// Snapshot a paused run hands to its host so the run can be resumed.
 /// The runtime produces this; persistence and re-invocation are host concerns.
 #[derive(Debug, Clone)]
 pub struct ResumeDescriptor {
@@ -189,13 +189,13 @@ pub struct ResumeDescriptor {
     pub vars: HashMap<String, Value>,
     /// Index of the step that suspended.
     pub step_index: u32,
-    /// Content identity of the pinned definition (LP-22(c)) — the same
+    /// Content identity of the pinned definition — the same
     /// `digest_ast` computation [`ReproRecipe::workflow_digest`](crate::observability::ReproRecipe::workflow_digest)
     /// already performs. A host persisting and re-resolving workflow
     /// definitions by name compares this against a fresh digest of whatever
     /// source it is about to resume with; a mismatch means the definition
     /// changed since suspension. The core has no resume-time call site of
-    /// its own to check this — enforcement is necessarily host-side (LP-2).
+    /// its own to check this — enforcement is necessarily host-side.
     pub workflow_digest: String,
 }
 
@@ -286,7 +286,7 @@ pub trait ModelProvider {
 
     /// Whether this provider fabricates its answers instead of consulting a
     /// model. A run whose model calls are answered by such a provider is a
-    /// simulation by construction and is recorded as one (HO-12), whatever
+    /// simulation by construction and is recorded as one, whatever
     /// the caller declared — nothing that ran was real.
     fn is_stub(&self) -> bool {
         false
@@ -341,7 +341,7 @@ pub enum DialogOutcome {
     /// Resolved with a typed answer (by a human or a `+default`).
     Answer(Value),
     /// Resolved from a host durable prior decision (`+remember`), without
-    /// re-prompting (DG-9). Binds through the exact same path as `Answer` —
+    /// re-prompting. Binds through the exact same path as `Answer` —
     /// memoization changes where the value came from, never how it binds.
     Remembered(Value),
     /// No resolution available; the runtime should suspend (`Status::Paused`).
@@ -403,13 +403,13 @@ enum Signal {
 // ─── Execution context ────────────────────────────────────────────────────────
 
 /// A step's declared undo, recorded only once that step's own action has
-/// completed without adding a new runtime error (NL-22(a) — only completed
+/// completed without adding a new runtime error (only completed
 /// effects compensate; a still-running or already-failed step never enters
 /// this ledger, keeping cancellation a distinct path from the unwind). A step
 /// whose action carries a control signal (`!HALT`/`!PAUSE`/`!BREAK`/`!SKIP`)
 /// is not recorded either — `run_step_with_retry` returns early on any
 /// signal, before the ledger-append point, since a signal-carrying step's
-/// completion is ambiguous in exactly the way a per-item context is (NL-23(b)
+/// completion is ambiguous in exactly the way a per-item context is (restart handling
 /// reasons about the same ambiguity for restart requests).
 struct CompletedEffect {
     step_number: u32,
@@ -426,10 +426,10 @@ struct ExecutionContext {
     event_count: u32,
     start_instant: Instant,
     paused_at: Option<u32>,
-    /// Bound once at run construction (HO-7); shared by every event this run
+    /// Bound once at run construction; shared by every event this run
     /// emits and equal to `RunManifest.run_id`. Never re-derived per event.
     correlation_id: String,
-    /// The completed-effect ledger (NL-22), appended in completion order and
+    /// The completed-effect ledger, appended in completion order and
     /// drained back-to-front (LIFO) when the run fails.
     compensations: Vec<CompletedEffect>,
 }
@@ -547,7 +547,7 @@ pub(crate) const DIGEST_VERSION: &str = "nd1";
 /// `DefaultHasher` (SipHash with an unspecified, release-dependent key and
 /// algorithm) does not promise. It is an identity check for *accidental*
 /// change, not a cryptographic commitment: a host that must resist a crafted
-/// collision computes its own digest over [`canonical_text`] (LP-2).
+/// collision computes its own digest over [`canonical_text`].
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &byte in bytes {
@@ -563,14 +563,14 @@ pub(crate) fn digest_text(text: &str) -> String {
 }
 
 /// The canonical text a workflow definition is identified by: its compact
-/// form, which round-trips to an equal AST (NL-6). Unlike the AST's `Debug`
+/// form, which round-trips to an equal AST. Unlike the AST's `Debug`
 /// rendering — which changes whenever any AST type gains a field — it changes
 /// only when the workflow itself does.
 pub(crate) fn canonical_text(ast: &WorkflowFile) -> String {
     crate::transpiler::Transpiler::to_nodus(ast)
 }
 
-/// Content digest of the parsed workflow definition (HO-20): [`digest_text`]
+/// Content digest of the parsed workflow definition: [`digest_text`]
 /// over [`canonical_text`]. `execute_inner` receives only the parsed
 /// [`WorkflowFile`], never the raw source (parsing happens earlier, in
 /// `workflows.rs`), so identity is taken from the AST — and two sources
@@ -579,22 +579,22 @@ pub(crate) fn canonical_text(ast: &WorkflowFile) -> String {
 /// neither affects execution.
 ///
 /// `pub(crate)`: reused by `environment.rs`'s `EnvRunResult::candidate()`
-/// (NE-12) so `CandidateResult.workflow_digest` and `ReproRecipe.workflow_digest`
+///  so `CandidateResult.workflow_digest` and `ReproRecipe.workflow_digest`
 /// agree on one notion of identity under the one field name.
 pub(crate) fn digest_ast(ast: &WorkflowFile) -> String {
     digest_text(&canonical_text(ast))
 }
 
-/// Resolve the run's `correlation_id` (HO-7): the caller-supplied `run_id`
+/// Resolve the run's `correlation_id`: the caller-supplied `run_id`
 /// verbatim when non-empty, or a generated fallback when it is not — no event
 /// is ever emitted uncorrelated, even from the plain `execute()`/
 /// `execute_with_params("", "")` callers. The fallback is a process-local
-/// monotonic counter (`"run-{n}"`) rather than a UUID: zero-dep (LP-1, no
+/// monotonic counter (`"run-{n}"`) rather than a UUID: zero-dep (no
 /// crate added), and it introduces no wall-clock reading into run metadata at
 /// all — not even for a generated id — so nothing time-based enters the
 /// picture. It is unique within one process, not globally; a host that needs
 /// global uniqueness already supplies its own `run_id`. This resolved value
-/// also becomes `RunManifest.run_id`, so the HO-7 identity
+/// also becomes `RunManifest.run_id`, so the identity
 /// (`correlation_id == RunManifest.run_id`) holds even on the empty-id path.
 fn resolve_correlation_id(run_id: &str) -> String {
     if !run_id.is_empty() {
@@ -664,14 +664,14 @@ impl ExecutorBuilder {
         self
     }
 
-    /// The per-effect authorization gate (LP-11) every model call, dialog and
+    /// The per-effect authorization gate every model call, dialog and
     /// settlement passes before it happens.
     pub fn policy(mut self, policy: impl PolicyProvider + 'static) -> Self {
         self.policy = Box::new(policy);
         self
     }
 
-    /// The rail a permitted `SETTLE` step pays through (LP-17).
+    /// The rail a permitted `SETTLE` step pays through.
     pub fn settlement(mut self, rail: impl SettlementRail + 'static) -> Self {
         self.settlement = Box::new(rail);
         self
@@ -768,7 +768,7 @@ impl Executor {
     }
 
     /// Create an executor with the built-in model/audit/dialog and a custom
-    /// [`PolicyProvider`] (LP-11).
+    /// [`PolicyProvider`].
     pub fn with_policy(policy: impl PolicyProvider + 'static) -> Self {
         Executor {
             provider: Box::new(StubProvider),
@@ -779,8 +779,7 @@ impl Executor {
         }
     }
 
-    /// Create an executor with a custom [`PolicyProvider`] and audit provider
-    /// (LP-11).
+    /// Create an executor with a custom [`PolicyProvider`] and audit provider.
     pub fn with_policy_and_audit(
         policy: impl PolicyProvider + 'static,
         audit: impl AuditProvider + 'static,
@@ -795,7 +794,7 @@ impl Executor {
     }
 
     /// Create an executor with the built-in model/audit/dialog/policy and a
-    /// custom [`SettlementRail`] (LP-17).
+    /// custom [`SettlementRail`].
     pub fn with_settlement(settlement: impl SettlementRail + 'static) -> Self {
         Executor {
             provider: Box::new(StubProvider),
@@ -806,8 +805,7 @@ impl Executor {
         }
     }
 
-    /// Create an executor with a custom [`SettlementRail`] and audit provider
-    /// (LP-17).
+    /// Create an executor with a custom [`SettlementRail`] and audit provider.
     pub fn with_settlement_and_audit(
         settlement: impl SettlementRail + 'static,
         audit: impl AuditProvider + 'static,
@@ -861,10 +859,10 @@ impl Executor {
     }
 
     /// Like [`execute_with_params`](Self::execute_with_params) but with a
-    /// host-declared execution mode (HO-12) and resolved exposure switches
-    /// (HO-18), both mirrored into the manifest's `repro` recipe (HO-20). A
+    /// host-declared execution mode and resolved exposure switches,
+    /// both mirrored into the manifest's `repro` recipe. A
     /// caller declaring `ExecutionMode::Real` and no switches sees the
-    /// identical output as `execute_with_params` (HO-5 preserved) — this is
+    /// identical output as `execute_with_params` (observer neutrality preserved) — this is
     /// purely an additive entry point, not a modification of the defaults.
     pub fn execute_with_manifest_context(
         &self,
@@ -890,8 +888,8 @@ impl Executor {
     }
 
     /// Run a workflow under a step/wall-clock ceiling, embedding `env_trajectory`
-    /// (the environment's reset entry, NE-3) in the run manifest. Used by
-    /// `run_with_environment` (NE-2/NE-13); not part of the public API — the
+    /// (the environment's reset entry) in the run manifest. Used by
+    /// `run_with_environment`; not part of the public API — the
     /// environment combinators in `workflows.rs` are the sanctioned entry point.
     ///
     /// `max_tokens` on a `Budget` is intentionally not accepted here — no
@@ -921,14 +919,14 @@ impl Executor {
         )
     }
 
-    /// The single emission choke point (HO-7). Assigns `seq` from
+    /// The single emission choke point. Assigns `seq` from
     /// `ctx.event_count` and the run's bound `correlation_id`, dispatches to
     /// the audit provider, then increments the counter — so a mismatch
     /// between the assigned `seq` and the counter is unrepresentable, not
     /// merely absent. Every `record_event` call in this module goes through
     /// here; none calls `self.audit.record_event` directly.
     ///
-    /// **Durable path only (HO-17).** `seq` numbers the durable stream —
+    /// **Durable path only.** `seq` numbers the durable stream —
     /// this function must never be used to emit a transient event, since a
     /// transient consuming a `seq` would read as a phantom gap if dropped,
     /// and a severed transient tail would make a completed run classify as
@@ -985,11 +983,11 @@ impl Executor {
         (result, budget_halted)
     }
 
-    /// NL-23: wraps [`Self::execute_inner`] in a bounded attempt loop when the
+    /// Wraps [`Self::execute_inner`] in a bounded attempt loop when the
     /// workflow declares `restart_max`. Wrapping **around** rather than
     /// reaching inside is the load-bearing choice — `execute_inner` builds a
     /// fresh [`ExecutionContext`] on every call, so re-entering it *is* the
-    /// LG-5 fresh reconstruction; no state-clearing routine exists to drift
+    /// fresh reconstruction; no state-clearing routine exists to drift
     /// out of sync as the context gains fields later.
     ///
     /// A workflow with no `restart_max` takes exactly the pre-NL-23 path: one
@@ -1035,7 +1033,7 @@ impl Executor {
         let mut attempt: u32 = 0;
         loop {
             let attempt_input = Self::seed_restart_count(&input, attempt);
-            // Each attempt is its own event stream (HO-7): a shared correlation_id
+            // Each attempt is its own event stream: a shared correlation_id
             // across attempts would break the per-manifest event_count == highest
             // seq + 1 identity, so a non-empty caller-supplied run_id is
             // disambiguated per attempt rather than reused verbatim.
@@ -1109,7 +1107,7 @@ impl Executor {
         });
     }
 
-    /// The execution mode a run records (HO-12). A caller that declared
+    /// The execution mode a run records. A caller that declared
     /// nothing gets `Real` — unless the model calls are answered by the
     /// built-in stub, in which case nothing that ran was real and the run is
     /// recorded as a structural simulation instead. A mode the caller declared
@@ -1125,7 +1123,7 @@ impl Executor {
 
     /// Merge a `restart_count` entry into the `@in`-overlay input map for one
     /// attempt, preserving whatever the caller originally passed. Fresh per
-    /// attempt (LG-5) — nothing from a prior attempt's variable environment
+    /// attempt — nothing from a prior attempt's variable environment
     /// carries over except this explicit, intentional counter.
     fn seed_restart_count(input: &Option<Value>, attempt: u32) -> Option<Value> {
         let mut entries = match input {
@@ -1137,7 +1135,7 @@ impl Executor {
     }
 
     /// Returns `(result, budget_halted)` — `budget_halted` is `true` only when
-    /// `max_steps`/`wall_clock_ms` cut the run short (NE-13); it is always
+    /// `max_steps`/`wall_clock_ms` cut the run short; it is always
     /// `false` for the plain `execute`/`execute_with_params` paths (`None`
     /// budget parameters).
     #[allow(clippy::too_many_arguments)]
@@ -1222,7 +1220,7 @@ impl Executor {
         // or without a declared handler. It arms the compensation unwind.
         let mut uncaught_error = false;
         for (step_count, step) in ast.steps.iter().enumerate() {
-            // NE-13: a fixed step/wall-clock ceiling halts the run uniformly —
+            // A fixed step/wall-clock ceiling halts the run uniformly —
             // a normal graded outcome (Status::Partial below), never an error.
             let steps_exhausted = max_steps.is_some_and(|max| step_count as u32 >= max);
             let time_exhausted = wall_clock_ms
@@ -1246,7 +1244,7 @@ impl Executor {
                     break;
                 }
                 _ => {
-                    // NL-9: a step that returns no Signal but left a new
+                    // A step that returns no Signal but left a new
                     // RuntimeError behind is "uncaught" — nothing else in the
                     // language can catch it. Dispatch the declared @err:
                     // handler once, then end the run's step sequence. With no
@@ -1286,23 +1284,23 @@ impl Executor {
         } else if abort {
             Status::Aborted
         } else if !ctx.errors.is_empty() || budget_halted {
-            // A budget halt (NE-13) is a normal graded outcome, not an error —
+            // A budget halt is a normal graded outcome, not an error —
             // it reuses the existing Partial status rather than introducing one.
             Status::Partial
         } else {
             Status::Ok
         };
 
-        // NL-22(d): armed by a failure signal, never automatic on success — a
+        // Armed by a failure signal, never automatic on success — a
         // run that ends clean, paused or on a graded budget halt keeps its
         // effects untouched. The signals are a rule violation, `!HALT`,
         // `!BREAK`, and an error nothing caught (dispatched to `@err:` or not:
         // routing to a handler is the workflow's failure path, so the effects
         // it already committed are unwound too). Drains the ledger
-        // back-to-front (LIFO, CO-4): later effects were built on earlier
+        // back-to-front (LIFO): later effects were built on earlier
         // ones, so popping is the correctness contract, not a hint. A
         // compensation that fails is not retried and does not abort the
-        // unwind (NL-22(b)) — it stays surfaced as COMPENSATION_FAILED
+        // unwind — it stays surfaced as COMPENSATION_FAILED
         // alongside whatever error the original effect already carries, and
         // draining continues so every remaining completed effect still gets
         // its chance to undo.
@@ -1336,14 +1334,14 @@ impl Executor {
 
         let run_status = match status {
             Status::Ok => RunStatus::Ok,
-            // A budget halt (NE-13) ends a run `Partial` without any error: a
+            // A budget halt ends a run `Partial` without any error: a
             // graded outcome, not a fault, so the manifest does not call it one.
             Status::Partial if ctx.errors.is_empty() => RunStatus::Ok,
             Status::Partial => RunStatus::Error,
             Status::Paused => RunStatus::Paused,
             Status::Failed | Status::Aborted => RunStatus::ConstraintHalt,
         };
-        // HO-20: stated, never inferred from the recipe's mere presence — a
+        // Stated, never inferred from the recipe's mere presence — a
         // model call (GEN/ANALYZE) makes the run non-deterministic.
         let determinism = if ctx
             .log
@@ -1370,7 +1368,7 @@ impl Executor {
         self.audit.run_complete(RunManifest {
             workflow_name: workflow_id.clone(),
             schema_version: crate::vocab::BUILTIN_SCHEMA_VERSION.to_string(),
-            // HO-7 identity: correlation_id == RunManifest.run_id, even on the
+            // Identity: correlation_id == RunManifest.run_id, even on the
             // empty-run_id path (resolve_correlation_id already ran).
             run_id: ctx.correlation_id.clone(),
             started_at: started_at.to_string(),
@@ -1438,7 +1436,7 @@ impl Executor {
             if ctx.errors.len() == errors_at_attempt {
                 // Success: discard any errors left by earlier failed attempts.
                 ctx.errors.truncate(errors_before);
-                // NL-22(a): only a step that completes cleanly (here, not a
+                // Only a step that completes cleanly (here, not a
                 // signal-carrying branch — see the doc comment on the
                 // compensations field) enters the completed-effect ledger.
                 if let Some(comp) = &step.compensation {
@@ -1599,7 +1597,7 @@ impl Executor {
                 iteration_number: Measurement::Taken(iter_idx as u64),
                 bound_vars: vec![fl_variable],
                 // Plain iteration, not a produce-transform construct — no
-                // meaningful derivation to record (HO-13).
+                // meaningful derivation to record.
                 derivation: None,
                 seq,
                 correlation_id,
@@ -1778,7 +1776,7 @@ impl Executor {
         cmd.pipeline_target = Some("$__map_element".to_string());
         for (iter_idx, item) in items.into_iter().enumerate() {
             ctx.set_var("it", item);
-            // HO-13: ~MAP is a true N->N produce-transform, unlike plain
+            // ~MAP is a true N->N produce-transform, unlike plain
             // ~FOR/~UNTIL iteration — each produced element derives from
             // exactly the source element at the same index, at this step.
             self.emit(ctx, |seq, correlation_id| ExecutionEvent::LoopIteration {
@@ -1965,7 +1963,7 @@ impl Executor {
             return Some(Signal::Break);
         }
 
-        // LP-11: a host-supplied PolicyProvider authorizes a model-call or
+        // A host-supplied PolicyProvider authorizes a model-call or
         // deferred effect before it happens. Fail-closed, non-halting — the
         // built-in NoopPolicyProvider always permits, so this is a no-op for
         // every host that does not opt in.
@@ -1978,7 +1976,7 @@ impl Executor {
                     Value::List(cmd.args.iter().cloned().map(Value::Text).collect()),
                 ),
             ];
-            // LP-16: optional consequence descriptors ride the existing
+            // Optional consequence descriptors ride the existing
             // +modifier=value grammar — carried into context only when the
             // step actually declares them (omitted, not defaulted, otherwise).
             for key in ["+reversible", "+external", "+value"] {
@@ -2022,7 +2020,7 @@ impl Executor {
             return self.handle_dialog(ctx, cmd, step_num);
         }
 
-        // SETTLE resolves through the SettlementRail (LP-17) and, like dialog,
+        // SETTLE resolves through the SettlementRail and, like dialog,
         // bypasses the standard value-returning dispatch.
         if cmd.name == "SETTLE" {
             return self.handle_settlement(ctx, cmd, step_num);
@@ -2078,7 +2076,7 @@ impl Executor {
     /// `Answer` binds the typed value to the pipeline target; `Pause` suspends
     /// the run (`Status::Paused`) without executing later steps; `Timeout` /
     /// `Rejected` push the matching runtime error. Dialog events carry only a
-    /// length descriptor — never the raw prompt or answer (DG-7).
+    /// length descriptor — never the raw prompt or answer.
     fn handle_dialog(
         &self,
         ctx: &mut ExecutionContext,
@@ -2108,7 +2106,7 @@ impl Executor {
             })
             .unwrap_or_default();
 
-        // DG-7: emit only a length descriptor, never the raw prompt text.
+        // Emit only a length descriptor, never the raw prompt text.
         let prompt_len = prompt.len() as u32;
         self.emit(ctx, |seq, correlation_id| ExecutionEvent::ModelCall {
             step_index: step_num,
@@ -2125,7 +2123,7 @@ impl Executor {
             self.dialog.confirm(&prompt, &cmd.modifiers)
         };
 
-        // DG-9: dialog_provenance is computed alongside signal, not in a
+        // dialog_provenance is computed alongside signal, not in a
         // second pass — Answer/Remembered bind through the identical path
         // and differ only in which provenance the StepEnd below records.
         let (signal, dialog_provenance) = match outcome {
@@ -2167,7 +2165,7 @@ impl Executor {
         };
 
         let output_vars: Vec<String> = cmd.pipeline_target.iter().cloned().collect();
-        // HO-14: the dialog path never times its own step (it may
+        // The dialog path never times its own step (it may
         // suspend the run awaiting a human) — Unavailable is the honest
         // value, never a fabricated 0 that would bias a downstream average.
         self.emit(ctx, |seq, correlation_id| ExecutionEvent::StepEnd {
@@ -2187,14 +2185,14 @@ impl Executor {
         signal
     }
 
-    /// Resolve a `SETTLE` step through the [`SettlementRail`] (LP-17).
+    /// Resolve a `SETTLE` step through the [`SettlementRail`].
     ///
-    /// The LP-11 gate above already decided the step may proceed; this is the
+    /// The gate above already decided the step may proceed; this is the
     /// act half. `Some(receipt)` binds to the pipeline target exactly like any
     /// other command's return value; `None` means the rail could not produce a
-    /// verifiable receipt (VS-7) and pushes `NODUS:SETTLEMENT_UNACCOUNTED`.
+    /// verifiable receipt and pushes `NODUS:SETTLEMENT_UNACCOUNTED`.
     /// Both exits return bare `None` — terminal for this step, but Signal-free,
-    /// so a denied or unaccounted settlement reaches NL-9's `@err:` dispatch
+    /// so a denied or unaccounted settlement reaches `@err:` dispatch
     /// exactly like `POLICY_DENIED` does.
     fn handle_settlement(
         &self,
@@ -2215,8 +2213,8 @@ impl Executor {
 
         let step_start = Instant::now();
 
-        // Length descriptor only, never the raw payee/amount/purpose (§4.4
-        // data-safety boundary, mirroring DG-7's dialog precedent).
+        // Length descriptor only, never the raw payee/amount/purpose (the
+        // data-safety boundary, mirroring the dialog precedent).
         let args_len: u32 = cmd.args.iter().map(|a| a.len() as u32).sum();
         self.emit(ctx, |seq, correlation_id| ExecutionEvent::ModelCall {
             step_index: step_num,
@@ -2413,7 +2411,7 @@ impl Executor {
         };
         let elapsed_ms = Measurement::Taken(call_start.elapsed().as_millis() as u64);
         let output_len = result.len() as u32;
-        // HO-8: ModelProvider exposes no token-accounting seam, so all four
+        // ModelProvider exposes no token-accounting seam, so all four
         // classes are Unavailable — never a fabricated 0.
         self.emit(ctx, |seq, correlation_id| ExecutionEvent::ModelResponse {
             step_index: step_num,
@@ -2619,7 +2617,7 @@ mod tests {
 
         #[test]
         fn resume_descriptor_workflow_digest_matches_digest_ast() {
-            // LP-22(c): the pinned-generation digest a paused run hands to its
+            // The pinned-generation digest a paused run hands to its
             // host must be the same `digest_ast` computation the run's own
             // `ReproRecipe.workflow_digest` uses — proven directly here against
             // the exact `ast` this test parses, no audit indirection needed.

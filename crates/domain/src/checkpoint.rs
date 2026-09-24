@@ -2,7 +2,7 @@
 //! fork-agent parity, and snapshot retention.
 //!
 //! `CheckpointPaths`, `CheckpointError`, and the `CheckpointWriter` trait
-//! moved to `cronus-contract` (§4.2); the file-backed
+//! moved to `cronus-contract`; the file-backed
 //! implementations stay here, in the domain tier.
 
 use std::fs;

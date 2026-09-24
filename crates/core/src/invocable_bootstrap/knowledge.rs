@@ -11,7 +11,7 @@ use super::{core_id, list_arg, opt_text_arg, text_arg};
 
 /// The single local CLI operator's identity — see `KnowledgeService::query`'s
 /// own doc comment for why this facade treats the invoking user as the
-/// collection owner (RS-5) rather than wiring a not-yet-existing persisted
+/// collection owner rather than wiring a not-yet-existing persisted
 /// multi-user grant store.
 const LOCAL_USER: &str = "local";
 

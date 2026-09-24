@@ -1,4 +1,4 @@
-//! Integration tests for the human-in-the-loop dialog contract (DG-1…DG-8).
+//! Integration tests for the human-in-the-loop dialog contract.
 //!
 //! Covers the synchronous default resolver, the pause/resume signal, typed
 //! binding through a custom provider, the typed failure outcomes, and the
@@ -65,7 +65,7 @@ impl DialogProvider for RejectProvider {
     }
 }
 
-// ─── DG-6: default-on-absence ────────────────────────────────────────────────
+// ─── Default-on-absence ────────────────────────────────────────────────
 
 #[test]
 fn dialog_default_resolves_synchronously() {
@@ -83,7 +83,7 @@ fn dialog_default_resolves_synchronously() {
     );
 }
 
-// ─── DG-2 / DG-4: pause + resume descriptor ──────────────────────────────────
+// ─── Pause + resume descriptor ──────────────────────────────────
 
 #[test]
 fn dialog_pauses_without_resolution() {
@@ -99,7 +99,7 @@ fn dialog_pauses_without_resolution() {
         .expect("a paused run carries a resume descriptor");
     assert_eq!(resume.workflow, "wf:ask_pause");
     assert_eq!(resume.step_index, 1, "suspended at the ASK step");
-    // DG-2: the following step must not have executed.
+    // The following step must not have executed.
     assert!(
         !result.log.iter().any(|e| e.command == "GEN"),
         "no step after the dialog may run on pause; log: {:?}",
@@ -107,7 +107,7 @@ fn dialog_pauses_without_resolution() {
     );
 }
 
-// ─── DG-3: typed binding via a custom provider ───────────────────────────────
+// ─── Typed binding via a custom provider ───────────────────────────────
 
 #[test]
 fn dialog_custom_answer_binds_to_target() {
@@ -125,7 +125,7 @@ fn dialog_custom_answer_binds_to_target() {
     );
 }
 
-// ─── DG-5: typed failure outcomes ────────────────────────────────────────────
+// ─── Typed failure outcomes ────────────────────────────────────────────
 
 #[test]
 fn dialog_timeout_surfaces_error() {
@@ -155,7 +155,7 @@ fn dialog_rejection_surfaces_error() {
     );
 }
 
-// ─── DG-8: capability-manifest derivation ────────────────────────────────────
+// ─── Capability-manifest derivation ────────────────────────────────────
 
 #[test]
 fn manifest_requires_dialog_role_without_default() {
@@ -177,7 +177,7 @@ fn manifest_omits_dialog_role_with_default() {
     );
 }
 
-// ─── LP-22(c): pinned-generation digest ──────────────────────────────────────
+// ─── Pinned-generation digest ──────────────────────────────────────
 
 /// Captures the `RunManifest` `run_complete` delivers — the `RecordingProvider`
 /// shape from `tests/observability.rs`, trimmed to just the manifest.
@@ -208,7 +208,7 @@ fn resume_descriptor_digest_agrees_with_repro_recipe_digest() {
     // function, from the same `ast`, but by two independent construction
     // sites — `ResumeDescriptor` and `ReproRecipe` are never compared to each
     // other in production code. Proving they agree here is what makes the
-    // LP-22(c) pinning claim meaningful rather than coincidental.
+    // definition-pinning claim meaningful rather than coincidental.
     let capture = ManifestCapture::new();
     let result = workflows::run_with_dialog_and_audit(
         ASK_PAUSE_WF,

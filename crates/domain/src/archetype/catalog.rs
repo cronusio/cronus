@@ -1,12 +1,12 @@
 //! The archetype catalog: the shipped program-tier archetypes, the
-//! declared-blocked ones, and the preset/custom split (OA-3.3, OA-6, OA-11).
+//! declared-blocked ones, and the preset/custom split.
 //!
-//! Every examined domain seeds **zero** roles — WSL-5's manager already
+//! Every examined domain seeds **zero** roles — the workspace manager already
 //! performs all first-contact work — so the shipped `software-engineering`
 //! archetype has an empty seed. The two non-technical archetypes are
-//! *declared and blocked*, not shipped against invented specialties (OA-10):
+//! *declared and blocked*, not shipped against invented specialties:
 //! the role catalog lacks the specialties they name, and each missing role
-//! must clear the ROL-9 gate in a separate role-catalog amendment first.
+//! must clear the gate in a separate role-catalog amendment first.
 
 use std::path::Path;
 
@@ -17,12 +17,12 @@ use super::schema::{ArchetypeDefinition, ArchetypeError, Shape};
 pub enum ArchetypeStatus {
     /// Ships: every `pool`/`seed` identifier resolves against the role catalog.
     Ships,
-    /// Declared but blocked (OA-10): the named roles are absent from the role
-    /// catalog and must each clear ROL-9 in a separate amendment first.
+    /// Declared but blocked: the named roles are absent from the role
+    /// catalog and must each clear the role-admission gate in a separate amendment first.
     Blocked { missing_roles: Vec<String> },
 }
 
-/// A declared-but-blocked archetype (OA-10 / §4.4): named, with the exact
+/// A declared-but-blocked archetype: named, with the exact
 /// roles it still requires, rather than shipped against invented specialties.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockedArchetype {
@@ -31,7 +31,7 @@ pub struct BlockedArchetype {
     pub missing_roles: Vec<String>,
 }
 
-/// A custom archetype derived from a preset (OA-6): a state-tier copy that
+/// A custom archetype derived from a preset: a state-tier copy that
 /// records where it came from and never mutates the read-only source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomArchetype {
@@ -44,8 +44,8 @@ fn owned(items: &[&str]) -> Vec<String> {
 }
 
 /// The shipped `software-engineering` archetype: an 18-role pool that resolves
-/// fully against the current role catalog, an **empty seed** (WSL-5's manager
-/// performs all first-contact work), and a three-department shape (OA-1: named,
+/// fully against the current role catalog, an **empty seed** (the workspace manager
+/// performs all first-contact work), and a three-department shape (named,
 /// never instantiated).
 pub fn software_engineering() -> ArchetypeDefinition {
     ArchetypeDefinition {
@@ -81,7 +81,7 @@ pub fn software_engineering() -> ArchetypeDefinition {
     }
 }
 
-/// The two declared-blocked archetypes and the roles each still needs (§4.4).
+/// The two declared-blocked archetypes and the roles each still needs.
 fn blocked_archetypes() -> Vec<BlockedArchetype> {
     vec![
         BlockedArchetype {
@@ -152,7 +152,7 @@ impl ArchetypeCatalog {
         self.blocked.iter().find(|b| b.id == id)
     }
 
-    /// OA-6: copy a shipped preset into the state tier as a custom archetype,
+    /// Copy a shipped preset into the state tier as a custom archetype,
     /// recording `derived_from` and **never mutating the source** (the source
     /// is an embedded program-tier constant, so it is immutable by
     /// construction). Writes a marker file under
@@ -181,7 +181,7 @@ impl ArchetypeCatalog {
     }
 }
 
-/// An office's archetype selection (OA-8, OA-11). The archetype-free state —
+/// An office's archetype selection. The archetype-free state —
 /// `active = None` — is a valid, fully-functional default, the fallback when
 /// inference is inconclusive.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -190,7 +190,7 @@ pub struct ActiveArchetype {
 }
 
 impl ActiveArchetype {
-    /// OA-11: the archetype-free office is complete.
+    /// The archetype-free office is complete.
     pub fn is_archetype_free(&self) -> bool {
         self.active.is_none()
     }
@@ -217,7 +217,7 @@ mod tests {
         assert!(catalog.get("software-engineering").is_some());
     }
 
-    // --- the two declared-blocked archetypes (§4.4) -------------------------
+    // --- the two declared-blocked archetypes -------------------------
 
     #[test]
     fn the_two_blocked_archetypes_are_present_with_their_missing_role_lists() {
@@ -232,7 +232,7 @@ mod tests {
         assert!(catalog.get("advertising-agency").is_none());
     }
 
-    // --- OA-11: the archetype-free office is complete -----------------------
+    // --- The archetype-free office is complete -----------------------
 
     #[test]
     fn the_default_office_is_archetype_free_and_that_is_a_complete_state() {
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(state.active, None);
     }
 
-    // --- OA-6: create-from-preset records derived_from, source untouched ----
+    // --- Create-from-preset records derived_from, source untouched ----
 
     #[test]
     fn create_from_preset_writes_a_state_tier_copy_recording_derived_from() {

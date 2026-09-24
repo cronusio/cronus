@@ -1,7 +1,7 @@
-//! Real Windows activation registration (§4.2).
+//! Real Windows activation registration.
 //!
 //! **Login-scoped:** the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-//! value, plus the `StartupApproved\Run` veto read (BA-8: the raw `Run`
+//! value, plus the `StartupApproved\Run` veto read (the raw `Run`
 //! value alone is not the state — Windows records a user's Task-Manager
 //! disablement separately, leaving `Run` intact).
 //!
@@ -11,7 +11,7 @@
 //! Task Scheduler's real API is a large COM surface (`ITaskService` et al.);
 //! shelling out to Microsoft's own first-party CLI is the established,
 //! supported way most tools manage scheduled tasks, and needs no FFI beyond
-//! what login-scoped already uses. Elevation (BA-6) is a real OS-mediated
+//! what login-scoped already uses. Elevation is a real OS-mediated
 //! ceremony: `ShellExecuteExW` with the `"runas"` verb, which pops the
 //! actual UAC consent dialog — registration only, never applied to running
 //! the engine itself.
@@ -241,7 +241,7 @@ impl SystemCalls for WindowsSystemCalls {
         let run_as = current_username()?;
         // `/f` forces overwrite of a same-named task (idempotent re-register);
         // omitting `/rp` (no stored password) is the documented way schtasks
-        // yields S4U logon type for a non-well-known account (§4.2).
+        // yields S4U logon type for a non-well-known account.
         let args = format!(
             "/create /tn \"{TASK_NAME}\" /tr \"{}\" /sc onstart /ru \"{run_as}\" /rl limited /f",
             exe_path.display()
@@ -273,7 +273,7 @@ impl SystemCalls for WindowsSystemCalls {
         // Every artifact this adapter's own name (`Cronus` / `TASK_NAME`)
         // could occupy on Windows: the Run value and the scheduled task.
         // Nothing else is ever inspected, so no foreign registration is
-        // ever in scope (BA-7).
+        // ever in scope.
         self.remove_login_entry()?;
         self.remove_system_entry()
     }
@@ -301,7 +301,7 @@ fn current_username() -> Result<String, String> {
     }
 }
 
-/// Run `exe args` elevated via the real Windows UAC ceremony (BA-6): a human
+/// Run `exe args` elevated via the real Windows UAC ceremony: a human
 /// performs and can refuse this. Blocks until the elevated process exits and
 /// returns its exit code; `ShellExecuteExW` itself failing (including a
 /// refused elevation) surfaces as `Err` before any process runs.

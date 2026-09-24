@@ -1,9 +1,9 @@
-//! Self-healing service (HEAL-1…6): a data-driven catalog of checks, each
+//! Self-healing service: a data-driven catalog of checks, each
 //! producing typed findings that are either safely auto-repaired or escalated
-//! for human review — never both. Diagnosis itself is read-only (HEAL-4);
+//! for human review — never both. Diagnosis itself is read-only;
 //! `repair` layers safe fixes on top of a `check` pass and never touches an
-//! escalated finding (HEAL-3). Every check and repair is written to the
-//! returned audit trail (HEAL-5).
+//! escalated finding. Every check and repair is written to the
+//! returned audit trail.
 //!
 //! Checks operate over injected [`DoctorInputs`] signals rather than the
 //! concrete `kanban`/`session`/`store` types directly — this keeps the check
@@ -14,13 +14,13 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-/// Conservative "clearly abandoned" threshold (§5 TBD, resolved here): a
+/// Conservative "clearly abandoned" threshold (an open question resolved here): a
 /// stuck card only qualifies for safe repair once it has run this long *and*
 /// carries independent completion evidence — ambiguous cases always escalate.
 const STUCK_CARD_THRESHOLD: Duration = Duration::from_secs(24 * 60 * 60);
 const DANGLING_SESSION_THRESHOLD: Duration = Duration::from_secs(2 * 60 * 60);
 
-/// The six check categories (§4.1).
+/// The six check categories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CheckCategory {
     StoreIndex,
@@ -34,9 +34,9 @@ pub enum CheckCategory {
 /// Whether a finding can be safely auto-repaired or must be escalated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Disposition {
-    /// Deterministic and safe; reversible where possible (HEAL-2).
+    /// Deterministic and safe; reversible where possible.
     SafeRepair,
-    /// Ambiguous or destructive — reported, never applied (HEAL-3).
+    /// Ambiguous or destructive — reported, never applied.
     Escalate,
 }
 
@@ -50,7 +50,7 @@ pub struct Finding {
     pub disposition: Disposition,
 }
 
-/// One logged check/repair action (HEAL-5).
+/// One logged check/repair action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditEntry {
     pub action: &'static str,
@@ -65,7 +65,7 @@ pub struct Report {
     pub repaired: Vec<Finding>,
     pub escalated: Vec<Finding>,
     pub audit_log: Vec<AuditEntry>,
-    /// `(extension id, informational lines)` from registered extensions (§4.2).
+    /// `(extension id, informational lines)` from registered extensions.
     pub extension_notes: Vec<(String, Vec<String>)>,
 }
 
@@ -255,7 +255,7 @@ fn check_crash(crash: &Option<CrashSignal>) -> Vec<Finding> {
     }
 }
 
-/// Run every check category read-only (HEAL-4: `inputs` is borrowed, never
+/// Run every check category read-only (`inputs` is borrowed, never
 /// mutated) and classify every finding, without applying any repair.
 pub fn check(inputs: &DoctorInputs) -> Report {
     let mut findings = Vec::new();
@@ -289,9 +289,9 @@ pub fn check(inputs: &DoctorInputs) -> Report {
     }
 }
 
-/// Run `check`, then apply every safe-repair finding and log the action
-/// (HEAL-2/HEAL-5). Escalated findings are carried through untouched — a
-/// risky finding is never applied, only reported (HEAL-3).
+/// Run `check`, then apply every safe-repair finding and log the action.
+/// Escalated findings are carried through untouched — a
+/// risky finding is never applied, only reported.
 pub fn repair(inputs: &DoctorInputs) -> Report {
     let mut report = check(inputs);
     let safe: Vec<Finding> = report
@@ -311,15 +311,15 @@ pub fn repair(inputs: &DoctorInputs) -> Report {
     report
 }
 
-// --- Extensibility (§4.2, programmatic registration path) ---
+// --- Extensibility (programmatic registration path) ---
 
 /// `(inputs) -> informational lines`; an empty vec means nothing to report.
 pub type DoctorCheckFn = fn(&DoctorInputs) -> Vec<String>;
 
 /// Third-party programmatic doctor contributions, run in isolation. Entries
 /// are keyed by a namespaced id (e.g. `"myplugin.cron"`); a `BTreeMap` keeps
-/// execution alphabetical by id (§4.2 ordering) with no separate sort step.
-/// Package entry-point discovery (the second §4.2 registration path) is a
+/// execution alphabetical by id (ordering) with no separate sort step.
+/// Package entry-point discovery (the second registration path) is a
 /// build/plugin-loading concern owned by the extension registry, not this
 /// module — this registry covers same-process programmatic registration.
 #[derive(Default)]

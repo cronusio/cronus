@@ -1,4 +1,4 @@
-//! The ephemeral 32-byte MAC key (TR-5): opaque by construction, with every
+//! The ephemeral 32-byte MAC key: opaque by construction, with every
 //! accidental leak path closed at the type level rather than left to
 //! caller discipline.
 

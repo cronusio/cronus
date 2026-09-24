@@ -264,7 +264,7 @@ fn export_all_returns_every_stored_entry_unfiltered() {
     assert_eq!(
         exported.len(),
         2,
-        "export applies no trust-score gate (DN-7: always able to come home)"
+        "export applies no trust-score gate (always able to come home)"
     );
 }
 
@@ -289,7 +289,7 @@ fn memory_search_trait_object_resolves_to_the_same_store() {
     assert_eq!(results.len(), 1);
 }
 
-// ── MC-1: processing-depth tiers ────────────────────────────────────────────
+// ── Processing-depth tiers ────────────────────────────────────────────
 
 #[test]
 fn depth_defaults_to_consolidated_and_round_trips() {
@@ -308,7 +308,7 @@ fn explicit_raw_depth_round_trips() {
     assert_eq!(got.depth, MemoryDepth::Raw);
 }
 
-// ── MI-9: reversible lifecycle states ───────────────────────────────────────
+// ── Reversible lifecycle states ───────────────────────────────────────
 
 #[test]
 fn lifecycle_state_defaults_to_active() {
@@ -394,7 +394,7 @@ fn recall_defaults_to_active_excluding_paused_and_archived() {
     );
 }
 
-// ── MC-8: multiplicative offline-precomputed ranking ────────────────────────
+// ── Multiplicative offline-precomputed ranking ────────────────────────
 
 #[test]
 fn ranked_recall_on_cold_signals_matches_plain_text_relevance_order() {
@@ -406,7 +406,7 @@ fn ranked_recall_on_cold_signals_matches_plain_text_relevance_order() {
 
     // No signals computed anywhere — every derived factor is neutral (1.0),
     // so the fused score is exactly the base text relevance: cold-start
-    // ranks purely on text strength, per MC-5/MC-8.
+    // ranks purely on text strength, per the ranking rules.
     let ranked = s.search_ranked("apple", 10).unwrap();
     assert_eq!(ranked.len(), 2);
     assert!(
@@ -481,7 +481,7 @@ fn ranked_recall_returns_empty_for_no_match_not_an_error() {
     assert!(ranked.is_empty());
 }
 
-// ── MC-6: corpus maintenance, exercised through MemoryStore ────────────────
+// ── Corpus maintenance, exercised through MemoryStore ────────────────
 
 #[test]
 fn memory_store_recompute_recency_and_sweep_archive_wire_through() {
@@ -535,7 +535,7 @@ fn memory_store_flag_split_candidates_wires_through() {
     assert_eq!(candidates.len(), 1);
 }
 
-// ── MI-2: temporal recall modes ─────────────────────────────────────────────
+// ── Temporal recall modes ─────────────────────────────────────────────
 
 #[test]
 fn recall_as_of_still_sees_a_since_superseded_record() {
@@ -607,7 +607,7 @@ fn recall_recent_orders_newest_first() {
     assert_eq!(recent[0].id, second_id, "the newest item must come first");
 }
 
-// ── MI-8: structured predicate ──────────────────────────────────────────────
+// ── Structured predicate ──────────────────────────────────────────────
 
 #[test]
 fn recall_structured_filters_by_kind_equality() {
@@ -663,13 +663,13 @@ fn recall_structured_composes_and_or_not() {
     assert_eq!(results[0].id, e1_id);
 }
 
-// ── MI-3: immediate recall-visibility ───────────────────────────────────────
+// ── Immediate recall-visibility ───────────────────────────────────────
 
 #[test]
 fn a_written_item_is_recall_visible_immediately_with_no_enrichment_delay() {
     let s = store();
     // No signal has been computed for this item (no enrichment pass has
-    // run) — MI-3 requires the write to still be findable right away;
+    // run) — the design requires the write to still be findable right away;
     // missing enrichment must degrade ranking quality, never availability.
     let id = s
         .add(entry("just written", "findable the instant it lands"))
@@ -688,7 +688,7 @@ fn a_written_item_is_recall_visible_immediately_with_no_enrichment_delay() {
     );
 }
 
-// ── MC-5: derived-signal store, exercised through MemoryStore ──────────────
+// ── Derived-signal store, exercised through MemoryStore ──────────────
 
 #[test]
 fn memory_store_signal_roundtrip_and_neutral_default() {
@@ -704,7 +704,7 @@ fn memory_store_signal_roundtrip_and_neutral_default() {
     assert_eq!(s.signal_factor(&id, SignalKind::Centrality).unwrap(), 1.0);
 }
 
-// ── MI-6: capture metadata (actor/expiry/subject) ───────────────────────────
+// ── Capture metadata (actor/expiry/subject) ───────────────────────────
 
 #[test]
 fn capture_metadata_defaults_to_absent() {

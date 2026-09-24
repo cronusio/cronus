@@ -10,7 +10,7 @@ import {
 } from "./canvas";
 
 describe("automation canvas projection", () => {
-  it("detects projection drift between engine and canvas (AC-1)", () => {
+  it("detects projection drift between engine and canvas", () => {
     const drift = projectionDrift(
       [
         "a",
@@ -113,7 +113,7 @@ describe("automation canvas projection", () => {
     ).toEqual([]);
   });
 
-  it("builds a dev-run request without executing (AC-7/AC-3)", () => {
+  it("builds a dev-run request without executing", () => {
     const req = requestDevRun("node-3", "node-4");
     expect(req).toEqual({
       pinnedNode: "node-3",
@@ -122,7 +122,7 @@ describe("automation canvas projection", () => {
     });
   });
 
-  it("resolves the observer that catches a node, scoped over catch-all (AC-8)", () => {
+  it("resolves the observer that catches a node, scoped over catch-all", () => {
     const observers: ObserverView[] = [
       {
         id: "scoped",

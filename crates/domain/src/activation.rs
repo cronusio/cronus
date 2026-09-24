@@ -1,6 +1,6 @@
 //! Activation policy — the domain-tier transition state machine over the
-//! `ActivationRegistry` seam (§4.4/§4.6, BA-3/BA-5/
-//! BA-6/BA-7). The seam's `enable`/`disable` are adapter-level primitives
+//! `ActivationRegistry` seam.
+//! The seam's `enable`/`disable` are adapter-level primitives
 //! (register exactly this mode / remove whatever is registered); this module
 //! owns the *policy* — the mutual-exclusion ordering, the read-back
 //! verification that makes a failure converge on `Inactive` rather than a
@@ -13,7 +13,7 @@ use cronus_contract::{ActivationMode, ActivationRegistry, ActivationState};
 /// What a transition accomplished. `RequiresApproval` is its own variant,
 /// distinct from `Activated` — the registry registered the mode, but the OS
 /// (or the user) has not yet approved it, so a caller must never treat it as
-/// a full success (BA-8, §4.6).
+/// a full success.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransitionOutcome {
     Activated(ActivationMode),
@@ -22,7 +22,7 @@ pub enum TransitionOutcome {
 }
 
 /// A transition that did not converge on the requested state. Every path
-/// that returns this leaves the registry at `Inactive` (BA-1's default) or
+/// that returns this leaves the registry at `Inactive` (its default) or
 /// unchanged from before the call — never a half-completed, doubly-
 /// registered state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,14 +35,14 @@ pub enum TransitionError {
     RegistrationFailed { detail: String },
     /// The adapter reported success, but the read-back does not show the
     /// target state — a claimed success is never trusted over the
-    /// observation (BA-7/BA-8).
+    /// observation.
     VerificationFailed { observed: ActivationState },
-    /// The user has not consented to this specific mode (BA-5); consent
+    /// The user has not consented to this specific mode; consent
     /// never carries over from another mode.
     ConsentMissing { mode: ActivationMode },
 }
 
-/// Enable `target` on `registry` (BA-2/BA-3/BA-6/BA-7): if a *different*
+/// Enable `target` on `registry`: if a *different*
 /// mode is currently active or pending approval, remove it first and verify
 /// its absence before registering the target; then verify the target is
 /// observably active. `RequiresApproval` surfaces as its own outcome, never
@@ -51,7 +51,7 @@ pub fn enable(
     registry: &dyn ActivationRegistry,
     target: ActivationMode,
 ) -> Result<TransitionOutcome, TransitionError> {
-    // Mutual exclusion (BA-3): remove whatever else is registered first.
+    // Mutual exclusion: remove whatever else is registered first.
     match registry.observe() {
         ActivationState::Active(current) | ActivationState::RequiresApproval(current)
             if current != target =>
@@ -67,12 +67,12 @@ pub fn enable(
         _ => {} // Already Inactive, or already the target mode — nothing to remove.
     }
 
-    // Register the target (BA-6: may prompt for elevation on System).
+    // Register the target (may prompt for elevation on System).
     registry
         .enable(target)
         .map_err(|detail| TransitionError::RegistrationFailed { detail })?;
 
-    // Read-back verification (BA-7/BA-8): a claimed success is not trusted
+    // Read-back verification: a claimed success is not trusted
     // until observed.
     match registry.observe() {
         ActivationState::Active(mode) if mode == target => Ok(TransitionOutcome::Activated(target)),
@@ -83,7 +83,7 @@ pub fn enable(
     }
 }
 
-/// Disable whatever is registered (BA-7): remove, then verify absence.
+/// Disable whatever is registered: remove, then verify absence.
 pub fn disable(registry: &dyn ActivationRegistry) -> Result<TransitionOutcome, TransitionError> {
     registry
         .disable()
@@ -95,7 +95,7 @@ pub fn disable(registry: &dyn ActivationRegistry) -> Result<TransitionOutcome, T
     }
 }
 
-/// What the user was shown and confirmed when granting a mode (BA-5): the
+/// What the user was shown and confirmed when granting a mode: the
 /// consent moment names the autonomy level and spend ceiling in force.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsentRecord {
@@ -104,7 +104,7 @@ pub struct ConsentRecord {
     pub spend_ceiling: String,
 }
 
-/// Tracks which modes the user has actually consented to (BA-5). A fresh
+/// Tracks which modes the user has actually consented to. A fresh
 /// ledger authorizes nothing — consent is explicit and per-mode, never
 /// assumed or inherited: a record for `Login` does not authorize `System`.
 #[derive(Debug, Default)]
@@ -129,8 +129,8 @@ impl ConsentLedger {
     }
 }
 
-/// Enable `target`, gated on the user having separately consented to it
-/// (BA-5). `enable` alone enforces BA-3/BA-6/BA-7; this wraps it so a caller
+/// Enable `target`, gated on the user having separately consented to it.
+/// `enable` alone enforces the mutual-exclusion, elevation and verified-removal rules; this wraps it so a caller
 /// can never activate a mode the disclosure was never shown for.
 pub fn enable_with_consent(
     registry: &dyn ActivationRegistry,
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn a_forced_registration_failure_leaves_the_host_inactive() {
         // Removing System succeeds, but registering Login then fails — the
-        // host must land at Inactive (BA-1's default), never back at System
+        // host must land at Inactive (the default), never back at System
         // and never a half-registered Login.
         let mut fake = FakeRegistry::new(ActivationState::Active(ActivationMode::System));
         fake.fail_enable = true;
@@ -286,7 +286,7 @@ mod tests {
     fn a_lying_registration_success_is_caught_by_readback_verification() {
         // The adapter's enable() call returns Ok, but the observed state
         // never actually moved — this must surface as VerificationFailed,
-        // never as a trusted Activated (BA-7/BA-8: observation, not a
+        // never as a trusted Activated (observation, not a
         // claimed success, is the truth).
         let mut fake = FakeRegistry::new(ActivationState::Inactive);
         fake.lie_on_enable = true;
@@ -318,7 +318,7 @@ mod tests {
         assert!(ledger.has_consented(ActivationMode::Login));
         assert!(
             !ledger.has_consented(ActivationMode::System),
-            "Login consent must not imply System consent (BA-5)"
+            "Login consent must not imply System consent"
         );
 
         let fake = FakeRegistry::new(ActivationState::Inactive);

@@ -1,15 +1,14 @@
-//! End-to-end proof that the project wiki is a rebuildable projection cache
-//! (§4.3/§4.4, PW-3/PW-7).
+//! End-to-end proof that the project wiki is a rebuildable projection cache.
 //!
 //! Two properties, both through the whole seam (domain pipeline → the real
 //! SQLite `WikiStore`, no fakes):
 //!
-//! 1. **Drop-loses-nothing (PW-3):** build a wiki into a `wiki.db`, capture it,
+//! 1. **Drop-loses-nothing:** build a wiki into a `wiki.db`, capture it,
 //!    physically delete the file, then rebuild from the SAME ground truth into
 //!    a brand-new empty store — the result is an *equivalent* wiki (same page
 //!    structure, same sources, same fingerprints). Nothing authoritative ever
 //!    lived only in `wiki.db`, so losing the file loses nothing durable.
-//! 2. **Access gate (PW-7):** reading the real store through `GatedWiki` is
+//! 2. **Access gate:** reading the real store through `GatedWiki` is
 //!    denied without a `Read` grant and allowed with one.
 
 use std::path::PathBuf;
@@ -47,7 +46,7 @@ fn unique_db_path(tag: &str) -> PathBuf {
     ))
 }
 
-/// The structural + attribution projection of a page — everything the PW-3
+/// The structural + attribution projection of a page — everything the
 /// equivalence guarantee covers, excluding wall-clock `generated_at` (which
 /// legitimately differs between two builds) and the model-generated `body`
 /// (equivalence is informational, not byte-identical prose): the id, kind,
@@ -129,7 +128,7 @@ fn a_client_read_through_the_real_store_is_access_gated() {
     let store = WikiStore::open(&path).expect("open");
     rebuild(office, &FixtureGround, None, &store).expect("build");
 
-    // Without a grant, a non-owner is denied (PW-7) — the read never reaches
+    // Without a grant, a non-owner is denied — the read never reaches
     // the store.
     let empty_grants = GrantStore::new();
     let denied = GatedWiki::new(

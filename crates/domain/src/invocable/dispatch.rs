@@ -1,9 +1,9 @@
 //! The execution half: bind an invocation's arguments against its
 //! invocable's declared binders, and only then run the attached handler —
-//! under containment when the handler belongs to a contribution (EP-6).
+//! under containment when the handler belongs to a contribution.
 //!
 //! Binding and execution are deliberately two separate steps with a hard
-//! ordering (IB-2): every declared binder is checked before the handler
+//! ordering: every declared binder is checked before the handler
 //! runs at all, so a rejection is a structural fact ("the handler did not
 //! run") rather than something the handler itself would have to notice and
 //! report. This module's own [`bind`] can produce only two of the four
@@ -15,7 +15,7 @@
 //! [`RejectionMode::Malformed`] (present but not parseable at all) describe
 //! failures that happen *before* a value becomes an [`ArgValue`] — reading
 //! an external source, parsing raw surface input — and that is I/O and
-//! surface-specific work this crate's no-I/O tier must not perform (§4.3);
+//! surface-specific work this crate's no-I/O tier must not perform;
 //! it belongs to whatever surface constructs an [`ArgValues`] from raw
 //! input, upstream of dispatch. Both modes remain fully representable and
 //! located by [`Rejection`] itself; this module just is not where they
@@ -54,7 +54,7 @@ use super::registry::{CORE_IDENTITY, InvocableRegistry};
 pub type Handler = Arc<dyn Fn(&ArgValues) -> Outcome + Send + Sync>;
 
 /// How long a contributed invocable's handler is given before dispatch
-/// gives up on it (EP-6). Core invocables are not bounded at all — see the
+/// gives up on it. Core invocables are not bounded at all — see the
 /// module doc.
 pub const CONTRIBUTION_TIME_BOUND: Duration = Duration::from_secs(5);
 
@@ -113,7 +113,7 @@ pub fn bind(descriptor: &Invocable, args: &ArgValues) -> Option<Rejection> {
     None
 }
 
-/// Run a contribution's handler under containment (EP-6): a panic is caught
+/// Run a contribution's handler under containment: a panic is caught
 /// and never unwinds into the caller, and the caller is never held past
 /// `bound`. Either failure resolves to [`Outcome::Unavailable`], its reason
 /// naming `contributor` — a rejection attributed to the contribution, never
@@ -147,7 +147,7 @@ fn run_contribution(
     }
 }
 
-/// The effect that reverses one [`Dispatcher::attach`] call (EP-13):
+/// The effect that reverses one [`Dispatcher::attach`] call:
 /// disposing it removes exactly the handler it attached, and nothing else.
 /// The invocable's descriptor (if any) is untouched — disposing a handler
 /// leaves a normal, catalog-readable, unattached descriptor behind, the
@@ -165,7 +165,7 @@ impl DispatchHandle {
     }
 }
 
-/// One record of a resolved dispatch's lifecycle (§4.13). The pair — never
+/// One record of a resolved dispatch's lifecycle. The pair — never
 /// a single combined record — is what makes an unsettled dispatch (one
 /// whose handler never returned) visible: a lone `Enter` with no matching
 /// `Settle` is exactly that state, which a record written only on
@@ -192,14 +192,14 @@ pub enum JournalRecord<'a> {
     },
 }
 
-/// Where a resolved dispatch's lifecycle is recorded (§4.13). A pure
+/// Where a resolved dispatch's lifecycle is recorded. A pure
 /// interface — no I/O lives in this crate; a real durable journal is
 /// supplied by whatever composes the `Dispatcher`, the same residual shape
 /// as [`Dispatcher::set_secrets`]: the seam exists and is exercised here,
 /// wiring a real sink into the facade is a separate, recorded obligation.
 pub trait DispatchJournal {
     /// Write one record. `Err` on an `Enter` record fails the dispatch
-    /// before the handler runs (§4.13); the same failure on `Settle` is
+    /// before the handler runs; the same failure on `Settle` is
     /// contained by the caller so the handler's own outcome stays the
     /// reported one.
     fn record(&mut self, record: JournalRecord<'_>) -> Result<(), String>;
@@ -211,7 +211,7 @@ pub trait DispatchJournal {
 pub type JournalSink = Box<dyn DispatchJournal + Send + Sync>;
 
 /// A token unique to this process instance, salted by the process id and a
-/// wall-clock timestamp taken at construction — §4.13's "unique across
+/// wall-clock timestamp taken at construction — the "unique across
 /// process restarts" requirement. A per-process counter alone repeats after
 /// a restart and would silently pair a new dispatch with an old one; this
 /// token makes that collision require the same pid AND the same nanosecond
@@ -272,14 +272,14 @@ impl Dispatcher {
     /// registry registration — the two may happen in either order, and a
     /// descriptor with no attached handler is a normal, catalog-readable
     /// state (dispatch reports it as unavailable, never panics). Returns
-    /// the effect that reverses exactly this attachment (EP-13).
+    /// the effect that reverses exactly this attachment.
     pub fn attach(&mut self, id: InvocableId, handler: Handler) -> DispatchHandle {
         self.handlers.insert(id.clone(), handler);
         DispatchHandle { id }
     }
 
     /// Replace the secret values every dispatched [`Outcome`] is masked
-    /// against (INV-7). Starts empty — populating it from the core's real
+    /// against. Starts empty — populating it from the core's real
     /// secret store is a separate, recorded obligation this method makes
     /// possible but does not itself discharge.
     pub fn set_secrets(&mut self, secrets: Vec<String>) {
@@ -287,7 +287,7 @@ impl Dispatcher {
     }
 
     /// Install where this dispatcher records a resolved dispatch's
-    /// lifecycle (§4.13). Starts unconfigured — with no journal, dispatch
+    /// lifecycle. Starts unconfigured — with no journal, dispatch
     /// proceeds exactly as before journaling existed, the same residual
     /// shape as [`Dispatcher::set_secrets`] starting with an empty list.
     pub fn set_journal(&mut self, journal: JournalSink) {
@@ -313,12 +313,12 @@ impl Dispatcher {
         }
     }
 
-    /// Resolve `invocation` against `registry` first (SP-13) — an id
+    /// Resolve `invocation` against `registry` first — an id
     /// naming nothing the registry knows returns [`Dispatched::Unknown`]
     /// immediately, before any journal record is written and before any
     /// binder runs, because nothing happened that a journal entry or a
     /// binding rejection could describe. A resolved invocation is journaled
-    /// as a paired entry/settlement record (§4.13): a failure to write the
+    /// as a paired entry/settlement record: a failure to write the
     /// entry fails the dispatch loudly, before the handler runs; the same
     /// failure on the settlement record is contained so the handler's own
     /// outcome — masked against the configured secrets at this single
@@ -337,7 +337,7 @@ impl Dispatcher {
             invocable: &invocation.id,
             args: entry_args,
         }) {
-            // §4.13: a dispatch that runs unrecorded is the one case the
+            // A dispatch that runs unrecorded is the one case the
             // journal exists to prevent — refuse before the handler runs.
             return Dispatched::Ran(Outcome::Unavailable {
                 reason: format!("dispatch journal refused the entry record: {reason}"),
@@ -349,7 +349,7 @@ impl Dispatcher {
         let outcome = crate::redact::redact_outcome(outcome, &secret_refs);
 
         // A settlement-record failure is contained: the handler's own
-        // outcome stays the reported one regardless (§4.13).
+        // outcome stays the reported one regardless.
         let _ = self.write_journal(JournalRecord::Settle {
             dispatch_id: &dispatch_id,
             outcome: &outcome,
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn dispatch_against_an_unknown_invocable_yields_resolved_unknown_not_an_outcome() {
-        // SP-13: nothing ran, nothing was rejected — this is a resolution
+        // Nothing ran, nothing was rejected — this is a resolution
         // miss, not a failure-shaped `Outcome`. Folding this into
         // `Outcome::Unavailable` forces one wrong reading on the other two,
         // because the three surfaces answer `Unknown` three incompatible
@@ -820,7 +820,7 @@ mod tests {
         }
     }
 
-    /// A journal whose entry record always fails — for proving §4.13's
+    /// A journal whose entry record always fails — for proving the
     /// failure asymmetry: an entry failure must refuse the dispatch before
     /// the handler runs.
     struct FailingEntryJournal;
@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(
             handler_calls.load(Ordering::SeqCst),
             0,
-            "a dispatch that could not be journaled must never run — that is the one case §4.13 exists to prevent"
+            "a dispatch that could not be journaled must never run — that is the one case the journal exists to prevent"
         );
     }
 }

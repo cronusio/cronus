@@ -45,7 +45,7 @@ describe("right file-tree dock", () => {
   });
 });
 
-describe("command palette (AS-10 delegated selection surface)", () => {
+describe("command palette (delegated selection surface)", () => {
   it("is absent when closed; renders grouped results when open", () => {
     const { rerender } = render(<CommandPalette open={false} />);
     expect(screen.queryByTestId("selection-surface")).toBeNull();
@@ -110,7 +110,7 @@ describe("command palette (AS-10 delegated selection surface)", () => {
  * the risk that this palette's own action source drifts into a hand-written
  * restatement of the same mapping.
  */
-describe("command palette — its actions group renders from the catalog projection (AS-10, F-7)", () => {
+describe("command palette — its actions group renders from the catalog projection", () => {
   const NOWHERE: ContextStack = [];
 
   const boardList: Invocable = {

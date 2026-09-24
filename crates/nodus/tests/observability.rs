@@ -66,7 +66,7 @@ fn run_plain(wf: &str) -> RunResult {
     nodus::workflows::run(wf, "obs_test.nodus", None).expect("plain run")
 }
 
-// ─── Observer neutrality (HO-5) ──────────────────────────────────────
+// ─── Observer neutrality ──────────────────────────────────────
 
 #[test]
 fn observer_neutrality() {
@@ -184,7 +184,7 @@ fn run_with_audit_fast_fails_on_invalid_source() {
     assert!(err.is_err(), "should fast-fail on validation errors");
 }
 
-// ─── Run-Manifest Identity & Reproducibility (HO-12/15/18/19/20) ────
+// ─── Run-Manifest Identity & Reproducibility ────
 
 const NEVER_FETCH_UPPER: &str = "\
 §wf:never_fetch v1.0
@@ -199,7 +199,7 @@ const NEVER_FETCH_UPPER: &str = "\
 ";
 
 // Same rule, different literal casing — a genuinely different error_detail
-// string triggered by the identical step (HO-19 message-independence probe).
+// string triggered by the identical step (message-independence probe).
 const NEVER_FETCH_MIXED_CASE: &str = "\
 §wf:never_fetch v1.0
 §runtime: { core: schema.nodus }
@@ -216,7 +216,7 @@ fn ast_of(src: &str) -> nodus::ast::WorkflowFile {
     nodus::parser::Parser::parse(src).expect("parse")
 }
 
-// HO-15: the same workflow run twice produces identical step_identity on
+// The same workflow run twice produces identical step_identity on
 // every StepStart/StepEnd for the same step.
 #[test]
 fn step_identity_is_stable_across_runs() {
@@ -272,7 +272,7 @@ fn step_identity_is_stable_across_runs() {
     );
 }
 
-// HO-15: a step's identity is derived from its own definition (number +
+// A step's identity is derived from its own definition (number +
 // command), not per-run allocated — a different command at the same position
 // yields a different identity.
 #[test]
@@ -315,7 +315,7 @@ fn step_identity_differs_for_a_different_command() {
     );
 }
 
-// HO-19: fault_identity is stable across two runs whose error_detail differs
+// fault_identity is stable across two runs whose error_detail differs
 // (rule-text casing differs), because it is built only from step_identity +
 // code — never from the rendered error_detail text.
 #[test]
@@ -379,7 +379,7 @@ fn fault_identity_is_message_independent() {
     );
 }
 
-// HO-12 / HO-18: a caller declaring Simulated + exposure switches sees both
+// A caller declaring Simulated + exposure switches sees both
 // reflected in the manifest (and mirrored into repro); declaring nothing
 // (the plain execute() path) yields the Real / empty default.
 #[test]
@@ -411,7 +411,7 @@ fn execution_mode_and_exposure_switches_round_trip() {
         manifests[0].exposure_switches,
         vec![("new_ui".to_string(), "treatment".to_string())]
     );
-    // Mirrored into the reproduction recipe (HO-20).
+    // Mirrored into the reproduction recipe.
     assert_eq!(
         manifests[0].repro.execution_mode,
         manifests[0].execution_mode
@@ -457,7 +457,7 @@ fn default_execution_context_is_real_with_no_switches() {
     assert!(manifests[0].exposure_switches.is_empty());
 }
 
-// HO-12: a run whose model calls the built-in stub answers is a simulation by
+// A run whose model calls the built-in stub answers is a simulation by
 // construction — the manifest must never call it real, whatever was declared.
 #[test]
 fn a_run_on_the_built_in_stub_records_itself_as_simulated() {
@@ -528,7 +528,7 @@ fn a_declared_simulation_fidelity_is_kept_as_declared_on_the_stub() {
     );
 }
 
-// HO-20: determinism is stated from whether a model call occurred — never
+// Determinism is stated from whether a model call occurred — never
 // inferred from the recipe merely being present.
 #[test]
 fn repro_determinism_reflects_model_calls() {
@@ -574,7 +574,7 @@ fn repro_determinism_reflects_model_calls() {
     );
 }
 
-// HO-20: an uncapturable field is None, never silently omitted or defaulted
+// An uncapturable field is None, never silently omitted or defaulted
 // to an empty-but-indistinguishable value; nodus_version matches the crate.
 #[test]
 fn repro_needs_vocabulary_is_none_and_version_matches_crate() {
@@ -593,7 +593,7 @@ fn repro_needs_vocabulary_is_none_and_version_matches_crate() {
     assert_eq!(manifests[0].repro.nodus_version, env!("CARGO_PKG_VERSION"));
 }
 
-// HO-20: workflow_digest is deterministic for identical sources and differs
+// workflow_digest is deterministic for identical sources and differs
 // for a materially different workflow.
 #[test]
 fn repro_workflow_digest_is_deterministic_and_distinguishing() {
@@ -658,7 +658,7 @@ fn repro_workflow_digest_is_deterministic_and_distinguishing() {
     );
 }
 
-// ─── Aggregation-Safe Event Stream (HO-7 + HO-14) ───────────────────
+// ─── Aggregation-Safe Event Stream ───────────────────
 
 const MULTI_EVENT_WF: &str = "\
 §wf:multi_event v1.0
@@ -685,7 +685,7 @@ const ASK_DEFAULT_WF: &str = "\
 ";
 
 /// Extract `(seq, correlation_id)` from any `ExecutionEvent` variant — every
-/// one of the 10 carries both (HO-7).
+/// one of the 10 carries both.
 fn event_seq_and_correlation(e: &ExecutionEvent) -> (u64, &str) {
     match e {
         ExecutionEvent::StepStart {
@@ -839,7 +839,7 @@ fn manifest_event_count_is_highest_seq_plus_one() {
     assert_eq!(
         manifests[0].event_count as u64,
         highest_seq + 1,
-        "event_count must equal the highest emitted seq + 1 (the HO-7 gap check)"
+        "event_count must equal the highest emitted seq + 1 (the gap check)"
     );
 }
 
@@ -847,7 +847,7 @@ fn manifest_event_count_is_highest_seq_plus_one() {
 fn correlation_id_generated_when_run_id_empty() {
     // The plain execute() path (run_id == "") must not emit an uncorrelated
     // event — a fallback correlation_id is generated, and RunManifest.run_id
-    // is set to the same value (the HO-7 identity, even on this path).
+    // is set to the same value (the identity, even on this path).
     let recorder = RecordingProvider::new();
     run_with_audit(
         DETERMINISTIC_WF,
@@ -931,7 +931,7 @@ fn dialog_step_elapsed_is_unavailable_timed_step_is_taken() {
 
 #[test]
 fn measurement_unavailable_is_never_equal_to_taken_zero() {
-    // The whole point of HO-14: Unavailable must never compare equal to a
+    // The whole point of the measurement type: Unavailable must never compare equal to a
     // fabricated Taken(0) — they are fully distinct states.
     assert_ne!(Measurement::Unavailable, Measurement::Taken(0));
 }
@@ -962,7 +962,7 @@ const MAP_WF: &str = "\
   1. ~MAP $in.items: GEN($it) → $out
 ";
 
-// HO-17: every event a real run emits is Durable — core emits no transients.
+// Every event a real run emits is Durable — core emits no transients.
 #[test]
 fn all_events_from_a_real_run_are_durable() {
     let recorder = RecordingProvider::new();
@@ -985,7 +985,7 @@ fn all_events_from_a_real_run_are_durable() {
     );
 }
 
-// HO-9/11/16: the carrier defaults to all-None on every event from a real run
+// The carrier defaults to all-None on every event from a real run
 // (no host-supplied provider populates them today).
 #[test]
 fn all_events_from_a_real_run_have_unpopulated_annotations() {
@@ -1021,7 +1021,7 @@ fn event_annotations(e: &ExecutionEvent) -> &nodus::EventAnnotations {
     }
 }
 
-// HO-8: a real ModelResponse's token classes are Unavailable, never Taken(0)
+// A real ModelResponse's token classes are Unavailable, never Taken(0)
 // — ModelProvider exposes no token-accounting seam.
 #[test]
 fn model_response_token_classes_are_unavailable_not_zero() {
@@ -1067,7 +1067,7 @@ fn model_response_token_classes_are_unavailable_not_zero() {
     }
 }
 
-// HO-13: ~FOR's LoopIteration carries no derivation (plain iteration, not a
+// ~FOR's LoopIteration carries no derivation (plain iteration, not a
 // produce-transform); ~MAP's newly-emitted LoopIteration carries the correct
 // N->N derivation, indices matching each element's position.
 #[test]
@@ -1162,7 +1162,7 @@ fn for_loop_has_no_derivation_map_has_correct_n_to_n_derivation() {
     }
 }
 
-// HO-10: all four classify_trace outcomes.
+// All four classify_trace outcomes.
 #[test]
 fn classify_trace_all_outcomes() {
     let recorder = RecordingProvider::new();

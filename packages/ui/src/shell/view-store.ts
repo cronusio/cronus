@@ -1,15 +1,15 @@
 /**
- * The view domain (AS-1) — the building shell's own view state: which overlays
+ * The view domain — the building shell's own view state: which overlays
  * are open, whether the docks are shown, which menu group and mechanism facet
  * are active. This is the state the frontend owns outright — not a projection of
  * core state, and not a caller-owned navigation intent (`activeFloorId` /
  * `activeSubsystem` stay props).
  *
  * One instance per shell mount, created in `BuildingShell` and never at module
- * scope (AS-4: no listener registry outlives its components). Regions read it
+ * scope (no listener registry outlives its components). Regions read it
  * through `useStore` selectors, so two that need the same fact take it from here
  * rather than each holding a copy. It is also exactly the state the layout
- * record serializes (spec §4.5).
+ * record serializes.
  */
 
 import { createStore, type Store } from "../shared/store";

@@ -1,4 +1,4 @@
-//! GitHub issue reporting (ERR-1…5): on an unrepairable error, with consent,
+//! GitHub issue reporting: on an unrepairable error, with consent,
 //! sanitize diagnostics, fingerprint them for cross-episode dedup, and
 //! prepare a previewable report — filing/updating the actual issue is a
 //! GitHub CLI/API integration deferred behind the [`FilingDecision`] this
@@ -11,7 +11,7 @@
 
 use std::collections::BTreeMap;
 
-/// The three consent modes (§4.1 `report.consent`).
+/// The three consent modes (`report.consent`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsentMode {
     Always,
@@ -26,9 +26,9 @@ pub enum ConsentDecision {
     Proceed,
 }
 
-/// Resolve consent (§4.1): `never` always blocks; `always` always proceeds;
+/// Resolve consent: `never` always blocks; `always` always proceeds;
 /// `ask` proceeds only on an explicit `Some(true)` — an absent or negative
-/// answer blocks, fail-closed (ERR-1: consent-gated, never assumed).
+/// answer blocks, fail-closed (consent-gated, never assumed).
 pub fn consent_decision(mode: ConsentMode, user_confirmed: Option<bool>) -> ConsentDecision {
     match mode {
         ConsentMode::Never => ConsentDecision::Blocked,
@@ -38,7 +38,7 @@ pub fn consent_decision(mode: ConsentMode, user_confirmed: Option<bool>) -> Cons
     }
 }
 
-// --- Error fingerprinting (§4.3) ---
+// --- Error fingerprinting ---
 
 /// Replace every `0x`-prefixed run of hex digits with a sentinel, so two
 /// otherwise-identical panics at different ASLR addresses fingerprint the
@@ -79,7 +79,7 @@ fn strip_home_dir(text: &str, home_dir: &str) -> String {
     text.replace(home_dir, "/USER")
 }
 
-/// Normalize a message before fingerprinting (§4.3).
+/// Normalize a message before fingerprinting.
 pub fn normalize_message(message: &str, home_dir: &str) -> String {
     strip_home_dir(&strip_hex_addresses(message), home_dir)
 }
@@ -91,7 +91,7 @@ pub fn fingerprint_error(error_type: &str, message: &str, home_dir: &str) -> Str
     blake3::hash(canonical.as_bytes()).to_hex().to_string()
 }
 
-// --- Dedup table (§4.3 "Dedup table" / "Lookup API") ---
+// --- Dedup table ---
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FingerprintMatch {
@@ -109,7 +109,7 @@ struct FingerprintRow {
 }
 
 /// In-memory dedup table keyed by `(hash, episode_id)`; a durable SQLite
-/// backing (§4.3 illustrative DDL) is a persistence concern layered on top
+/// backing (illustrative DDL) is a persistence concern layered on top
 /// of this same API, not implemented here.
 #[derive(Debug, Default)]
 pub struct FingerprintTable {
@@ -137,7 +137,7 @@ impl FingerprintTable {
     }
 
     /// Prior episodes (excluding `exclude_episode_id`) where `hash` appeared,
-    /// most recently seen first, capped at 10 (§4.3 "Lookup API").
+    /// most recently seen first, capped at 10.
     pub fn matches(&self, hash: &str, exclude_episode_id: &str) -> Vec<FingerprintMatch> {
         let mut found: Vec<FingerprintMatch> = self
             .rows
@@ -165,7 +165,7 @@ impl FingerprintTable {
     }
 }
 
-// --- Report pipeline (§4.1, §4.4 actionable content) ---
+// --- Report pipeline (actionable content) ---
 
 /// The raw facts about one error occurrence, before sanitization.
 #[derive(Debug, Clone)]
@@ -178,8 +178,8 @@ pub struct ReportRequest {
     pub episode_id: String,
 }
 
-/// The exact content that would be sent — always shown before send (ERR-1
-/// preview) and containing only sanitized/allowlisted fields (ERR-2), plus
+/// The exact content that would be sent — always shown before send (the
+/// preview) and containing only sanitized/allowlisted fields, plus
 /// prior-occurrence context surfaced from the dedup table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportPreview {
@@ -194,7 +194,7 @@ pub struct ReportPreview {
 
 /// Sanitize (via [`crate::redact::redact`], never re-implemented), record
 /// the fingerprint, and build the previewable payload. This performs no
-/// egress by itself — it is the ERR-2/ERR-4 content the consent-gated
+/// egress by itself — it is the content the consent-gated
 /// filing step (a separate, deferred GitHub API/CLI integration) would send.
 pub fn prepare_preview(
     request: &ReportRequest,
@@ -225,7 +225,7 @@ pub enum FilingDecision {
     UpdateExisting { issue_ref: String },
 }
 
-/// Decide create-vs-update (§4.1 `SRCH`) from a caller-supplied existing-issue
+/// Decide create-vs-update (`SRCH`) from a caller-supplied existing-issue
 /// lookup result — the actual GitHub search/API call is a network
 /// integration deferred behind this seam.
 pub fn decide_filing(existing_issue_ref: Option<&str>) -> FilingDecision {

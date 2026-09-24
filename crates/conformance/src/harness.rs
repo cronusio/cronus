@@ -1,5 +1,5 @@
 //! Drives the shared corpus through one surface's real projection and
-//! reports every divergence (§4.4). Three independent passes, one per
+//! reports every divergence. Three independent passes, one per
 //! assertion family — a surface that fails one family still runs the other
 //! two, so a single run surfaces everything wrong at once rather than one
 //! defect per invocation.
@@ -28,7 +28,7 @@ pub fn run(
     reports
 }
 
-/// Surface set (§4.4, SP-11/INV-9): exposed invocables must equal the
+/// Surface set: exposed invocables must equal the
 /// canonical shipped set minus this surface's own declared exclusions —
 /// no more, no less.
 pub fn check_surface_set(
@@ -62,7 +62,7 @@ pub fn check_surface_set(
     }]
 }
 
-/// Schema (§4.4, IB-1): each canonical invocable's advertised argument
+/// Schema: each canonical invocable's advertised argument
 /// schema on this surface must match its declared binders exactly — the
 /// same fact, rendered from the same source, never restated by hand.
 pub fn check_schema(
@@ -90,7 +90,7 @@ pub fn check_schema(
         .collect()
 }
 
-/// Outcome (§4.4, SP-6): driving each fixture invocation through this
+/// Outcome: driving each fixture invocation through this
 /// surface's real dispatch path must produce exactly the corpus's declared
 /// `Dispatched` — rejection mode and location included, and the
 /// empty-versus-unavailable distinction included, since both are just

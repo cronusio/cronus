@@ -1,4 +1,4 @@
-//! `cronus-simulation` — the realization of `l1-usage-simulation` (USM-1…USM-12)
+//! `cronus-simulation` — the realization of `l1-usage-simulation`
 //! in this project's stack: a **disposable world** every simulated run
 //! happens inside, an **as-it-happens transcript** of what the product
 //! actually did, a **replay** lane that re-runs a pinned route with no

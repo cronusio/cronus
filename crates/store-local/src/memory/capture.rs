@@ -1,9 +1,9 @@
-//! MI-6: the salience-gated capture policy. A thin write-time gate in front
-//! of the existing MC-4 create/corroborate decision — capture does not
+//! The salience-gated capture policy. A thin write-time gate in front
+//! of the existing create/corroborate decision — capture does not
 //! reimplement dedup; it reuses `consolidate()` wholesale, since an ordinary
 //! first-hand note and a to-be-consolidated candidate resolve through the
 //! exact same same-abstraction check. `capture()`'s own job is the
-//! confidence-honest gate and the MI-6 cross-reference edges; attribution
+//! confidence-honest gate and the cross-reference edges; attribution
 //! (`actor`/`subject`) and expiry are already ordinary `MemoryEntry` fields
 //! by the time a caller reaches this function, set via the existing
 //! `with_actor`/`with_expiry`/`with_subject` builders.
@@ -14,10 +14,10 @@ use super::Result;
 use super::consolidate::{self, ConsolidationAction};
 use cronus_contract::{MemoryEntry, MemoryId};
 
-/// Below this, a capture is refused outright rather than stored — MI-6's
+/// Below this, a capture is refused outright rather than stored — the design's
 /// own text leaves "not stored or provisional" open; "not stored" is the
 /// realization here (no new provisional-status schema to carry the other
-/// reading). Pinned the same way MI-4's `CONF_GAP_MIN` and MI-13's
+/// reading). Pinned the same way `CONF_GAP_MIN` and
 /// `SIMILARITY_MIN` were pinned: a real engineering choice, not a
 /// placeholder.
 pub const CONFIDENCE_FLOOR: f64 = 0.2;
@@ -28,15 +28,15 @@ pub enum CaptureOutcome {
     /// A genuinely new item was written.
     Stored(MemoryId),
     /// A same-abstraction match already existed — the existing item's trust
-    /// was reinforced (MC-4 corroborate); no new row.
+    /// was reinforced (corroborate); no new row.
     Corroborated(MemoryId),
     /// Below `CONFIDENCE_FLOOR` — refused, nothing written.
     Refused { reason: String },
 }
 
-/// MI-6: capture `entry` under the salience gate. `related` names items to
-/// cross-reference (MI-6's "cheap forward MC-3 edges") — empty degrades to
-/// no edges at all, the baseline. `audit_actor` is the MC-4 action-algebra's
+/// Capture `entry` under the salience gate. `related` names items to
+/// cross-reference ("cheap forward edges") — empty degrades to
+/// no edges at all, the baseline. `audit_actor` is the action-algebra's
 /// own audit-trail actor (who/what triggered this write), independent of
 /// `entry.actor` (who the captured content is attributed to) — the two may
 /// coincide but are not the same field.

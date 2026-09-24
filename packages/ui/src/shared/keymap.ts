@@ -166,7 +166,7 @@ export function resolve(
   };
 }
 
-/** The three deterministic binding layers, merged in this fixed order (AS-8). */
+/** The three deterministic binding layers, merged in this fixed order. */
 export type LayerName = "base" | "platform" | "user";
 
 /** A layer entry: a binding to set, or an explicit disable of an action's binding. */
@@ -188,7 +188,7 @@ export interface ResolvedBinding extends KeyBinding {
 }
 
 /**
- * Merge the layers into one binding table (AS-8). Later layers replace a binding
+ * Merge the layers into one binding table. Later layers replace a binding
  * of the same action id; an entry with `sequence: null` disables the action's
  * binding entirely. Order is always base -> platform -> user.
  */

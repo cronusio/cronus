@@ -24,7 +24,7 @@ const full: LayoutRecord = {
   },
 };
 
-describe("restoreLayout — field-wise, never throws (AS-12)", () => {
+describe("restoreLayout — field-wise, never throws", () => {
   it("a full v1 record restores every field", () => {
     expect(
       restoreLayout(full, [

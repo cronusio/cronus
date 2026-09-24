@@ -1,14 +1,14 @@
-//! Project-wiki invariant acceptance sweep (PW-1…PW-8) — the
+//! Project-wiki invariant acceptance sweep — the
 //! phase's closing validation. Each PW invariant maps to one named test, and
 //! every one is exercised **through the real SQLite `WikiStore`** (not an
 //! in-memory fake) and the real domain pipeline, so the guarantees are proven
 //! against actual persistence and composition, not just unit stand-ins.
 //!
-//! PW-1 (plain-language, client-facing) is not directly assertable — generation
-//! is model-based — so it is covered by its testable proxies: the PW-4 citation
-//! guard (only attributed client facts persist) and the PW-8 internal-detail
-//! filter (engineering/SDD text never lands). PW-3's file-drop proof lives in
-//! `wiki_rebuild.rs`; here PW-3 is complemented by a fresh-store rebuild
+//! Plain-language, client-facing content is not directly assertable — generation
+//! is model-based — so it is covered by its testable proxies: the citation
+//! guard (only attributed client facts persist) and the internal-detail
+//! filter (engineering/SDD text never lands). The file-drop proof lives in
+//! `wiki_rebuild.rs`; here it is complemented by a fresh-store rebuild
 //! equivalence check.
 
 use std::cell::Cell;
@@ -38,7 +38,7 @@ impl GroundTruth for FixedGround {
     }
 }
 
-/// Ground truth whose sources move once `moved` flips — drives the PW-5
+/// Ground truth whose sources move once `moved` flips — drives the
 /// freshness drift check.
 struct MovingGround {
     moved: Cell<bool>,
@@ -54,8 +54,8 @@ impl GroundTruth for MovingGround {
 }
 
 /// A generator that, for every kind, emits three sections: a cited client fact
-/// (must persist), an uncited claim (must be dropped, PW-4), and an
-/// internal-detail section (must be filtered, PW-8).
+/// (must persist), an uncited claim (must be dropped), and an
+/// internal-detail section (must be filtered).
 struct ScriptedGen;
 impl PageGenerator for ScriptedGen {
     fn generate(
@@ -97,7 +97,7 @@ fn overview_body(store: &WikiStore) -> String {
         .body
 }
 
-// --- PW-2: client surface is read-only by construction -----------------------
+// --- Client surface is read-only by construction -----------------------
 
 #[test]
 fn pw2_the_client_surface_exposes_no_write_method() {
@@ -116,7 +116,7 @@ fn pw2_the_client_surface_exposes_no_write_method() {
     assert!(!reader.children(OFFICE, None).unwrap().is_empty());
 }
 
-// --- PW-3: projection, not source of truth -----------------------------------
+// --- Projection, not source of truth -----------------------------------
 
 type PageProjection = (
     String,
@@ -161,7 +161,7 @@ fn pw3_rebuild_reconstructs_an_equivalent_wiki_into_a_fresh_store() {
     assert_eq!(before.len(), 6, "all six page kinds present");
 }
 
-// --- PW-4: grounded & attributed ---------------------------------------------
+// --- Grounded & attributed ---------------------------------------------
 
 #[test]
 fn pw4_an_uncited_claim_is_never_persisted() {
@@ -185,7 +185,7 @@ fn pw4_an_uncited_claim_is_never_persisted() {
     );
 }
 
-// --- PW-5: living & freshness-honest -----------------------------------------
+// --- Living & freshness-honest -----------------------------------------
 
 #[test]
 fn pw5_a_source_that_moves_without_regeneration_is_marked_stale() {
@@ -221,7 +221,7 @@ fn pw5_a_source_that_moves_without_regeneration_is_marked_stale() {
     assert!(check_freshness(OFFICE, &ground, &store).unwrap().is_empty());
 }
 
-// --- PW-6: navigable & searchable --------------------------------------------
+// --- Navigable & searchable --------------------------------------------
 
 #[test]
 fn pw6_the_wiki_is_navigable_and_searchable() {
@@ -250,7 +250,7 @@ fn pw6_the_wiki_is_navigable_and_searchable() {
     );
 }
 
-// --- PW-7: scoped & access-controlled ----------------------------------------
+// --- Scoped & access-controlled ----------------------------------------
 
 fn wiki_grant(principal_type: PrincipalKind, principal_id: &str) -> AccessGrant {
     AccessGrant {
@@ -322,7 +322,7 @@ fn pw7_reads_follow_the_office_sharing_posture() {
     );
 }
 
-// --- PW-8: distinct from KB & internal artifacts -----------------------------
+// --- Distinct from KB & internal artifacts -----------------------------
 
 #[test]
 fn pw8_internal_engineering_detail_never_reaches_a_row() {

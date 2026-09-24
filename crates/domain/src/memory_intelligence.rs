@@ -1,4 +1,4 @@
-//! MI-1…MI-13: the active query & intelligence surface over the memory
+//! The active query & intelligence surface over the memory
 //! substrate, reached only through the `MemorySearch` seam (never a
 //! concrete store type) — this module has zero I/O of its own, matching the
 //! domain tier's no-infra-dependency contract. `cronus-domain` cannot depend
@@ -7,7 +7,7 @@
 
 use cronus_contract::{MemoryEntry, MemoryId, MemorySearch, TemporalMode};
 
-/// A memory item cited as grounding for an `answer` (MI-1) — the KB-6
+/// A memory item cited as grounding for an `answer` — the
 /// source-attribution contract specialized to internal memory items.
 /// Distinct from `research.rs`'s `Citation` (a web URL): a different concept
 /// that happens to share the English word, not a type to reuse here.
@@ -17,8 +17,8 @@ pub struct MemoryCitation {
     pub excerpt: String,
 }
 
-/// The ternary honesty gate MI-1 requires — the domain-logic-first
-/// realization of CV-3/CV-4: no claim-verification engine exists anywhere
+/// The ternary honesty gate `answer` requires — the domain-logic-first
+/// realization of the verification rules: no claim-verification engine exists anywhere
 /// in this codebase yet (grepped before writing this), so `answer` can prove
 /// *insufficient grounding* deterministically (nothing matched) but cannot
 /// prove semantic contradiction without a model. A future generator-backed
@@ -30,7 +30,7 @@ pub enum AnswerVerdict {
     Insufficient { reason: String },
 }
 
-/// The result of an `answer` call (MI-1).
+/// The result of an `answer` call.
 #[derive(Debug, Clone)]
 pub struct Answer {
     pub text: String,
@@ -40,7 +40,7 @@ pub struct Answer {
 
 const EXCERPT_CHARS: usize = 200;
 
-/// MI-1: retrieve a grounding set through the seam, then synthesize —
+/// Retrieve a grounding set through the seam, then synthesize —
 /// asserting **nothing beyond** what `store` actually returned. With no
 /// generator bound (none is wired in this phase), "synthesize" is the
 /// honest extractive degrade: the top attributed items, concatenated
@@ -77,7 +77,7 @@ pub fn answer(store: &dyn MemorySearch, query: &str, limit: usize) -> Answer {
     }
 }
 
-// ── MI-4: conflict surfacing, never silent overwrite ────────────────────────
+// ── Conflict surfacing, never silent overwrite ────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictKind {
@@ -100,7 +100,7 @@ pub enum ConflictStatus {
     AwaitingAdjudication,
 }
 
-/// One conflict finding — the conceptual shape MI-4's design sketches,
+/// One conflict finding — the conceptual shape the design sketches,
 /// realized as a concrete type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConflictFinding {
@@ -111,7 +111,7 @@ pub struct ConflictFinding {
     pub status: ConflictStatus,
 }
 
-/// The ambiguity threshold MI-4 leaves as an implementation-tuning decision
+/// The ambiguity threshold the design leaves as an implementation-tuning decision
 /// (pinned here): a confidence gap below this, combined with a comparable
 /// trust gap and no recency winner, is genuine ambiguity — surfaced, never
 /// silently resolved.
@@ -122,7 +122,7 @@ fn normalized_eq(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
-/// MI-4: classify a conflict between an existing item and a new candidate.
+/// Classify a conflict between an existing item and a new candidate.
 /// An exact match (after normalization) is an unambiguous duplicate; a
 /// strictly-newer, equal-or-higher-confidence candidate is a recency-
 /// dominant update — both auto-resolve. Anything else close enough in both
@@ -171,9 +171,9 @@ pub fn classify(old: &MemoryEntry, new: &MemoryEntry) -> ConflictFinding {
     }
 }
 
-// ── MI-5: periodic intelligence digest ──────────────────────────────────────
+// ── Periodic intelligence digest ──────────────────────────────────────
 
-/// Per-kind and honesty-signal analytics for a digest window (MI-5).
+/// Per-kind and honesty-signal analytics for a digest window.
 #[derive(Debug, Clone, Default)]
 pub struct DigestAnalytics {
     pub total_items: usize,
@@ -182,16 +182,16 @@ pub struct DigestAnalytics {
     pub avg_trust: f64,
 }
 
-/// A bounded, read-only digest of one time window (MI-5).
+/// A bounded, read-only digest of one time window.
 #[derive(Debug, Clone)]
 pub struct Digest {
     pub narrative: String,
     pub analytics: DigestAnalytics,
 }
 
-/// MI-5: a scheduled job's *computation* — firing it on a cadence is a
+/// A scheduled job's *computation* — firing it on a cadence is a
 /// separate scheduler's job, out of this function's scope; it takes one
-/// window and returns one digest. The pinned cadence (§4.4, decided when
+/// window and returns one digest. The pinned cadence (decided when
 /// this behavior was finalized) is per-session-close + a daily floor,
 /// opt-in per office — a policy for whoever wires the scheduler call, not a
 /// parameter here.
@@ -232,9 +232,9 @@ pub fn build_digest(store: &dyn MemorySearch, window_start: u64, limit: usize) -
     }
 }
 
-// ── MI-7: procedural distillation ───────────────────────────────────────────
+// ── Procedural distillation ───────────────────────────────────────────
 
-/// One structured record of a completed bounded run (MI-7): objective,
+/// One structured record of a completed bounded run: objective,
 /// action sequence, key findings, end state, open next steps. Written
 /// **once**, at the caller's explicit request, grounded only in the run's
 /// own trace — never invented beyond what happened.
@@ -247,13 +247,13 @@ pub struct RunTrace {
     pub next_steps: Vec<String>,
 }
 
-/// MI-7: render a [`RunTrace`] into the single procedure memory's body,
-/// typed by how the run went. A sibling to ordinary MI-6 capture, not a
+/// Render a [`RunTrace`] into the single procedure memory's body,
+/// typed by how the run went. A sibling to ordinary capture, not a
 /// replacement — this composes with whatever per-turn capture already
 /// happened during the run, it does not gate on or replace it. The caller
 /// writes the returned `MemoryEntry` through the seam (`UserDataStore::put`)
 /// at the point it decides to keep the distillation — this function only
-/// shapes the content. `outcome` is MI-13's read side's only hook: it is
+/// shapes the content. `outcome` is the read side's only hook: it is
 /// how a later `recall_for_reuse` call finds this item at all (ordinary
 /// memories carry `experience_outcome: None` and are never candidates).
 pub fn distill_run(trace: &RunTrace, outcome: cronus_contract::ExperienceOutcome) -> MemoryEntry {
@@ -289,23 +289,23 @@ pub fn distill_run(trace: &RunTrace, outcome: cronus_contract::ExperienceOutcome
     .with_experience_outcome(outcome)
 }
 
-// ── MI-13: gated experience reuse ───────────────────────────────────────────
+// ── Gated experience reuse ───────────────────────────────────────────
 
 use crate::autonomy::{AutonomyLevel, CommandRiskLevel, GateDecision, classify_command, evaluate};
 use cronus_contract::ExperienceOutcome;
 use std::collections::HashSet;
 
-/// The reuse-gate thresholds MI-13 leaves as an implementation-tuning
+/// The reuse-gate thresholds the design leaves as an implementation-tuning
 /// decision ("similarity ≥ σ AND score ≥ τ AND fresh"), pinned here exactly
-/// as MI-4's `CONF_GAP_MIN`/`TRUST_GAP_MIN` were pinned — a real engineering
+/// as `CONF_GAP_MIN`/`TRUST_GAP_MIN` were pinned — a real engineering
 /// choice recorded in code, not a placeholder waiting on a future spec pass.
 pub const SIMILARITY_MIN: f64 = 0.5;
 pub const SCORE_MIN: f64 = 0.6;
 pub const FRESHNESS_MAX_SECS: u64 = 30 * 24 * 3600;
 
-/// MI-13's "quality-scored": the average of a candidate's authored
+/// The "quality-scored" measure: the average of a candidate's authored
 /// confidence and its verification-weighted trust — both already-persisted
-/// fields, so scoring needs no new signal beyond what MI-1/MI-4 already use.
+/// fields, so scoring needs no new signal beyond what the answer and conflict paths already use.
 pub fn experience_score(entry: &MemoryEntry) -> f64 {
     (entry.confidence + entry.effective_trust()) / 2.0
 }
@@ -321,7 +321,7 @@ fn token_set(s: &str) -> HashSet<String> {
 /// Deterministic lexical similarity (Jaccard over normalized token sets) —
 /// the domain-logic-first stand-in for a semantic/embedding comparison no
 /// model is bound to provide in this phase (this phase's recurring pattern:
-/// MC-4's corroborate match, MI-4's duplicate match). A future
+/// the corroborate match, the duplicate match). A future
 /// embedding-backed similarity replaces this function's internals only, not
 /// the reuse gate's call shape or threshold semantics.
 pub fn similarity(a: &str, b: &str) -> f64 {
@@ -339,7 +339,7 @@ fn is_fresh(entry: &MemoryEntry, now: u64) -> bool {
     now.saturating_sub(entry.valid_at) <= FRESHNESS_MAX_SECS
 }
 
-/// MI-13(a): the reuse gate — similarity AND score AND freshness AND not
+/// The reuse gate — similarity AND score AND freshness AND not
 /// safety-sensitive. `safety_sensitive` describes the ACTION about to be
 /// attempted (a caller judgment about what's happening now), not a property
 /// of the stored candidate — this module has no way to know that on its own.
@@ -355,20 +355,20 @@ pub fn reuse_gate(
         && is_fresh(candidate, now)
 }
 
-/// The outcome of MI-13's recall-before-acting decision. `Reuse` is the only
+/// The outcome of the recall-before-acting decision. `Reuse` is the only
 /// variant meaning "skip re-derivation, use this result" — every other
 /// variant means "still do the work," carrying whatever should be injected
 /// while doing it (the L1's own table: failures → avoid, insights →
 /// guidance).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExperienceDecision {
-    /// A gated prior success (MI-13a), already past the retained authority
-    /// gate (MI-13d) — `citation.item_id` is `reused_from`, never passed off
-    /// as fresh work (MI-13c).
+    /// A gated prior success, already past the retained authority
+    /// gate — `citation.item_id` is `reused_from`, never passed off
+    /// as fresh work.
     Reuse(MemoryCitation),
     /// A gated prior success exists, but reusing its body would need
     /// approval the caller's current autonomy level does not auto-grant.
-    /// MI-13(d): reuse never silently bypasses the action's own gate, so
+    /// Reuse never silently bypasses the action's own gate, so
     /// this is surfaced rather than auto-applied.
     ReuseNeedsApproval {
         citation: MemoryCitation,
@@ -389,8 +389,8 @@ fn to_citation(entry: &MemoryEntry) -> MemoryCitation {
     }
 }
 
-/// MI-13: recall-before-acting. Retrieves typed experiences through the seam
-/// (MI-2/MI-8's own machinery — `recall_structured` over the
+/// Recall-before-acting. Retrieves typed experiences through the seam
+/// (the structured-recall machinery — `recall_structured` over the
 /// `ExperienceOutcome` predicate field added for this), picks the
 /// highest-scored prior `Success`, and applies the full four-guard contract:
 /// **(a)** gated reuse (`reuse_gate`); **(b)** read/write independence —
@@ -399,7 +399,7 @@ fn to_citation(entry: &MemoryEntry) -> MemoryCitation {
 /// write; **(c)** attribution via `MemoryCitation`, never a bare
 /// `MemoryEntry` indistinguishable from fresh work; **(d)** the retained
 /// authority gate, composing `crate::autonomy::{classify_command, evaluate}`
-/// — the real SEC-9/SEC-10 realization already built in this crate (grepped
+/// — the real authority-gate realization already built in this crate (grepped
 /// first; no second gate invented) — so a reused result that would need
 /// approval comes back `ReuseNeedsApproval`, never a silent `Reuse`.
 pub fn recall_for_reuse(
@@ -619,7 +619,7 @@ mod tests {
         let _ = accepts_any_seam_impl(&store);
     }
 
-    // ── MI-4: classify ───────────────────────────────────────────────────
+    // ── Classify ───────────────────────────────────────────────────
 
     #[test]
     fn classify_exact_normalized_match_is_an_auto_resolved_duplicate() {
@@ -667,7 +667,7 @@ mod tests {
     fn classify_never_silently_resolves_a_genuine_disagreement() {
         // Whatever the recommendation, a genuine (non-duplicate,
         // non-recency-dominant) disagreement must never come back
-        // AutoResolved — MI-4's core promise.
+        // AutoResolved — the core promise.
         let mut old = entry("t", "fact A");
         old.valid_at = 200;
         old.confidence = 0.9;
@@ -680,7 +680,7 @@ mod tests {
         assert_eq!(finding.status, ConflictStatus::AwaitingAdjudication);
     }
 
-    // ── MI-5: build_digest ───────────────────────────────────────────────
+    // ── build_digest ───────────────────────────────────────────────
 
     #[test]
     fn build_digest_on_an_empty_window_is_an_honest_no_op() {
@@ -731,7 +731,7 @@ mod tests {
         );
     }
 
-    // ── MI-7: distill_run ────────────────────────────────────────────────
+    // ── distill_run ────────────────────────────────────────────────
 
     #[test]
     fn distill_run_grounds_the_body_strictly_in_the_trace() {
@@ -769,7 +769,7 @@ mod tests {
         assert!(!memory.body.contains("Open next steps:"));
     }
 
-    // ── MI-13: reuse_gate ───────────────────────────────────────────────
+    // ── reuse_gate ───────────────────────────────────────────────
 
     #[test]
     fn reuse_gate_passes_for_a_similar_high_scoring_fresh_success() {
@@ -839,7 +839,7 @@ mod tests {
         ));
     }
 
-    // ── MI-13: recall_for_reuse ──────────────────────────────────────────
+    // ── recall_for_reuse ──────────────────────────────────────────
 
     #[test]
     fn recall_for_reuse_reuses_a_gated_low_risk_success() {
@@ -874,7 +874,7 @@ mod tests {
 
     #[test]
     fn recall_for_reuse_surfaces_approval_for_a_gated_high_risk_success() {
-        // MI-13(d): reuse never silently bypasses the action's own
+        // Reuse never silently bypasses the action's own
         // authority gate — a gated, similar, fresh success whose body
         // classifies as High risk still needs approval under Supervised.
         let now = 10_000_000u64;

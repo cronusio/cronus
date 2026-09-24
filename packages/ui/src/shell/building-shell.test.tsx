@@ -36,7 +36,7 @@ describe("BuildingShell composition", () => {
     expect(screen.getByTestId("mechanism-nav")).toHaveAttribute("data-subsystem", "dashboard");
   });
 
-  it("every SIDEBAR tab resolves through the router to a placeholder or empty-state surface (INV-9)", () => {
+  it("every SIDEBAR tab resolves through the router to a placeholder or empty-state surface", () => {
     for (const tab of [
       ...SIDEBAR_PRIMARY,
       ...SIDEBAR_UTILITY,
@@ -46,7 +46,7 @@ describe("BuildingShell composition", () => {
       });
       const surface = screen.getByTestId(`surface-${tab}`);
       expect(surface).toBeInTheDocument();
-      // no fabricated data — the placeholder shows the INV-9 copy
+      // no fabricated data — the placeholder shows the copy
       if (surface.getAttribute("data-placeholder") === "true") {
         expect(surface).toHaveTextContent(t("en", "surface.placeholder"));
       }
@@ -63,7 +63,7 @@ describe("BuildingShell composition", () => {
     expect(onSelectSubsystem).toHaveBeenCalledWith("kanban");
   });
 
-  it("applies the two theming axes on the root and swaps them cosmetically (DI-2)", () => {
+  it("applies the two theming axes on the root and swaps them cosmetically", () => {
     const { rerender } = renderShell({
       theme: "dark",
       colorScheme: "default",
@@ -88,7 +88,7 @@ describe("BuildingShell composition", () => {
     expect(root.className).not.toContain("dark");
   });
 
-  it("the frame carries no inline literal colours (DI-3)", () => {
+  it("the frame carries no inline literal colours", () => {
     renderShell({
       theme: "dark",
     });

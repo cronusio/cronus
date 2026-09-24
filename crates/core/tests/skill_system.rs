@@ -1,4 +1,4 @@
-//! Invariant-compliance sweep for the skill system (§3): one test per row
+//! Invariant-compliance sweep for the skill system: one test per row
 //! of the Invariant Compliance table, exercising the
 //! modules in `cronus_core::skills` together rather than in isolation, so the
 //! cross-module story (convert → store, convert → exec, synthesize →
@@ -69,7 +69,7 @@ impl WorkflowRuntime for UntouchableRuntime {
     }
 }
 
-// ── EXT-1: Unified model ────────────────────────────────────────────────────
+// ── Unified model ────────────────────────────────────────────────────
 
 #[test]
 fn ext1_skills_use_the_single_unified_extension_registry() {
@@ -96,7 +96,7 @@ fn ext1_skills_use_the_single_unified_extension_registry() {
     );
 }
 
-// ── EXT-2: Lifecycle ─────────────────────────────────────────────────────────
+// ── Lifecycle ─────────────────────────────────────────────────────────
 
 #[test]
 fn ext2_ingestion_never_activates_lands_discovered() {
@@ -118,7 +118,7 @@ fn ext2_ingestion_never_activates_lands_discovered() {
     );
 }
 
-// ── EXT-3: Default-deny trust ───────────────────────────────────────────────
+// ── Default-deny trust ───────────────────────────────────────────────
 
 #[test]
 fn ext3_a_skill_with_an_unconvertible_script_never_executes() {
@@ -145,7 +145,7 @@ fn ext3_a_skill_with_an_unconvertible_script_never_executes() {
     assert_eq!(result, ActivationResult::InstructionOnly);
 }
 
-// ── EXT-4 / EXT-6: Sandboxed execution, scoped grants ───────────────────────
+// ── Sandboxed execution, scoped grants ───────────────────────
 
 #[test]
 fn ext4_ext6_a_mapped_workflow_dispatches_through_per_call_grant_checks() {
@@ -223,7 +223,7 @@ fn ext4_ext6_a_mapped_workflow_dispatches_through_per_call_grant_checks() {
     }
 }
 
-// ── EXT-5 / STO-1: Preset + custom, two-tier separation ─────────────────────
+// ── Preset + custom, two-tier separation ─────────────────────
 
 #[test]
 fn ext5_sto1_preset_ships_read_only_conversion_and_synthesis_land_in_state() {
@@ -287,7 +287,7 @@ fn ext5_sto1_preset_ships_read_only_conversion_and_synthesis_land_in_state() {
     );
 }
 
-// ── EXT-7: Skill generation ──────────────────────────────────────────────────
+// ── Skill generation ──────────────────────────────────────────────────
 
 #[test]
 fn ext7_synthesized_skills_carry_generated_source_pending_review() {
@@ -314,7 +314,7 @@ fn ext7_synthesized_skills_carry_generated_source_pending_review() {
     assert!(entry.pending_review);
 }
 
-// ── EXT-8: Provenance & audit ────────────────────────────────────────────────
+// ── Provenance & audit ────────────────────────────────────────────────
 
 #[test]
 fn ext8_source_conversion_report_and_originals_are_all_persisted_together() {
@@ -333,7 +333,7 @@ fn ext8_source_conversion_report_and_originals_are_all_persisted_together() {
     .unwrap();
 
     assert_eq!(outcome.package.manifest.source, ExtensionSource::Custom);
-    // Whole-package degradation from the one unmapped script (§4.4 stage 5) —
+    // Whole-package degradation from the one unmapped script —
     // the mapped step is still recorded in the report for audit even though
     // the package as a whole did not land a workflow.
     assert_eq!(outcome.degradation, Degradation::InstructionOnly);
@@ -351,7 +351,7 @@ fn ext8_source_conversion_report_and_originals_are_all_persisted_together() {
     }
 }
 
-// ── EXT-9: Manifest contract ─────────────────────────────────────────────────
+// ── Manifest contract ─────────────────────────────────────────────────
 
 #[test]
 fn ext9_convert_and_synthesize_share_one_validation_gate() {
@@ -381,7 +381,7 @@ fn ext9_convert_and_synthesize_share_one_validation_gate() {
     ));
 }
 
-// ── EXT-11: Verifiable import attestation ───────────────────────────────────
+// ── Verifiable import attestation ───────────────────────────────────
 
 #[test]
 fn ext11_missing_or_invalid_witness_denies_before_conversion_even_for_valid_content() {
@@ -397,7 +397,7 @@ fn ext11_missing_or_invalid_witness_denies_before_conversion_even_for_valid_cont
     }
 }
 
-// ── STO-3: Catalog vs instance ───────────────────────────────────────────────
+// ── Catalog vs instance ───────────────────────────────────────────────
 
 #[test]
 fn sto3_overriding_a_preset_copies_into_state_and_never_mutates_the_preset() {

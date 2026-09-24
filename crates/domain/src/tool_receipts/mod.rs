@@ -1,4 +1,4 @@
-//! Model-unforgeable per-action execution receipts (TR-1…TR-9): a keyed-
+//! Model-unforgeable per-action execution receipts: a keyed-
 //! BLAKE3 MAC over a length-prefixed, injective action binding.
 //!
 //! Everything here is pure and I/O-free, testable against fixed key

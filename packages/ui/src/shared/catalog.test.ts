@@ -49,7 +49,7 @@ describe("refreshCatalog", () => {
   });
 });
 
-describe("dispatchThroughCatalog — Unknown refreshes the cache instead of rendering a failure (SP-13)", () => {
+describe("dispatchThroughCatalog — Unknown refreshes the cache instead of rendering a failure", () => {
   it("a resolved outcome passes through untouched and never refreshes the catalog", async () => {
     const outcome: Outcome = {
       Value: "Empty",

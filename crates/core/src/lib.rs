@@ -1,4 +1,4 @@
-//! Cronus core engine library — the facade and composition root (§4.1, §4.2).
+//! Cronus core engine library — the facade and composition root.
 //!
 //! Domain logic lives in `cronus-domain` (no I/O); the SQLite-backed default
 //! for the user-data plane lives in `cronus-store-local`; the default for
@@ -52,7 +52,7 @@ pub use context_compaction::TransportCompactor;
 pub use cronus_activation_os as activation_os;
 /// The local model-transport adapter, re-exported so a host can construct a
 /// `contract::InferenceBackend` (an `EndpointProfile`) and hand it to the
-/// engine — the wired transport surface (§4.1).
+/// engine — the wired transport surface.
 pub use cronus_model_local as model;
 pub use loop_bootstrap::{FileExistsBackend, file_exists_spec};
 pub use model_bridge::NodusModelBridge;

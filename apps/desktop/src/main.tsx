@@ -126,7 +126,7 @@ function Shell({ theme: t0, colorScheme: c0, layout }: Restored) {
 
 function Root() {
   // Read the persisted shell settings once before mounting, so the theming axes
-  // and the layout record are applied at first paint (AS-12). A read failure is
+  // and the layout record are applied at first paint. A read failure is
   // not fatal — the shell mounts on defaults.
   const [restored, setRestored] = useState<Restored | null>(null);
 

@@ -21,7 +21,7 @@ pub enum TrustLevel {
     Anonymous,
 }
 
-/// A streamed protocol event. Carries a per-session monotonic `seq` (ACP-8).
+/// A streamed protocol event. Carries a per-session monotonic `seq`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcpEvent {
     pub seq: u64,
@@ -35,20 +35,20 @@ pub enum EventKind {
     ToolCall,
     ClientToolRequest,
     TextDelta,
-    /// Turn complete; carries the remaining budget (ACP-7).
+    /// Turn complete; carries the remaining budget.
     Done {
         remaining_budget: u64,
     },
     Error,
-    /// Budget consumed; office entering hibernation (ACP-7).
+    /// Budget consumed; office entering hibernation.
     BudgetExhausted,
-    /// Turn interrupted by client signal (ACP-6); session resumable.
+    /// Turn interrupted by client signal; session resumable.
     Interrupted {
         remaining_budget: u64,
     },
-    /// Client-injected redirect; the turn continues (ACP-10).
+    /// Client-injected redirect; the turn continues.
     Steering,
-    /// A not-yet-started planned action cancelled by steering (ACP-10).
+    /// A not-yet-started planned action cancelled by steering.
     ActionSkipped {
         action: String,
     },
@@ -66,7 +66,7 @@ impl EventKind {
     }
 }
 
-/// The machine-readable capability declaration served before any task (ACP-2).
+/// The machine-readable capability declaration served before any task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capabilities {
     pub office_id: String,
@@ -84,9 +84,9 @@ pub enum AcpError {
     UnknownSession,
     /// Anonymous callers may only query capabilities.
     AuthRequired,
-    /// Tool delegation attempted without opt-in (ACP-4).
+    /// Tool delegation attempted without opt-in.
     DelegationNotOptedIn,
-    /// The bounded steering queue is full (ACP-10); the steer is rejected visibly.
+    /// The bounded steering queue is full; the steer is rejected visibly.
     SteerRejected,
 }
 
@@ -104,7 +104,7 @@ impl std::fmt::Display for AcpError {
 
 impl std::error::Error for AcpError {}
 
-/// The bound on a session's steering queue (ACP-10); overflow rejects visibly.
+/// The bound on a session's steering queue; overflow rejects visibly.
 const STEER_QUEUE_MAX: usize = 16;
 
 #[derive(Debug)]
@@ -113,7 +113,7 @@ struct SessionRuntime {
     trust: TrustLevel,
     budget_remaining: u64,
     tool_delegation_opt_in: bool,
-    /// Monotonic sequence high-water mark (ACP-8).
+    /// Monotonic sequence high-water mark.
     next_seq: u64,
     events: Vec<AcpEvent>,
     steer_queue: VecDeque<String>,
@@ -137,7 +137,7 @@ impl AcpServer {
         }
     }
 
-    /// Create a session (ACP-1). Idempotent (ACP-5): creating with an existing id
+    /// Create a session. Idempotent: creating with an existing id
     /// returns without disturbing the existing session's state. Returns `true` if a
     /// new session was created, `false` if it already existed.
     pub fn create_session(
@@ -180,7 +180,7 @@ impl AcpServer {
         self.sessions.get_mut(id).ok_or(AcpError::UnknownSession)
     }
 
-    /// Serve the capability declaration (ACP-2). Available to any trust level,
+    /// Serve the capability declaration. Available to any trust level,
     /// including anonymous.
     pub fn capabilities(&self, session_id: &str) -> Result<Capabilities, AcpError> {
         let s = self.session(session_id)?;
@@ -194,8 +194,8 @@ impl AcpServer {
         })
     }
 
-    /// Emit an event onto the session bus, assigning the next `seq` (ACP-3/ACP-8).
-    /// Anonymous callers may not drive turns (ACP-2 trust gate).
+    /// Emit an event onto the session bus, assigning the next `seq`.
+    /// Anonymous callers may not drive turns (trust gate).
     pub fn emit(&mut self, session_id: &str, kind: EventKind) -> Result<u64, AcpError> {
         // Resolve trust before borrowing mutably to satisfy the gate up front.
         if self.session(session_id)?.trust == TrustLevel::Anonymous {
@@ -208,7 +208,7 @@ impl AcpServer {
         Ok(seq)
     }
 
-    /// Emit a delegated client-tool request (ACP-4). Fails closed unless the
+    /// Emit a delegated client-tool request. Fails closed unless the
     /// session opted into tool delegation at creation.
     pub fn request_client_tool(&mut self, session_id: &str) -> Result<u64, AcpError> {
         if !self.session(session_id)?.tool_delegation_opt_in {
@@ -222,14 +222,14 @@ impl AcpServer {
         Ok(&self.session(session_id)?.events)
     }
 
-    /// Whether the ordered event log has a sequence gap — dropped events (ACP-8).
+    /// Whether the ordered event log has a sequence gap — dropped events.
     /// A gap must be surfaced, never silently ignored.
     pub fn has_gap(&self, session_id: &str) -> Result<bool, AcpError> {
         let events = &self.session(session_id)?.events;
         Ok(events.iter().enumerate().any(|(i, e)| e.seq != i as u64))
     }
 
-    /// Request an interrupt (ACP-6). The turn loop drains the fence at its next
+    /// Request an interrupt. The turn loop drains the fence at its next
     /// safe boundary, finishing the current atomic step, then emits a partial
     /// terminal. Modeled here as setting the fence.
     pub fn interrupt(&mut self, session_id: &str) -> Result<(), AcpError> {
@@ -241,7 +241,7 @@ impl AcpServer {
         Ok(self.session(session_id)?.interrupt_requested)
     }
 
-    /// Enqueue a steering message (ACP-10). Session-scoped: the message resolves to
+    /// Enqueue a steering message. Session-scoped: the message resolves to
     /// exactly this session's queue and can never land in another. Bounded — an
     /// overflow rejects the steer visibly rather than dropping it silently.
     pub fn steer(&mut self, session_id: &str, message: &str) -> Result<(), AcpError> {
@@ -258,7 +258,7 @@ impl AcpServer {
         Ok(self.session_mut(session_id)?.steer_queue.pop_front())
     }
 
-    /// Absorb a steering message mid-turn (ACP-10): cancel each not-yet-started
+    /// Absorb a steering message mid-turn: cancel each not-yet-started
     /// planned action as an `ActionSkipped` event (never silently completed, never
     /// silently dropped), then emit `Steering`. The turn continues, redirected.
     pub fn apply_steer(
@@ -280,7 +280,7 @@ impl AcpServer {
     }
 }
 
-/// A pure, logic-free adapter over the one ordered event stream (ACP-9). It
+/// A pure, logic-free adapter over the one ordered event stream. It
 /// re-frames each event into a foreign wire shape and adds/drops/reorders nothing.
 pub trait ProjectionAdapter {
     fn translate(&self, event: &AcpEvent) -> String;
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn create_session_is_idempotent() {
-        // ACP-5: a repeat create returns without disturbing existing state.
+        // A repeat create returns without disturbing existing state.
         let mut srv = server_with_session();
         srv.emit("s1", EventKind::TextDelta).unwrap();
         let created_again = srv.create_session("s1", "office-1", TrustLevel::Trusted, false);
@@ -326,7 +326,6 @@ mod tests {
 
     #[test]
     fn capabilities_reflect_trust_and_budget() {
-        // ACP-2 / ACP-7.
         let srv = server_with_session();
         let caps = srv.capabilities("s1").unwrap();
         assert_eq!(caps.trust_level, TrustLevel::Trusted);
@@ -336,7 +335,7 @@ mod tests {
 
     #[test]
     fn anonymous_may_only_query_capabilities() {
-        // ACP-2 trust gate: anonymous callers cannot drive turns.
+        // Trust gate: anonymous callers cannot drive turns.
         let mut srv = AcpServer::new("0.1.0");
         srv.create_session("anon", "office-1", TrustLevel::Anonymous, false);
         assert!(srv.capabilities("anon").is_ok());
@@ -348,7 +347,7 @@ mod tests {
 
     #[test]
     fn events_are_monotonic_and_gapless() {
-        // ACP-8: seq is assigned in emission order with no gaps.
+        // Seq is assigned in emission order with no gaps.
         let mut srv = server_with_session();
         srv.emit("s1", EventKind::Thinking).unwrap();
         srv.emit("s1", EventKind::TextDelta).unwrap();
@@ -369,7 +368,7 @@ mod tests {
 
     #[test]
     fn tool_delegation_gated_on_opt_in() {
-        // ACP-4: fails closed without opt-in; succeeds when opted in.
+        // Fails closed without opt-in; succeeds when opted in.
         let mut srv = server_with_session(); // opt_in = false
         assert_eq!(
             srv.request_client_tool("s1"),
@@ -382,7 +381,7 @@ mod tests {
 
     #[test]
     fn interrupt_sets_a_resumable_fence() {
-        // ACP-6: interrupt is honored; the session remains valid/resumable.
+        // Interrupt is honored; the session remains valid/resumable.
         let mut srv = server_with_session();
         assert!(!srv.interrupt_requested("s1").unwrap());
         srv.interrupt("s1").unwrap();
@@ -393,7 +392,7 @@ mod tests {
 
     #[test]
     fn projections_observe_identical_ordered_stream() {
-        // ACP-9: two adapters over one session see the same ordered events.
+        // Two adapters over one session see the same ordered events.
         let mut srv = server_with_session();
         srv.emit("s1", EventKind::Thinking).unwrap();
         srv.emit("s1", EventKind::TextDelta).unwrap();
@@ -409,7 +408,7 @@ mod tests {
 
     #[test]
     fn steering_is_session_scoped_and_bounded() {
-        // ACP-10: a steer resolves to exactly one session; overflow rejects visibly.
+        // A steer resolves to exactly one session; overflow rejects visibly.
         let mut srv = server_with_session();
         srv.create_session("s2", "office-1", TrustLevel::Trusted, false);
         srv.steer("s1", "focus on tests").unwrap();
@@ -428,7 +427,7 @@ mod tests {
 
     #[test]
     fn apply_steer_cancels_pending_actions_then_continues() {
-        // ACP-10: not-yet-started actions surface as ActionSkipped, then Steering.
+        // Not-yet-started actions surface as ActionSkipped, then Steering.
         let mut srv = server_with_session();
         let pending = vec!["send_email".to_string(), "post_message".to_string()];
         srv.apply_steer("s1", &pending).unwrap();

@@ -1,11 +1,11 @@
-//! The nodus↔`InferenceBackend` bridge (§4.1, MR-2).
+//! The nodus↔`InferenceBackend` bridge.
 //!
 //! `nodus` is a zero-dependency workflow runtime whose model-backed steps
 //! (`GEN`, `ANALYZE`) drive its own `ModelProvider` trait — a minimal
 //! synchronous surface (`generate(prompt) -> String`, `analyze`). The
 //! transport realizes `contract::InferenceBackend` (a streaming call
 //! surface). This bridge, living in the facade so nodus stays
-//! dependency-free (LP-1), satisfies `nodus::ModelProvider` by collapsing an
+//! dependency-free, satisfies `nodus::ModelProvider` by collapsing an
 //! `InferenceBackend` stream into the `String` nodus expects — the one place
 //! the two provider vocabularies meet.
 //!

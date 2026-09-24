@@ -1,15 +1,15 @@
 //! Voice input — the on-device dictation pipeline state machine.
 //!
-//! Recording starts only on an explicit gesture (VI-3); transcription runs through
-//! a pluggable engine that never leaves the device (VI-1/VI-7); the transcript is
-//! reviewed before injection (VI-2); a cancel at any point before injection discards
-//! everything and writes nothing — including to history (VI-5); confirmed
-//! transcripts optionally enter an on-device history (VI-9).
+//! Recording starts only on an explicit gesture; transcription runs through
+//! a pluggable engine that never leaves the device; the transcript is
+//! reviewed before injection; a cancel at any point before injection discards
+//! everything and writes nothing — including to history; confirmed
+//! transcripts optionally enter an on-device history.
 //!
 //! Real audio capture (cpal), VAD (ONNX), and the OS injection path are seams; the
 //! pipeline lifecycle and its safety invariants are implemented and tested here.
 
-/// How recording is activated (VI-3).
+/// How recording is activated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationMode {
     PushToTalk,
@@ -26,10 +26,10 @@ pub enum Stage {
     Cancelled,
 }
 
-/// A transcription engine (VI-7). All implementations keep audio on-device (VI-1).
+/// A transcription engine. All implementations keep audio on-device.
 pub trait TranscriptionEngine {
     fn transcribe(&self, pcm: &[i16]) -> String;
-    /// Whether transcription runs on-device (must always be true, VI-1).
+    /// Whether transcription runs on-device (must always be true).
     fn on_device(&self) -> bool {
         true
     }
@@ -61,7 +61,7 @@ impl std::error::Error for VoiceError {}
 pub struct VoiceSession {
     stage: Stage,
     mode: ActivationMode,
-    /// On-device history of confirmed transcripts only (VI-9).
+    /// On-device history of confirmed transcripts only.
     history: Vec<String>,
     keep_history: bool,
 }
@@ -88,7 +88,7 @@ impl VoiceSession {
         &self.history
     }
 
-    /// Begin recording on an explicit gesture (VI-3). Only valid from `Idle`.
+    /// Begin recording on an explicit gesture. Only valid from `Idle`.
     pub fn activate(&mut self) -> Result<(), VoiceError> {
         if self.stage != Stage::Idle {
             return Err(VoiceError::WrongStage);
@@ -97,8 +97,8 @@ impl VoiceSession {
         Ok(())
     }
 
-    /// Stop recording and transcribe the captured audio, moving to review (VI-2).
-    /// Transcription never leaves the device (VI-1) — enforced by the engine trait.
+    /// Stop recording and transcribe the captured audio, moving to review.
+    /// Transcription never leaves the device — enforced by the engine trait.
     pub fn stop_and_transcribe(
         &mut self,
         engine: &dyn TranscriptionEngine,
@@ -107,10 +107,7 @@ impl VoiceSession {
         if self.stage != Stage::Recording {
             return Err(VoiceError::WrongStage);
         }
-        debug_assert!(
-            engine.on_device(),
-            "VI-1: transcription must stay on-device"
-        );
+        debug_assert!(engine.on_device(), "transcription must stay on-device");
         let transcript = engine.transcribe(pcm);
         self.stage = Stage::Review { transcript };
         match &self.stage {
@@ -121,10 +118,10 @@ impl VoiceSession {
         }
     }
 
-    /// Confirm the (optionally edited) transcript and inject it (VI-2/VI-10). Only
+    /// Confirm the (optionally edited) transcript and inject it. Only
     /// valid from `Review`. On success, a confirmed transcript enters history if
-    /// enabled (VI-9). `inject` models the OS injection; returning `false` surfaces
-    /// a failure without dropping the transcript (VI-10).
+    /// enabled. `inject` models the OS injection; returning `false` surfaces
+    /// a failure without dropping the transcript.
     pub fn confirm(
         &mut self,
         edited: &str,
@@ -146,7 +143,7 @@ impl VoiceSession {
         Ok(())
     }
 
-    /// Cancel at any point before injection (VI-5): discard all audio and transcript
+    /// Cancel at any point before injection: discard all audio and transcript
     /// atomically. Nothing is written to history. Valid from Recording or Review.
     pub fn cancel(&mut self) -> Result<(), VoiceError> {
         match self.stage {
@@ -173,7 +170,6 @@ mod tests {
 
     #[test]
     fn recording_starts_only_on_explicit_activation() {
-        // VI-3.
         let mut s = VoiceSession::new(ActivationMode::PushToTalk, false);
         assert_eq!(s.stage(), &Stage::Idle);
         s.activate().unwrap();
@@ -184,7 +180,7 @@ mod tests {
 
     #[test]
     fn transcript_is_reviewed_before_injection() {
-        // VI-2: no path injects without passing through review + confirm.
+        // No path injects without passing through review + confirm.
         let mut s = VoiceSession::new(ActivationMode::Toggle, false);
         s.activate().unwrap();
         let t = s
@@ -196,7 +192,7 @@ mod tests {
 
     #[test]
     fn confirm_injects_and_records_history_when_enabled() {
-        // VI-9 + VI-10: confirmed transcript injected and stored (history on).
+        // Confirmed transcript injected and stored (history on).
         let mut s = VoiceSession::new(ActivationMode::Toggle, true);
         s.activate().unwrap();
         s.stop_and_transcribe(&FakeEngine("draft text"), &[0i16; 2])
@@ -213,7 +209,7 @@ mod tests {
 
     #[test]
     fn cancel_discards_everything_and_writes_no_history() {
-        // VI-5: cancelled recording leaves zero trace — nothing in history.
+        // Cancelled recording leaves zero trace — nothing in history.
         let mut s = VoiceSession::new(ActivationMode::PushToTalk, true);
         s.activate().unwrap();
         s.stop_and_transcribe(&FakeEngine("secret note"), &[0i16; 2])
@@ -225,7 +221,7 @@ mod tests {
 
     #[test]
     fn injection_failure_retains_transcript() {
-        // VI-10: a failed injection surfaces an error and does not drop the text.
+        // A failed injection surfaces an error and does not drop the text.
         let mut s = VoiceSession::new(ActivationMode::Toggle, true);
         s.activate().unwrap();
         s.stop_and_transcribe(&FakeEngine("keep me"), &[0i16; 2])
@@ -241,7 +237,6 @@ mod tests {
 
     #[test]
     fn engine_is_on_device_by_default() {
-        // VI-1/VI-7.
         assert!(FakeEngine("x").on_device());
     }
 }
