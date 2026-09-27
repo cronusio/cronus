@@ -1,4 +1,4 @@
-# Agents Instructions
+# Agents Instructions, Guidelines & Engineering Standards
 
 Cronus is a polyglot monorepo: a Rust workspace (`crates/`) for the engine and binaries, a JS/TS layer (`packages/`) for the UI, and a Tauri shell (`apps/`). These rules cover how agents write and verify code. Source files reference no design/spec artifacts — restate rationale in plain language.
 
