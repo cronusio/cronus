@@ -159,6 +159,7 @@
 - <https://github.com/xiamuceer-j/MuMuAINovel>
 - <https://github.com/affaan-m/ECC>
 - <https://github.com/worldflowai/everything-claude-code>
+- <https://github.com/agentrhq/webcmd>
 
 ## Audio
 
