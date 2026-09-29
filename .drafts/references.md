@@ -160,6 +160,7 @@
 - <https://github.com/affaan-m/ECC>
 - <https://github.com/worldflowai/everything-claude-code>
 - <https://github.com/agentrhq/webcmd>
+- <https://github.com/anthropics/claude-cookbooks>
 
 ## Audio
 
