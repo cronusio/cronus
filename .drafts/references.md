@@ -92,6 +92,7 @@
 - <https://github.com/DeusData/codebase-memory-mcp>
 - <https://github.com/trailhq/Graft>
 - <https://github.com/thedotmack/claude-mem>
+- <https://github.com/TencentCloud/TencentDB-Agent-Memory>
 
 ## Tools
 
@@ -161,6 +162,7 @@
 - <https://github.com/worldflowai/everything-claude-code>
 - <https://github.com/agentrhq/webcmd>
 - <https://github.com/anthropics/claude-cookbooks>
+- <https://github.com/usestrix/strix>
 
 ## Audio
 
