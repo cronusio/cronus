@@ -1,6 +1,6 @@
 # Live Diagnostics
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -20,6 +20,7 @@ On-demand, targeted, deep, non-suspending diagnosis of a *running* agent or offi
 - [../../nodus/specifications/l1-nodus-observability.md](../../nodus/specifications/l1-nodus-observability.md) - Observer neutrality (HO-5), sequence/correlation (HO-7), execution-mode provenance (HO-12), and the replay-based-validation seam a probe reuses.
 - [l1-change-attribution.md](l1-change-attribution.md) - [ADDED v1.1.0] Names *which* signals moved during a window; a probe then answers what one implicated operation actually did. Ranking narrows, probing explains.
 - [l1-declarative-configuration.md](l1-declarative-configuration.md) - [ADDED v1.1.0] A published introspection routine (LD-10) declares its authority level and timeout through the same declaration-and-registry discipline configuration surfaces use.
+- [l1-surface-driver.md](l1-surface-driver.md) - [ADDED v1.1.1] A development-only driver whose inspector tier invokes LD-10's published routines on a *held* product. It deliberately takes the opposite effects stance to LD-2: this spec's probe runs in production for a user and never suspends what it observes; the driver runs only in development for an actor and suspends everything it can (its §4.8). The two must not be unified, and a routine written for one is usable by the other only because it is read-only and declares its own authority level and timeout.
 
 ## 1. Motivation
 
@@ -115,5 +116,6 @@ A diagnostic probe is a host-supplied observer variant: the always-on `AuditProv
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-10-03 | Core Team | Patch — cross-reference to `l1-surface-driver`, whose inspector tier invokes LD-10's published routines on a held product, and demarcation of the two opposite effects stances: LD-2's non-suspending observer in production versus the driver's suspending hold in development. Documentation linkage only; no invariant added or changed. |
 | 1.1.0 | 2026-07-23 | Core Team | LD-10 added — **published introspection routines** as the *anticipated* half of live diagnosis, beside the probe's unanticipated half: named, catalogued, discoverable-not-guessed read-only routines returning a live-state snapshot, each declaring the authority level it requires (so a sensitive routine is unavailable rather than offered-then-refused over a lower-trust channel) and a timeout, cancellable, mutating nothing; catalogues propagate toward the supervisor in a supervision hierarchy so a routine can be invoked on a subordinate through its supervisor, with every answer naming the producing node. §4.1 extended with the three-surface escalation table (trace → routine → probe, cheap to expensive). |
 | 1.0.0 | 2026-07-22 | Core Team | Initial spec — live diagnostics as the active, on-demand, targeted, non-suspending complement to the always-on observability plane: opened against one target for a bounded window (LD-1), non-suspending observer (LD-2), deep full-fidelity capture under a consent-gated/session-confined/secret-redacted data-safety exception (LD-3), attach-to-a-running-target without pre-instrumentation or restart (LD-4), bounded self-terminating (LD-5), caller + latency attribution composing HO-7/RD-5 (LD-6), deterministic mode-marked capture-and-replay reusing the replay-validation seam (LD-7), non-authoritative + traceable (LD-8), host-supplied local-first opt-in (LD-9). Mined from a studied production runtime-diagnostics tool's live method-observation / trace / time-tunnel commands; the "attach a debugger to production without a restart" capability Cronus's passive planes (telemetry/forensic-log/self-healing) did not cover. Concept-only. |

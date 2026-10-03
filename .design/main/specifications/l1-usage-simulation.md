@@ -1,6 +1,6 @@
 # Usage Simulation
 
-**Version:** 1.1.2
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -37,6 +37,7 @@ discovers, the pinned test guards, and neither does the other's job.
 - [l1-simulation.md](l1-simulation.md) — The near-name sibling with the **inverted** effects discipline: it plays out a *generated mechanism* with effects suppressed (SIM-2), this plays out *usage of the shipped product* with effects real inside a disposable world (USM-2). The two must not be reconciled into one contract (§4.8).
 - [../../nodus/specifications/l1-nodus-authoring.md](../../nodus/specifications/l1-nodus-authoring.md) — The nodus realization (NA-1…NA-9): this instrument transferred to a language, where the free route is the source an author writes and the coverage denominator is the diagnostic taxonomy rather than an action catalog.
 - [l1-uninformed-actor.md](l1-uninformed-actor.md) — **Who** performs a scenario. USM-4 states the declared vantage as a scenario property; UIA-2 makes it a staffing property, because an informed agent instructed to disregard what it knows cannot comply and its non-compliance is silent. The three specs answer what / when / who.
+- [l1-surface-driver.md](l1-surface-driver.md) — **The hands and eyes.** How an actor performs and observes on a surface a person meets one turn at a time, and the one place that work is recorded as it happens. Held, counted turns (DRV-4) are what make a route on an interactive surface replayable (USM-7); what the surface *presented* is the output USM-5 cites (DRV-6); a declared *floor* is what USM-2's "actual shipped surface" is read down to (DRV-3); a simulation's sessions are operator-tier, so the actor is equipped as a user rather than told to behave like one (DRV-5, UIA-2); a shortcut never counts as coverage (DRV-8, USM-8).
 - [l1-scenario-derivation.md](l1-scenario-derivation.md) — When a scenario comes into existence and from what. SD-1…SD-9 derive scenarios at planning time as a co-product of the task graph; SD-4 strengthens USM-10 wherever a planning step exists, and USM-10 remains the floor for behaviour that arrives without one.
 - [l1-remedy-authority.md](l1-remedy-authority.md) — **The named owner of USM-12's "separate, separately-authorized act".** USM-12 establishes that a *run* never repairs and that fixing is a separate authorization; it deliberately does not say whose. RA-1…RA-10 answer that: authority is recorded per USM-13 class, and a remedy is applied only once USM-7's pin exists **and fails** (RA-2) — which is the same evidence concern USM-12 protects, expressed as a precondition rather than a prohibition. RA-3 additionally places the scenario and its obligations outside the reach of whatever remedies a finding, so the cheapest available "fix" — adjusting the judge — is structurally unavailable.
 - [l1-whole-system-rehearsal.md](l1-whole-system-rehearsal.md) — The sweep grain above USM-9's tiers: this instrument becomes the **usage mode** of a cadence-driven, whole-assembly run, borrowing USM-2/3/8/9 unchanged and pairing them with a suppressed-effects mechanism play-out that answers a different question (WSR-1/WSR-5).
@@ -102,7 +103,11 @@ deterministic tests that *can* gate.
 
 - **The subject is the shipped product's real surface** — the real binary, the real command
   grammar, the real rendering, the real error text. A simulation against a mock of the
-  surface studies the mock.
+  surface studies the mock. Where a surface can be driven turn by turn only through a
+  development seam, the subject is real **down to the seam's declared floor**
+  (`l1-surface-driver.md` DRV-3), which every record states; what lies below the floor is
+  decided in a lane that covers it, and a verdict that depends on it lies outside the run's
+  reach.
 - **The actor is an agent, and inference is not free.** A run costs real money and real
   time, which caps how often the expensive tiers can run and forces the tiering in USM-9.
 - **The actor is also the reporter, and it is biased toward the implementation it knows.**
@@ -140,7 +145,9 @@ Rules every Layer 2 implementation MUST NOT violate:
   under study. This inverts `l1-simulation`'s SIM-2 deliberately and the two MUST NOT be
   unified: suppressing effects there preserves the subject, suppressing them here destroys
   it. A scenario that cannot be given a disposable world is **not run**, never run against a
-  real one.
+  real one. On an interactive surface driven through a development seam, *actual* is read down
+  to the seam's declared floor, and the record names the floor and the lane
+  (`l1-surface-driver.md` DRV-3, §4.3).
 
 - **USM-3 (Obligations hold on every route; discoveries hold on one):** a scenario separates
   **obligations** — conditions that must hold no matter which route the simulator took (the
@@ -162,7 +169,9 @@ Rules every Layer 2 implementation MUST NOT violate:
 
 - **USM-5 (Observed output is the only evidence):** every claim a run makes — *it worked*,
   *it reported X*, *nothing was lost* — cites what the product actually emitted and the state
-  it actually left behind. The simulator's belief about what the product does is not evidence,
+  it actually left behind. On an interactive surface what the product *emitted* is what it
+  *presented* — the frame it drew, stamped with the turn it reflects (`l1-surface-driver.md`
+  DRV-6). The simulator's belief about what the product does is not evidence,
   and neither is the specification: the specification is what the product was *supposed* to
   do, and the gap between the two is the thing being measured. An obligation whose verdict
   cites no observation is **unmet**, not passed.
@@ -178,7 +187,9 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **USM-7 (Every run is replayable, and every finding is pinned by a deterministic test):**
   a run records the exact route it took — inputs in order, timing-relevant choices, seeds,
   environment, and the product version — in enough detail for a human or a machine to replay
-  it without the agent. A defect discovered by simulation is **pinned by a cheap
+  it without the agent. On an interactive surface the timing-relevant choices are the driver's
+  counted turns, and the record states which time was held (`l1-surface-driver.md` DRV-4,
+  DRV-14). A defect discovered by simulation is **pinned by a cheap
   deterministic test before its finding is closed**; the simulation is the discovery
   instrument and the pinned test is the regression guard. A defect left guarded only by a
   free-route run is a defect that will be rediscovered, because nothing obliges the next run
@@ -504,3 +515,4 @@ breaks will be this one, because suppression is the more conservative-looking de
 | 1.1.0 | 2026-09-12 | Core Team | Minor — **USM-13 (a discovery may be classified, and may propose)**: a discovery MAY carry a class from `l1-improvement-loop`'s own IMP-1 taxonomy (defect/friction/inefficiency/optimization-opportunity/improvement-idea) and an optional proposed remedy, reusing that vocabulary rather than inventing a second one. Neither addition touches USM-3/USM-12 — classification and a proposed remedy are report content, never a gate and never an applied change. Only `defect` has anywhere to go beyond the report (USM-7's existing pinning path, unchanged); the other four classes stop at the run's own report for a human to weigh (§4.6 extended). Deliberately demarcated from the improvement loop's own pipeline: a simulation discovery is local, synchronous, dev-time report content — it is never written into the live findings ledger (RP-6), which is that spec's mechanism for real, shipped installations. Motivated by real practice: two of this project's own early scenario runs surfaced genuine friction (an undocumented state-machine transition order; a scaffolder whose default output fails its own validator) that no obligation was positioned to fail, and which existed only as unstructured prose in a `note` until now. `[DR]` The classification lives in `l1-usage-simulation` itself rather than a new standalone spec or a wire into `l1-improvement-loop`'s pipeline — the finding's *vocabulary* is shared, its *mechanism* is not, and unifying the two would repeat the exact mistake §4.8 already warns against for `l1-simulation` (two disciplines whose subjects are opposite, merged because both are called by a similar name). Status reverts `Stable → RFC` per the amendment rule pending Post-Update Review. |
 | 1.1.1 | 2026-09-12 | Core Team | Patch — **second review: `RFC → Stable`.** A genuinely independent second pass (not a restatement of the same-session authoring check) found one real inconsistency the first pass missed: §4.6's added paragraph read "only the `product`-attributed, `defect`-classed case enters the promotion path" — a phrasing that, read literally, requires a discovery to have *both* failed an obligation *and* been attributed via the three-row table before USM-7's pinning applies, silently excluding the freestanding case USM-13's own first sentence names as in scope ("a discovery... including one that never touched an obligation at all"). USM-7 itself pins *any* discovered defect, with no attribution-table prerequisite — the added sentence had accidentally narrowed a pre-existing invariant while restating it. Corrected: a `defect`-classed discovery always enters the promotion path, whether reached via a failed-and-attributed obligation or as a freestanding observation — "the same fact seen from different vantage points, not separate conditions that must both hold." One additional term was checked and cleared, not changed: USM-13's "the reporter" reuses §2's own pre-existing definition ("the actor is also the reporter") rather than introducing new vocabulary — flagged in review, verified against the full document, retracted as a non-issue. No other lens (Layer Purity, Ecosystem/Extensibility, Execution/Testability) surfaced a blocking finding. `[DR]` Promoted to Stable on this pass rather than held for a third review — the bar the amendment rule sets is a genuine second, independent look, which this was, and it found and fixed exactly one real defect; holding further would be process for its own sake. `l2-simulation-suite` is un-quarantined in the same act (C12 upward reversal, `spec.md`'s own authority) and its USM-13 row moves from **Pending** to its normal compliance-tracking state, reconciled at the next `/magic.task main`. |
 | 1.1.2 | 2026-09-13 | Core Team | Patch — cross-references to two new siblings that compose this instrument without altering it. `l1-remedy-authority` names the owner USM-12 deliberately left unnamed: USM-12 says fixing is "a separate, separately-authorized act" and never says whose, which in practice read as *never*. RA-1…RA-10 supply the authority model — recorded per USM-13 class, with RA-2 permitting a remedy only once USM-7's pin exists **and fails**, so USM-12's evidence concern survives as a precondition rather than as a blanket refusal, and RA-3 placing the scenario and its obligations outside the reach of whatever remedies a finding. `l1-whole-system-rehearsal` adds the sweep grain above USM-9's tiers, borrowing USM-2/3/8/9 unchanged as its **usage mode**. `[DR]` Recorded as a patch, not a minor: every USM invariant was re-read against both new specs and **none required amendment** — USM-3, USM-7, USM-12 and USM-13 compose with the authority contract exactly as written, which is the evidence that the new contract belongs beside this spec rather than inside it. A minor bump would have quarantined `l2-simulation-suite` for a change that altered nothing it implements. Documentation linkage only; no invariant added or changed. |
+| 1.2.0 | 2026-10-03 | Core Team | Minor — **the instrument that carries an actor's hands and eyes onto interactive surfaces, and what it changes here.** NEW sibling `l1-surface-driver` (DRV-1…DRV-14) specifies how an actor presses keys and reads a frame on a surface a person meets one turn at a time; this spec's text now says what that means for it, with no invariant weakened. §2 and USM-2 read "the real surface" as real **down to a declared floor** where a surface can be driven turn by turn only through a development seam — the floor and the lane are named in every record, and a verdict that depends on what lies below the floor lies outside the run's reach (it is decided in the free lane, which drives the shipped artifact under the operating system's own terminal, or by the surface's own lifecycle tests). USM-5 reads *emitted* as *presented* on an interactive surface — the frame drawn, stamped with the turn it reflects. USM-7 names the driver's counted turns as the timing-relevant choices of an interactive route. `[DR]` Recorded as a minor because the reading of USM-2's "actual shipped surface" is extended, not because any obligation changed: the alternative — leaving the floor concept in the new spec alone — would have left a reviewer holding two Stable texts that read as contradicting each other, which is the failure `l1-surface-parity` SP-8 warns about when a difference is left unstated. Status reverts `Stable → RFC` per the amendment rule; Post-Update Review PASS, `RFC → Stable` in the same invocation, and `l2-simulation-suite` follows it. |

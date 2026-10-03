@@ -1,6 +1,6 @@
 # TUI Frontend
 
-**Version:** 1.3.1
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -22,6 +22,7 @@ Its slash catalog is not declared here. It is a **projection of the core's invoc
 - [l2-invocable-registry.md](l2-invocable-registry.md) - The catalog and dispatch this frontend projects. `[ADDED v1.1.0]`
 - [l2-surface-conformance.md](l2-surface-conformance.md) - The corpus this frontend registers against. `[ADDED v1.1.0]`
 - [l1-surface-parity.md](l1-surface-parity.md) - Why the catalog is derived rather than mirrored. `[ADDED v1.1.0]`
+- [l2-surface-driver.md](l2-surface-driver.md) - Drives this frontend turn by turn through a dev-only host built on the seams §4.6 keeps. `[ADDED v1.4.0]`
 
 ## 1. Motivation
 
@@ -126,6 +127,17 @@ What remains checkable after derivation is behavioral agreement between two proj
 
 **Why a direct key, not `Tab`-cycling alone.** The command bar is the one panel a user reaches to *type into*, not to *read from* — every other panel is passive. `Tab`-cycling alone makes the one interactive element of the frame reachable only after an unsignposted number of key presses, even though the bar is rendered as a live `/`-prefixed prompt on every frame regardless of which panel currently holds focus — a control a user can see and expects to be able to type into directly. The global `/` key closes that gap without removing `Tab`-cycling, which remains how a user moves between the read-only panels (Board, Office, Status, Sessions) to change what they are observing, not what they are commanding.
 
+### 4.6 Seams a driver relies on
+
+`[ADDED v1.4.0]` This frontend is the one surface whose live composition a development driver can replace piece by piece, because its loop is generic over its parts. Four properties keep that true, and `l2-surface-driver.md` §4.6 builds on all four. Each is a requirement on this crate, not on the driver, and none changes what a user sees.
+
+1. **The backend and the renderer stay injectable.** The loop takes its terminal backend, its snapshot source and its renderer as parameters, and no path inside the loop names the production backend or the production renderer. (Already so.)
+2. **The render function stays a pure function of the view-model**, callable against an off-screen buffer of any size, so a frame can be produced without a terminal. (Already so.)
+3. **There is one composition function.** The registry, dispatcher and catalog the product entry builds — core bootstrap, this surface's own actions registered through the shared door (§4.4), and the catalog built from the result — come from a single function that the product entry and any other host both call. Today the product entry holds that wiring inline; a second host that copied it would be the hand-maintained table §2 forbids, one level up, and it would drift for the same reason.
+4. **The native-event fold is one function.** The mapping from the terminal library's native event to this surface's input vocabulary — including the rule that only a key *press* is acted on and that release, focus, mouse and paste events are not consumed — is a function both the production backend and a driven backend call, so injected input reaches the same fold a device's input does and a class the fold drops stays dropped under test.
+
+The driven host itself is a dev-only example target of this crate. It is never part of the shipped binary, and nothing in this crate names it (`l2-surface-driver.md` §4.1).
+
 ## 5. Drawbacks & Alternatives
 
 - **Terminal rendering limits:** complex office visualizations are richer in the graphical app (INV-6 allows the subset).
@@ -146,6 +158,7 @@ What remains checkable after derivation is behavioral agreement between two proj
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.4.0 | 2026-10-03 | Adds §4.6 Seams a driver relies on: the four properties of this crate that let a development driver replace the terminal backend and renderer and run the real loop turn by turn (`l2-surface-driver` §4.6) — injectable backend and renderer (present), a pure render function (present), **one composition function** shared by the product entry and any other host (today the wiring is inline in the entry), and **one native-event fold** shared by the production and any driven backend (today it lives inside the production backend). The last two are refactors with no user-visible change and no behavior change; the existing tests stay green unchanged. The driven host is a dev-only example target, never part of the shipped binary. Post-Update Review PASS. |
 | 1.3.1 | 2026-09-24 | Consistency pass (2026-09-24): The board listed `archive` as a column although archival is automatic and not a column (KAN-3); "(async)" contradicted the synchronous core — long calls run off the render thread. |
 | 1.3.0 | 2026-09-17 | Adds §4.5 Keyboard interaction model: the command bar's only prior entry point was `Tab`-cycling focus onto it, with no direct key, even though it renders as a live `/`-prefixed prompt on every frame regardless of focus — a real defect reported by manual use (every keystroke typed against the rendered prompt before reaching it via `Tab` was silently swallowed by the panel dispatch's catch-all). Names two disjoint key layers (global vs. command-bar-local) and adds a global `/` key that focuses the command bar directly from any panel, while `Tab`-cycling remains how a user moves between the read-only panels. No visual/rendering change — behavior only, per this amendment's own scope. |
 | 1.2.0 | 2026-09-06 | Surface-boundary amendment. §4.3 states that this frontend and the command line project **different locus sets** (`Semantic`+`ClientLocal` here, `Semantic`+`Installation` there) and that the difference is a declared one rather than a parity failure — the shared semantic set is where INV-3 binds, and the differing halves are named with their reason per SP-8. §4.3 also fixes the response to an unresolved slash line: resolution answers `Unknown` separately from any outcome (SP-13), and this surface treats it as **ordinary input**, where the command line treats the identical answer as a usage error — one resolution result, two correct opposite renderings, which a single merged failure outcome could not have produced. §4.4 adds that this is the **default composition** reached by a bare invocation and also addressable as `cronus tui` (LH-4), and that this frontend's own pane and panel actions register as `ClientLocal` invocables through the shared door rather than living in a private table — the smaller rebuild of exactly the catalog v1.1.0 deleted. |

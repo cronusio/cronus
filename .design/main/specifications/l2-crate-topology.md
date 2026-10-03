@@ -1,6 +1,6 @@
 # Crate Topology (Core Decomposition)
 
-**Version:** 1.1.4
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -24,6 +24,7 @@ The decomposition axis is **dependency weight and provider seams**, not domain a
 - [l2-memory-store.md](l2-memory-store.md) - The persistence adapter that moves behind the user-data seam.
 - [l2-multi-user-auth.md](l2-multi-user-auth.md) - The local authentication adapter that moves behind the auth seam.
 - [l2-codegraph.md](l2-codegraph.md) - A sibling crate whose public surface currently leaks its storage engine (§6.4).
+- [l2-surface-driver.md](l2-surface-driver.md) - The planned `cronus-drive` instrument crate and the dependency direction that keeps it out of every product crate (§4.4). `[ADDED v1.2.0]`
 
 ## 1. Motivation
 
@@ -158,6 +159,8 @@ The open TBD proposed splitting along domain lines — `engine` / `memory` / `sc
 Conversely `memory/store.rs` (14.5k characters) and `auth.rs` (794 lines) are not extracted because they are large. They are extracted because one opens a database and the other hashes passwords — clauses (a) and (b).
 
 Clause (d) records why the two harness crates exist: a conformance or simulation harness that linked the domain or the facade could pass by calling the very helpers it is meant to check, so it drives the product through the contract tier and nothing else.
+
+`[ADDED v1.2.0]` **A third instrument crate is planned under the same clause**, not yet in the tree: `cronus-drive` (`crates/drive`), the shared library of the surface driver (`l2-surface-driver.md`) — the command table, the session protocol, the channel, the step controller, the frame model and the stateless client. It is the instrument two harnesses share, so it cannot share a compilation unit with what it checks, and it depends on the standard library and serialization only, on **no Cronus crate**. Its one directional rule has a manifest check of the kind §5 step 7 describes: `cronus-drive` appears in the `[dependencies]` of `cronus-simulation` and of no product crate, and in the `[dev-dependencies]` of a frontend crate only where that crate carries a dev-only host. Features were considered for the host and rejected for the reasons §7 gives, so a host is an example target of its frontend crate rather than a feature of the shipped binary.
 
 Applied in reverse, the rule also says when to *merge*: a crate whose last external dependency is removed, and which backs no provider plane, folds back into the domain tier.
 
@@ -307,3 +310,4 @@ Recorded here because each bears on the topology, and each is independently acti
 | 1.1.2 | 2026-09-12 | **Migration confirmed realized** (Retro L2 finding, `/magic.spec main`): §4.6 and the `[PIVOT]` Canonical Reference described the pre-migration state (`crates/core/src/context_router.rs`, holding a concrete `&MemoryStore`) as though it were still current. Verified by direct inspection that the migration this section specified actually landed: the module is now `crates/domain/src/context_router.rs`, depends on `cronus_contract::MemorySearch`, and its own doc comment names this section by number as the pivot it realized. `crates/domain/Cargo.toml` carries no `store-local` dependency; `crates/core/src/lib.rs` imports the module *from* domain, confirming the inward direction. §4.6 rewritten to past tense with the confirming evidence; `[PIVOT]` path corrected. No invariant, decomposition rule, or migration step changed — this is a realization-status correction only. |
 | 1.1.3 | 2026-09-23 | Consistency pass (2026-09-23): §2 and §6.5 carried the core-library's Tokio claim — resolved: the core is synchronous. Three shipped crates (`activation-os`, `conformance`, `simulation`) were absent from the crate set and the minting rule could not account for the two harnesses — the table lists them and clause (d) records verification harnesses confined to the contract tier; the tier diagram shows the model and activation adapters. §6.4 (CLI opening a database connection) is recorded as resolved — `codegraph` keeps its storage private and the CLI dropped `rusqlite`. Duplicate 1.0.0 history rows merged and the table restored to ascending order. |
 | 1.1.4 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
+| 1.2.0 | 2026-10-03 | §4.4 plans a third instrument crate under clause (d), `cronus-drive`, the shared library of the surface driver (`l2-surface-driver`): standard library and serialization only, no Cronus crate, linked by the simulation harness and — as a dev-dependency — only by a frontend crate that carries a dev-only host, with a manifest check that no product crate depends on it otherwise. The host is an example target of its frontend crate and not a feature of the shipped binary, for the reasons §7 already gives against features as a boundary. The crate does not exist yet; the minted-crates table is unchanged. Post-Update Review PASS. |
