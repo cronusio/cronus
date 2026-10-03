@@ -1,19 +1,20 @@
 # Scheduler
 
-**Version:** 1.0.5
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-scheduler-model.md
 
 ## Overview
 
-The concrete scheduler: a friendly recurrence model (alarm-clock style presets) with an optional raw cron expression for power users, per-workspace storage, the timezone/firing semantics, and the schedule command surface across CLI / TUI / library. Board de-duplication for routine fires is deferred per the model.
+The concrete scheduler: a friendly recurrence model (alarm-clock style presets) with an optional raw cron expression for power users, per-workspace storage, the timezone/firing semantics, and the schedule command surface across CLI / TUI / library. A routine fire that finds the card of an earlier fire still open follows a declared open-card policy (SCH-9).
 
 ## Related Specifications
 
 - [l1-scheduler-model.md](l1-scheduler-model.md) - The model this implements.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - The `schedules/` location within a workspace.
 - [l2-kanban-board.md](l2-kanban-board.md) - Where `routine` fires may place cards.
+- [l1-work-convergence.md](l1-work-convergence.md) - [ADDED v1.1.0] CONV-4/CONV-5: a wake drives, a routine materializes, a reminder surfaces; SCH-9 settles the one case where *materialize* meets a card still open.
 - [l2-cli.md](l2-cli.md) - Command grammar standard the schedule commands follow.
 - [l2-security.md](l2-security.md) - Prompt injection scanning and sandbox constraints applied at fire time.
 - [l2-agent-autonomy.md](l2-agent-autonomy.md) - The autonomy gate every fired job still passes; its unattended rows refuse what they cannot ask (AG-9).
@@ -38,11 +39,12 @@ The model wants recurrence-first scheduling that a non-technical client can use,
 | SCH-1 Two kinds | `kind: recurring\|oneshot`; one-shot sets`delete_after_fire: true` and is removed after firing. |
 | SCH-2 Recurrence expressiveness | `recurrence` presets (weekdays/weekends/daily/days/interval + times) OR a raw `cron` string. |
 | SCH-3 Single declared action | `action: heartbeat\|routine\|reminder` — exactly one per schedule. |
-| SCH-4 Wake produces no card | `heartbeat` fires call only the office wake entry point; no board API is invoked. |
+| SCH-4 Wake produces no card | `heartbeat` fires call only the office wake entry point; no board API is invoked. What a wake's checks produce converges by drive or surface only (CONV-4): a finding is posted to the manager's inbox and enters the board through ordinary intake (`l2-agent-constitution` §4.5), never as a card the wake creates. |
 | SCH-5 Workspace-scoped | Schedule files live under `<ws>/schedules/`; firing targets that office only. |
 | SCH-6 Autonomous & durable | Schedules persist as files; the scheduler service reloads and re-arms them on restart. |
 | SCH-7 Lifecycle control | `enabled` flag plus create/edit/delete operations; disabling stops firing without deletion. |
 | SCH-8 Bounded catch-up window | Optional per-schedule `catch_up_window` (§4.7): a missed occurrence is eligible for catch-up only while `recovery_time ≤ fire_at + catch_up_window`; absent = zero width, so every missed occurrence is dropped whatever the `catchUpPolicy`. A catch-up run is recorded `fired_late: true` with its intended `fire_at_ms` (§4.9 run log). Pending realization. |
+| SCH-9 Open-card policy | Optional per-schedule `openCardPolicy` (§4.4): `coalesce_if_open` (default), `skip_if_open` or `open_parallel` with `max_open_cards` (default 3). A fire that finds a card from an earlier fire of the same schedule in any state before `done` follows the policy; a fire that creates no card appends a `routine_fire_folded` event to the open card (count and latest fire time; marked skipped under `skip_if_open`, KAN-7) and sets `RoutineRun.foldedIntoCardId`. **Pending.** |
 
 ## 4. Detailed Design
 
@@ -73,7 +75,9 @@ The model wants recurrence-first scheduling that a non-technical client can use,
   },
   deliver?: String[],           // ordered delivery target IDs resolved at fire time (§4.9)
   skills?: String[],            // skill IDs injected into the session context at fire time
-  script?: String               // optional script/workflow run instead of the LLM prompt
+  script?: String,              // optional script/workflow run instead of the LLM prompt
+  openCardPolicy?,              // SCH-9 card-level overlap (§4.4); absent = coalesce_if_open
+  max_open_cards?               // open_parallel only (§4.4)
 }
 ```
 
@@ -90,7 +94,21 @@ The scheduler service evaluates due schedules against the host clock + timezone,
 
 ### 4.4 Board interaction
 
-`heartbeat` never touches the board (SCH-4). `routine` may create a board card. Overlap between *runs* is governed by the concurrency policy of §4.7 (a new fire while the previous run is still active). Overlap between *cards* — a new fire while the card an earlier, already-finished run created is still open — is not covered by that policy and stays deferred, as the model defers it (`l1-scheduler-model` §5).
+The heartbeat *fire* invokes no board API (SCH-4); the office it wakes drives existing cards (CONV-4). `routine` may create a board card. Two overlaps are settled separately. Overlap between *runs* — a new fire while the previous run is still active — is the concurrency policy of §4.7. Overlap between *cards* — a new fire while the card an earlier, already-finished run created is still open — is the **open-card policy** (SCH-9):
+
+```text
+[REFERENCE]
+Schedule.openCardPolicy: "coalesce_if_open" | "skip_if_open" | "open_parallel"
+Schedule.max_open_cards?: u8        // open_parallel only; default 3; at the cap the fire coalesces
+```
+
+| Policy | When a card from an earlier fire of this schedule is still open |
+| --- | --- |
+| `coalesce_if_open` (default) | No card is created. The occurrence is recorded on the open card as a `routine_fire_folded` event (KAN-7): a count and the latest fire time. |
+| `skip_if_open` | No card is created. The occurrence is recorded on the open card as a skipped fold, and the run record carries the open card's id. |
+| `open_parallel` | A new card is created while fewer than `max_open_cards` cards from this schedule are open; at the cap the fire coalesces. |
+
+"Open" means any state before `done`. A blocked card is open, which is why the default coalesces rather than skips: a routine standing behind a blocked card shows its occurrences accumulating there instead of silently never running. An occurrence that creates no card is always visible as a mark on the card it was folded into (CONV-7); when several cards of the schedule are open (an `open_parallel` schedule, or one whose policy changed), the occurrence is recorded on the newest.
 
 ### 4.5 Command surface
 
@@ -181,6 +199,7 @@ To prevent exact-duplicate runs when the scheduler restarts or a cluster has spl
 RoutineRun.idempotencyKey: String    // unique per (schedule_id, scheduled_fire_at) pair
 RoutineRun.dispatchFingerprint: String // hash of (schedule_id, fire_at, concurrency_policy)
 RoutineRun.coalescedIntoRunId?: String // set if this fire was merged into an existing run
+RoutineRun.foldedIntoCardId?: String   // set if this fire created no card because an earlier fire's card was still open (SCH-9)
 ```
 
 Before dispatching, the scheduler records the `idempotencyKey` with a single atomic insert-if-absent in the durable run log; if the key is already present, dispatch is a no-op (idempotent re-fire). A `(schedule_id, scheduled_fire_at)` pair therefore dispatches **at most once**, even across restarts. A crash after the key is recorded but before the run finishes is surfaced as an interrupted run on recovery — it is not silently re-dispatched, and it is not reported as delivered.
@@ -373,7 +392,7 @@ When a run ends in a failure state matching `notify_on`, a `CronRunFailedAlert` 
 
 - **Two recurrence representations (friendly + cron):** a small translation/validation cost; justified by serving both audiences (SCH-2).
 - **File-per-schedule:** simple and inspectable; if schedules grow large, an index or SQLite-backed store can be introduced later (consistent with STO-8).
-- **Card-level de-duplication deferred:** run overlap is settled by `concurrencyPolicy` (§4.7), but a new fire while an earlier run's card is still open can still add a second card — an accepted risk until tuned in real use (§4.4, `l1-scheduler-model` §5).
+- **Card-level overlap — resolved (SCH-9):** run overlap is settled by `concurrencyPolicy` (§4.7); a fire that finds the card of an earlier fire still open is settled by `openCardPolicy` (§4.4). The default coalesces, so a stuck card shows a count instead of a duplicate or a silence. The default cap of 3 open cards for `open_parallel` is a starting point to be tuned against real boards.
 - **Always-disabled toolsets (cronjob/messaging/clarify):** not configurable by design — the non-interactive execution context makes these toolsets structurally unsafe in cron.
 
 ## Canonical References
@@ -388,5 +407,6 @@ When a run ends in a failure state matching `notify_on`, a `CronRunFailedAlert` 
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-03 | Core Team | SCH-9 realized as `openCardPolicy` (§4.4): the card-level overlap that §4.4 and §5 called deferred is settled — `coalesce_if_open` (default), `skip_if_open`, `open_parallel` with `max_open_cards` (default 3, coalescing at the cap), mirroring the run-level `concurrencyPolicy` names; a fire that creates no card appends a `routine_fire_folded` event to the open card and sets `RoutineRun.foldedIntoCardId`. §4.4's "heartbeat never touches the board" is clarified to what the SCH-4 row already said: the heartbeat *fire* invokes no board API, and the office it wakes drives existing cards (CONV-4); the SCH-4 row adds that a wake's checks surface or drive and never create a card. SCH-9 compliance row added (Pending); Related Specifications extended with `l1-work-convergence`. |
 | 1.0.5 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): SCH-8 compliance row added and the stale §4.3 missed-fire TBD resolved — `catch_up_window` bounds lateness and `catchUpPolicy` only chooses replay breadth among still-eligible occurrences, so `run_once`/`run_all` can no longer fire stale; catch-up runs are recorded `fired_late`. §4.4/§5 no longer claim the concurrency policy settles card de-duplication (run overlap vs card overlap). §4.6 no longer calls cron an auto-approved context (AG-9 refusal rows of `l2-agent-autonomy`). Webhooks: unsigned mode removed, constant-time HMAC verification and signed-timestamp replay window made explicit, webhook creation is a SEC-10 ingress write; idempotency is an atomic insert-if-absent giving at-most-once dispatch (the exactly-once claim is withdrawn); event counter is cumulative, not consecutive. |
 | 1.0.4 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

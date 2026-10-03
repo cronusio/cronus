@@ -1,6 +1,6 @@
 # Agent-Assisted Development Workflow
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -16,6 +16,7 @@ The technology-agnostic model for human-agent collaborative software development
 - [l1-version-control.md](l1-version-control.md) — Workspace isolation and commit authority during development.
 - [l1-harness-engineering.md](l1-harness-engineering.md) — Evaluation loop for continuous improvement of the workflow itself.
 - [l1-change-containment.md](l1-change-containment.md) — [ADDED v1.0.1] the edit-footprint lens at the Review stage: DW-4's "nothing extra" spec-compliance verdict is exactly the containment verdict, and CTN-8 gives it a closed finding vocabulary distinct from the correctness and complexity lenses.
+- [l1-work-convergence.md](l1-work-convergence.md) — [ADDED v1.2.0] CONV-10: whether a plan task is done is its board card's state; DW-5's ledger records what was approved and committed and carries no completion flag of its own.
 - [l2-development-workflow.md](l2-development-workflow.md) — Cronus implementation of this pipeline.
 
 ## 1. Motivation
@@ -46,7 +47,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **DW-2 (Design gate):** No implementation task may begin until the human has approved the design document. A design-less execution attempt is blocked, not warned.
 - **DW-3 (Task isolation):** Each implementation task runs in a fresh agent context containing exactly what that task needs — its brief, the relevant prior-task interfaces, and global constraints. Accumulated session history must not enter an implementation agent's context.
 - **DW-4 (Two-stage quality gate):** Every implementation task has two mandatory verdicts before it is marked complete: (a) *spec compliance* — correct requirements, nothing missing, nothing extra; (b) *code quality* — clean, tested, maintainable. Both must pass.
-- **DW-5 (Durable progress ledger):** Task completion records are written to the version-controlled workspace immediately on approval. After any context compaction event, the ledger and git log are authoritative; agent memory is not.
+- **DW-5 (Durable progress ledger):** Task completion records are written to the version-controlled workspace immediately on approval. After any context compaction event, the ledger and git log are authoritative over agent memory — for **what was approved and what was committed**. [MODIFIED v1.2.0] Whether a task is complete is its board card's state (CONV-10); the ledger holds no completion flag of its own, and its record is written before the card moves so a crash between the two leaves a stranded transition to complete, never a card believed done without its evidence.
 - **DW-6 (Workspace isolation):** Feature work runs on an isolated branch created at the start of the workflow. The main/trunk branch is never modified directly during active development.
 - **DW-7 (Model-tier assignment):** Agent model selection is task-type-sensitive. Mechanical transcription tasks use the cheapest viable tier. Multi-file integration and judgment tasks use a capable tier. The final whole-branch review always uses the most capable available tier.
 - **DW-8 (Human checkpoints):** Irreversible or externally visible actions — branch merge, push, force-push, discard — require explicit human authorization at the Deliver stage.
@@ -177,3 +178,4 @@ Accumulated session history is the primary cause of context pollution and inflat
 | 1.0.0 | 2026-06-24 | Initial Stable — DW-1…DW-10 invariants, five-stage pipeline, context discipline rules |
 | 1.1.0 | 2026-08-05 | Added DW-11 (release notes describe the delivered system, never the path to it) — the user-facing note is the base→shipped difference stated as what a consumer can now do; the branch's development narrative (internal version bumps that never reached the trunk, defects introduced and fixed within the branch, review outcomes, plan approvals, scope negotiations, merge/rebase activity, queued-not-shipped work) belongs to a different document, because the reader has no context in which any of it exists. A property of the shipped system is documented as a property, never as a fix to something the reader never had; contributor-facing changes are segregated, not interleaved; and a delivery with nothing consumer-facing gets one honest sentence rather than padding — a note that reaches for content stops being read. Composes reference containment: a consumer-facing note must not cite internal planning artifacts consumers never receive. |
 | 1.0.1 | 2026-08-05 | Related Specifications extended with `l1-change-containment` — the edit-footprint lens that gives DW-4's "nothing extra" verdict a closed finding vocabulary at the Review stage. Link-only; no invariant changed. |
+| 1.2.0 | 2026-10-03 | Amended — DW-5: the ledger and git log are authoritative **over agent memory, for what was approved and committed**; whether a task is complete is its board card's state (CONV-10), and the ledger holds no completion flag of its own. The ledger's Status column and the "skip tasks listed as complete" resume rule made the ledger a second authority for completion, beside the board the rest of the corpus makes the single surface for all work (CONV-1). Evidence first: the approval record is written before the card moves, so a crash between the two leaves a stranded transition the resume step completes — never a card believed done without the verdicts it rests on (QLY-1, QLY-7). Related Specifications extended with `l1-work-convergence`; `l2-development-workflow` follows. Additive — L1 stays Stable (C9). |

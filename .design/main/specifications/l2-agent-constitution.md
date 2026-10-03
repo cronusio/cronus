@@ -1,6 +1,6 @@
 # Agent Constitution
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-memory-model.md
@@ -20,6 +20,8 @@ The concrete mechanism for workspace-scoped agent identity and cross-session mem
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) - [ADDED v1.1.0] the confinement keeps these files unwritable to any confined child even inside a writable root (§4.5 there).
 - [l2-security.md](l2-security.md) - Workspace trust (§4.8): project-tier customization layers and persistent facts load only in a trusted folder (§4.11).
 - [l1-security.md](l1-security.md) - SEC-9(a): a standing answer is an explicit human act — why approvals are excluded from question tuning (§4.21).
+- [l1-work-convergence.md](l1-work-convergence.md) - [ADDED v1.2.0] CONV-2/CONV-4: what a heartbeat item may produce — it drives existing cards or surfaces a finding, and never creates a card itself (§4.5).
+- [l1-intent-resolution.md](l1-intent-resolution.md) - [ADDED v1.2.0] IR-9: the per-task question budget of §4.24 is the blocking-question class, one of several that share the client's attention budget.
 
 ## 1. Motivation
 
@@ -168,6 +170,10 @@ When populated, entries are simple task lines:
 ```
 
 The heartbeat scheduler fires these on the workspace's `heartbeat`-action schedule.
+
+**What a check may produce.** A heartbeat fire creates no card (SCH-4), and a check cannot ask a question (the `clarify` toolset is off in unattended context, `l2-scheduler` §4.6). Each item's outcome therefore converges by exactly one of the two relations a wake has (CONV-4, CONV-5). It **drives**: it advances or unblocks a card that already exists. Or it **surfaces**: it posts a finding to the manager's inbox. Work a finding implies enters the board through ordinary intake, decided by the manager (ORC-3); a check never creates the card itself. An item whose outcome must itself be tracked as work — a weekly report, a recurring audit — is a `routine` schedule, not a heartbeat item. The file is a list of checks, not a second work queue (CONV-1).
+
+**Access.** An item that reaches a mailbox, a calendar or a messenger does so through the connector grants and default-deny egress that govern every tool call (`l2-security`); the file cannot widen them, and an item whose connector is not granted is skipped with that reason recorded. The agent has no write path to the file (SEC-10); it may request a change, and the request is data (§4.25).
 
 ### 4.6 BOOTSTRAP.md — first-run ritual
 
@@ -916,7 +922,7 @@ Agents that ask questions before acting slow down workflows and transfer cogniti
 2. Multiple contradictory requirements exist and resolving them requires human intent.
 3. A required input is absent: missing file, missing credential, undefined variable that has no reasonable default.
 
-**Question budget:** At most two clarifying questions per task. When a third would be needed, the agent makes a reasonable assumption, documents it inline, and proceeds.
+**Question budget:** At most two clarifying questions per task. When a third would be needed, the agent makes a reasonable assumption, documents it inline, and proceeds. This is the blocking-question class of `l1-intent-resolution` IR-9 (b): its two are a ceiling, not a target, they pass grounding and minimality first (`l1-intent-resolution` IR-1, IR-2), and they draw on the client's one attention budget with the other question classes (`l1-intent-resolution` §4.7, GO-7).
 
 **Optimistic default:** When a reasonable interpretation exists, take it. Document the assumption in the output as a single sentence: "Assumed {X} because {Y} — update the input if you meant {Z}." Never more than one such note per artifact.
 
@@ -973,6 +979,7 @@ Acceptance of a staged write is a human act on **that exact content** (CB-1): it
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-03 | §4.5: what a heartbeat item may produce is now stated — an item drives an existing card or surfaces a finding to the manager's inbox and never creates a card itself (SCH-4, CONV-4); work a finding implies enters the board through ordinary intake, and an outcome that must be tracked as work is a `routine` schedule, not a heartbeat item, so the file stays a list of checks and never a second work queue (CONV-1). Access to a mailbox, calendar or messenger goes through the connector grants and default-deny egress of every tool call; the file cannot widen them. The agent's lack of a write path to the file (SEC-10) is restated beside it. §4.24: the per-task question budget is named as the blocking-question class of `l1-intent-resolution` IR-9, a ceiling that draws on the client's one attention budget. Related Specifications extended with `l1-work-convergence` and `l1-intent-resolution`. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Compliance cited a nonexistent `MOD-1` — now OFF-1, with OFF-9 added. §4.10 named a reference framework's own config path — replaced by the workspace configuration. §4.13 let the agent append to SOUL.md, contradicting §4.25 (human-only). §4.21 question tuning auto-applied an answer after three identical replies, which for approvals would be an inferred standing grant (SEC-9(a)) — approvals, consents and authority decisions are excluded. MEMORY.md `read_when` was "bootstrapping" only, so the cheat sheet never loaded — now session start. Project-tier customization layers and persistent facts load only in a trusted workspace (`l2-security` §4.8). |
 | 1.1.0 | 2026-09-19 | New §4.25 — standing-instruction files are a persistence sink. These files are loaded as the agent's own principles at every session start, so a sentence saved into one outlives the conversation and the source that induced it; a write to one is a privileged sink under `l1-action-gating` AG-10. SOUL.md and HEARTBEAT.md are human-written only (no agent write path, SEC-10; a wanted change is a request, which is data); an agent write to PROFILE.md or MEMORY.md derived from untrusted content is staged under `.pending/` for human acceptance of that exact content, unattended callers stage without asking (AG-9), and clean-provenance updates are unchanged. Rule distribution into other tools' files (§4.13) and managed-marker injection (§4.16) recorded as human-initiated installation actions the agent cannot call. §2 and §3 updated; SEC-10 and AG-10 rows added. Distilled from a cross-check of eight external agent command-line tools: protecting the files that carry standing instructions from agent writes, as a prompt-injection persistence vector, was found in the most security-mature of them. |
 | 1.0.10 | 2026-07-16 | Disclosed simplification (FR-6) recorded in §5: the 8-step activation sequence executes as a no-op seam pending agent-session wiring; upgrade trigger = binding activation to session start. History table added with this entry. |

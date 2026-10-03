@@ -1,6 +1,6 @@
 # Storage & State Model
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -14,6 +14,7 @@ The technology-agnostic model for how Cronus stores everything on a user's machi
 - [l1-office-model.md](l1-office-model.md) - Office-per-project isolation (OFF-1) and persistent learning (OFF-9) realized as state scopes.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Concrete OS-native paths and directory trees.
 - [l2-technology-stack.md](l2-technology-stack.md) - Storage technology (SQLite + sqlite-vec, optional remote sync).
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.2.0] which copy of a kind of state is the truth: STO-8's text-first rule is one of three authority classes (SAU-3), and backup, restore and repair decide by the declared class (SAU-5).
 
 ## 1. Motivation
 
@@ -37,7 +38,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **STO-5 (Scope-bound lifecycle):** deleting a scope (office, role, or session) deletes the memory owned by that scope. Only the global level outlives all others. Session memory decays and is pruned over time.
 - **STO-6 (Secret isolation):** secrets are confined to the state tier and MUST be excluded from backups, exports, and version control (consistent with architecture INV-7).
 - **STO-7 (Restore-by-copy):** the mutable state tier (excluding secrets and regenerable caches) is self-contained and restorable by copying it; no hidden external dependency is required to resume.
-- **STO-8 (Human-inspectable state):** durable state SHOULD be human-readable and editable where practical (text/Markdown), with machine indices (databases) derived from it rather than being the sole source of truth.
+- **STO-8 (Human-inspectable state):** durable state SHOULD be human-readable and editable where practical (text/Markdown). [MODIFIED v1.2.0] Where text is the **authority** of its kind, databases and indices over it are derived from it rather than being the sole source of truth. Where a kind is store-authoritative (volume or concurrency a file cannot carry) or record-authoritative (an append-only audit record), the store is the truth and human inspectability is provided by an **export** — a projection that is never an input to rebuilding the store. Which applies is each kind's declaration (SAU-3), not a property of a file type or of a database.
 
 - **STO-9 (Versioned state with forward migration):** [ADDED v1.1.0] every durable state artifact whose shape can evolve carries an explicit **schema version**. On load the runtime validates the structure and, if the on-disk version is older than the program's, applies a **forward, one-way migration** to the current version before use — it never silently loads a shape it does not understand, and never writes a newer shape a prior program version could then misread without a version marker. A destructive rewrite is preceded by a **timestamped backup**, backups are rotated by age, and cross-installation transfer uses an explicit **non-destructive merge** import keyed by record identity (never a blind overwrite). This makes STO-2 durability and STO-7 restore-by-copy survive program upgrades that change the state shape.
 
@@ -119,7 +120,7 @@ reversible (STO-7), and merge-by-identity makes import safe to repeat.
 
 ## 5. Drawbacks & Alternatives
 
-- **Two indices vs one source:** STO-8 implies maintaining derived databases alongside human-readable text, adding sync cost; justified by inspectability and git-friendliness.
+- **Derived indices and exports:** where text is the authority, STO-8 means maintaining derived databases alongside it (sync cost, justified by inspectability and git-friendliness); where a store is the authority, it means maintaining a human-readable export instead (SAU-3). Either way the derived side is rebuilt from the authority and never the reverse (SAU-4).
 - **Alternative — single opaque database:** simpler but violates STO-8 and complicates backup/merge; rejected.
 - **Alternative — one global memory only:** simplest but breaks office isolation (OFF-1) and clean forgetting (STO-5); rejected in favor of multi-level. <!-- TBD: whether global+workspace+employee share one physical database (attached) or separate files -->
 
@@ -135,5 +136,6 @@ reversible (STO-7), and merge-by-identity makes import safe to repeat.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.2.0 | 2026-10-03 | Core Team | STO-8 amended: the text-first rule ("databases derived from human-readable text") is now stated as one of three **authority classes**, not the only one. The learned memory corpus was deliberately made database-authoritative (MEM-4) after STO-8 was written; the blanket sentence survived in this spec and in `l2-filesystem-layout`, and `l2-doctor` still lists a repair ("rebuild the index from source text") that, read literally, rebuilds a truth from its own export. STO-8 now defers the choice to each kind's declaration (`l1-state-authority` SAU-3) and keeps inspectability as an export where the store is the truth. §5's first bullet follows; Related Specifications extended with `l1-state-authority`. No tier, scope or versioning rule changed. L1 stays Stable (C9). |
 | 1.1.0 | 2026-07-01 | Core Team | Added STO-9 (versioned state with forward one-way migration, timestamped pre-write backups with age rotation, non-destructive merge-by-identity import) and §4.4 migration flow; §4.3 backup/update/restore/transfer flows extended to reference it. Makes STO-2 durability and STO-7 restore-by-copy survive program upgrades that change the state shape. |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — STO-1…STO-8, two-tier separation, multi-level memory, backup/update flows. |

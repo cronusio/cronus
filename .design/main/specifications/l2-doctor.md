@@ -1,6 +1,6 @@
 # Doctor
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-doctor.md
@@ -15,6 +15,9 @@ The concrete self-healing service: the health checks it runs, which problems it 
 - [l2-scheduler.md](l2-scheduler.md) - Periodic checks run as a routine.
 - [l2-github-issue.md](l2-github-issue.md) - Unrepairable issues may be reported with consent.
 - [l2-cli.md](l2-cli.md) - Command grammar standard.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.2.0] SAU-4/SAU-5: a repair re-derives projections from their authority and never the reverse; the doctor reads the authority map to know which is which.
+- [l2-filesystem-layout.md](l2-filesystem-layout.md) - [ADDED v1.2.0] §4.6: the authority map the repairs consult by kind.
+- [l2-backup.md](l2-backup.md) - [ADDED v1.2.0] where a damaged authority is restored from.
 
 ## 1. Motivation
 
@@ -30,7 +33,7 @@ The model needs concrete checks and a clear safe/risky split so the office self-
 | L1 Invariant | Implementation |
 | --- | --- |
 | HEAL-1 Continuous checks | A scheduled routine runs the check suite; `doctor` runs it on demand. |
-| HEAL-2 Safe self-repair | Deterministic fixes (re-index, unstick obviously-finished cards, prune dangling sessions) run with `--fix`. |
+| HEAL-2 Safe self-repair | Deterministic fixes (re-derive a projection from its authority, unstick obviously-finished cards, prune dangling sessions) run with `--fix`. A repair runs from authority to projection only: an authority is never regenerated from a projection or an export (`l1-state-authority` SAU-4; the map is `l2-filesystem-layout` §4.6). |
 | HEAL-3 Escalate risky | Ambiguous/destructive fixes are reported with a recommended action, not applied. |
 | HEAL-4 Non-destructive | Checks read-only; repairs snapshot or are reversible. |
 | HEAL-5 Traceable | Every check/repair writes to logs. |
@@ -44,7 +47,7 @@ The model needs concrete checks and a clear safe/risky split so the office self-
 
 | Check | Repair (safe) | Escalate (risky) |
 | --- | --- | --- |
-| store/index consistency | rebuild index from source text | corrupt source data |
+| projection ↔ authority consistency | re-derive the projection (search and vector indices, the wiki cache, the code-intelligence index) from the authority its kind declares | a damaged authority — reported with its restore path (`l2-backup`), never rebuilt from a projection |
 | stuck `running` cards | re-queue clearly-abandoned cards | ambiguous in-progress work |
 | dangling sessions | prune per session-routing | active-looking sessions |
 | config validity | restore missing defaults | conflicting user config |
@@ -124,7 +127,9 @@ Runbook probes (in execution order):
     pass  — every office's directories present; each database opens and reports a schema
             version this build understands (STO-9)
     warn  — a rebuildable cache (a wiki.db projection, a search index) is absent — rebuilt on use
-    fail  — a database from a newer build, or one that fails its integrity check
+    fail  — a database from a newer build, or one that fails its integrity check; an
+            authority that fails is reported with its restore path, never re-derived
+            from a projection or an export (SAU-4)
 
 [build-parity]
   HEAL-8: the build identity each running half loaded (frontend, engine, attached clients)
@@ -179,5 +184,6 @@ Each runbook probe is registered as an extension check (same mechanism as §4.2)
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-03 | The §4.1 check "store/index consistency — rebuild index from source text" assumed one rule for every database: that text is the source and the database an index over it. That is true for text-authoritative kinds and false for the learned memory corpus (MEM-4), the deliberation log and other store- or record-authoritative kinds, for which "source text" is, at best, an export — so the repair, read literally, rebuilt a truth from its own projection. The check is now "projection ↔ authority consistency": the doctor re-derives projections (search and vector indices, the wiki cache, the code-intelligence index) from the authority each kind declares in `l2-filesystem-layout` §4.6, and a damaged authority is reported with its restore path (`l2-backup`) and never regenerated from a projection or an export (`l1-state-authority` SAU-4/SAU-5). HEAL-2's row and the `[state-tree]` probe follow; Related Specifications extended. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): HEAL-7 (user-governed healing authority) and HEAL-8 (build-parity skew) were unmapped — Pending rows. The §4.3 runbook described another product's installation (a four-zone vault, a console build, a "bridge" extension, a foreign service's API URL) that exists nowhere in Cronus — rewritten against Cronus's state tier, tokens, daemon, model providers, search provider, and a build-parity probe. Third-party checks ran in-process with the whole configuration and used a Python packaging syntax — they are manifest-declared, sandboxed, see only declared config keys, and report without repairing. |
 | 1.1.0 | 2026-07-04 | Concurrent probe execution (§4.2): read-only checks/probes run under a bounded cap with per-check timeouts; deterministic report ordering after settle; exclusivity keys for same-resource probes; `--fix` repairs stay serialized after the suite settles. History table added with this entry. |

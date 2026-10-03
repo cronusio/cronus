@@ -1,6 +1,6 @@
 # Development Workflow — Cronus Implementation
 
-**Version:** 1.0.1
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-development-workflow.md
@@ -20,6 +20,8 @@ Cronus implementation of the agent-assisted development workflow. Covers: the bu
 - [l2-version-control.md](l2-version-control.md) — Worktree slug naming, boot sequence, cleanup.
 - [l2-context-management.md](l2-context-management.md) — Context window budgets; motivation for file-handoff discipline.
 - [l2-execution-workspace.md](l2-execution-workspace.md) — The workspace provider the setup skill allocates the isolated worktree through.
+- [l1-work-convergence.md](l1-work-convergence.md) — [ADDED v1.1.0] CONV-3/CONV-10: a plan task executed under this workflow is a board card, and the card's state is the task's completion; the ledger is evidence, not a second status (§4.8).
+- [l2-kanban-board.md](l2-kanban-board.md) — [ADDED v1.1.0] the board whose cards the tasks are; `task_ref` links a card to its plan task.
 
 ## 1. Motivation
 
@@ -40,7 +42,7 @@ An agent that writes code in one long session drifts: its context fills with his
 | DW-2 (Design gate) | The `design` skill includes a `<HARD-GATE>` instruction block; implementation skills (`writing-plans`, `coordinator`) are listed as the only permitted next steps after human approval. The instruction is guidance; the gate is the coordinator, which refuses to start Execute unless the design document carries a human approval the host recorded — a file the agent wrote is not an approval. |
 | DW-3 (Task isolation) | The `task-brief` script extracts a single task to a uniquely named temp file; the coordinator dispatch contains only: brief file path, one-paragraph context, prior-task interface declarations, and report file path. No accumulated history. |
 | DW-4 (Two-stage quality gate) | The reviewer dispatch template requires two explicit verdict lines — `Spec Compliance: ✅/❌` and `Task Quality: Approved / Needs fixes`. A report missing either verdict is treated as BLOCKED by the coordinator. |
-| DW-5 (Durable progress ledger) | On every task approval, the coordinator appends one record to `.cronus/dev/progress.md`. At startup and after any compaction signal, the coordinator reads this file and skips tasks listed as complete. |
+| DW-5 (Durable progress ledger) | On every task approval, the coordinator appends one record to `.cronus/dev/progress.md` — the commits and both verdicts — and only then moves the task's board card to `done`: the card's state is the task's completion, and the ledger's Status column is its projection (§4.8). At startup and after any compaction signal, the coordinator reads the board and the ledger and skips tasks whose card is `done`; a task approved in the ledger whose card has not moved is a stranded transition that is completed, not re-executed, and a card `done` with no approving record is surfaced, not trusted. |
 | DW-6 (Workspace isolation) | The `workspace-setup` skill allocates the worktree through the execution-workspace provider (`l2-execution-workspace`), falling back to `git worktree add`. All implementation work — including the first commit of the design document — runs inside the worktree; the setup never commits to the base branch (§4.10). |
 | DW-7 (Model-tier assignment) | The coordinator sets an explicit `model:` field on every agent dispatch per the tier table in §4.5. Omitting `model:` is treated as a coordinator defect in review. |
 | DW-8 (Human checkpoints) | The `workspace-finish` skill presents four structured options; Option 4 (Discard) requires the user to type the literal word `discard`. The choice is accepted only from a human surface — an option the agent types is not a selection. No merge/push/delete executes before the human selects an option. |
@@ -325,6 +327,9 @@ Base: abc1234
 
 **Ledger discipline:**
 
+- **The task is a card.** Each plan task executed under this workflow is a board card (CONV-3) whose `task_ref` is the task id: the coordinator moves it to `running` on dispatch and to `done` on approval, with the gate results (QLY-1) in its history.
+- **Status is a projection.** The Status column is derived from the task's card (`done` → Complete; `running` or `review` → In Progress) and filled in after the transition, never before it. The ledger is authoritative for *what was approved and committed*; the board for *whether the task is done* (`l1-work-convergence` CONV-10).
+- **Evidence first.** The commits and both verdicts are recorded before the card moves. Evidence without a transition (a crash between the two) completes the transition on resume; a transition without evidence is surfaced and the card is not trusted (QLY-1, QLY-7).
 - Write the Task N record in the same coordinator turn as the review approval — never batch.
 - On resume (after compaction or restart), read the ledger before dispatching any task.
 - If `git log` and the ledger disagree, trust `git log` for commit existence; trust the ledger for review status.
@@ -453,5 +458,6 @@ The `session-start` script reads `skills/bootstrap/SKILL.md` and emits the `addi
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-03 | DW-5 / §4.8: the progress ledger no longer doubles as the completion authority. The workflow's resume rule ("skip tasks listed as complete") and the ledger's Status column made a file in the feature branch a second answer to "is this task done", beside the board that the rest of the corpus makes the single surface for all work (CONV-1) — and this spec never mentioned the board. A plan task is now a board card (`task_ref` = the task id), moved to `running` on dispatch and `done` on approval; the ledger's Status column is a projection; the ledger stays authoritative for what was approved and committed. Evidence is written first, so a crash between the record and the card move leaves a stranded transition the resume step completes, while a card `done` with no approving record is surfaced rather than trusted. Related Specifications extended with `l1-work-convergence` and `l2-kanban-board`. Realizes `l1-development-workflow` 1.2.0. |
 | 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): Missing Motivation and Constraints sections added and sections renumbered to the standard layout (internal references updated). DW-11 (release notes describe the delivered system) was unmapped — Partial row, and the pull-request description follows it. DW-6: the design document was committed before any branch existed and the setup skill committed a `.gitignore` entry — both on the base branch the invariant protects; the design document becomes the branch's first commit and an unignored worktree is placed outside the repository. DW-2 rested on an instruction block — the coordinator now refuses Execute without a host-recorded human approval. The review fix loop had no bound — capped, then BLOCKED to the human; the coordinator's stop conditions include the run budget. Human choices at Deliver are accepted only from a human surface; Merge refuses a dirty main working tree. Host-harness tool names replaced by the execution-workspace provider and the office's shell tool. |
 | 1.0.0 | 2026-06-24 | Initial Stable — bundled skill catalog, dispatch templates, model-tier table, progress ledger, script helpers, workspace lifecycle |

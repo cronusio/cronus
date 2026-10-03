@@ -1,6 +1,6 @@
 # Global Orchestration
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -17,6 +17,8 @@ The global orchestrator is embodied by the default home workspace manager — th
 - [l1-office-model.md](l1-office-model.md) — the office entity that global orchestration governs
 - [l1-acp.md](l1-acp.md) — the protocol by which inter-office messages are routed at the building level
 - [l2-orchestration.md](l2-orchestration.md) — the concrete delegation mechanics that global orchestration builds on
+- [l1-intent-resolution.md](l1-intent-resolution.md) — [ADDED v1.1.0] IR-9: the question classes and the one budget of the client's attention that GO-7 applies across offices
+- [l1-navigation-model.md](l1-navigation-model.md) — [ADDED v1.1.0] the Inbox's Poll/Clarify facet, where held questions stay visible and answerable
 
 ## 1. Motivation
 
@@ -41,6 +43,7 @@ Two problems motivate global orchestration:
 - **GO-4 Unified visibility**: the global orchestrator maintains a live aggregate view of all offices' states (OfficeState, kanban summary, budget consumption, active sessions). This view is read-only toward individual offices; mutation happens through each office's own orchestration path.
 - **GO-5 ACP routing**: cross-office message routing is always mediated by the ACP relay (ACP cross-office routing, `l1-acp.md §4.5`). The global orchestrator is the ACP relay's decision layer — it determines which office should receive a given message.
 - **GO-6 Escalation authority**: the global orchestrator is the escalation target when an office's orchestrator cannot resolve a conflict or requires cross-office resources. The global orchestrator may request a deliberation round (`l1-deliberation.md`) across representatives from multiple offices.
+- **GO-7 One attention budget across offices**: [ADDED v1.1.0] the client is one person with one attention, however many offices run. Questions from every office reach the client through the global orchestrator's single dispatch (`l1-intent-resolution` IR-9): it **merges** questions that ask the same thing, **orders** blocking questions ahead of the rest, **paces** interruptions so a burst from several offices does not become a barrage, and **never drops** a held question — each stays in its office's queue, visible and answerable (`l1-intent-resolution` IR-6). The dispatch reads queues and routes presentation; it neither answers an office's question nor suppresses one (GO-2), and the office remains the owner of its questions' content and bound.
 
 ## 4. Detailed Design
 
@@ -113,6 +116,20 @@ When an office's orchestrator encounters a deadlock, an ambiguous multi-office c
 
 The escalation chain ensures that no cross-cutting decision is made unilaterally by a single office's orchestrator.
 
+### 4.5 Question dispatch (GO-7)
+
+```text
+[REFERENCE]
+dispatch_questions(offices):
+    pending := union of each office's held questions          // read-only, GO-4
+    groups  := merge pending by what is being asked           // duplicates across offices and classes
+    ordered := sort groups by (blocking first, then age)      // l1-intent-resolution IR-9
+    present := take ordered under the pacing limit            // the rest stay held, visible
+    on answer: route the answer to every originating office   // via ACP, GO-5; content untouched
+```
+
+The pacing limit is a presentation setting, not a bound on what an office may ask. A held question is never discarded, and a blocking question is never held behind a non-blocking one. Approvals are not questions (`l1-intent-resolution` IR-9 d) and travel on their own gate channel.
+
 ## 5. Implementation Notes
 
 1. GO-4 (unified visibility) is implemented as a building-level event bus subscription: each office's OfficeState events are forwarded to the global orchestrator's aggregate view without polling.
@@ -122,6 +139,8 @@ The escalation chain ensures that no cross-cutting decision is made unilaterally
 ## 6. Drawbacks & Alternatives
 
 **Alternative: peer-to-peer cross-office communication** — offices communicate directly via ACP without a global orchestrator. Simpler for small setups, but creates a mesh of bilateral connections with no unified routing, visibility, or escalation authority. Rejected for multi-office environments.
+
+**Alternative: each office asks the client directly (GO-7)** — simplest, but N offices become N independent interruption streams to one person, with duplicates and no ordering. Questions to a shared human are cross-office traffic like any other, which GO-1 already routes through the global orchestrator.
 
 **Alternative: no phase-awareness — always "we'll add it later"** — the most common approach in practice, and the source of most architectural debt. Localization, observability, and security added retroactively cost 3–10× more than integrated progressively. GO-3 makes this the agent's invariant rather than a hope.
 
@@ -140,3 +159,4 @@ The escalation chain ensures that no cross-cutting decision is made unilaterally
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — GO-1…GO-6, building structure, phase-awareness protocol with concern catalog, cross-office delegation via ACP, building-level escalation |
+| 1.1.0 | 2026-10-03 | Core Team | Added GO-7 + §4.5 — **one attention budget across offices**. With several offices running, each office's questions (intake clarifications, blocking questions, ask-backs) were bounded in isolation, so nothing bounded or ordered what one client saw in total. GO-7 puts the dispatch at the one place that already sees every office (GO-1/GO-4): it merges identical questions, orders blocking ahead of non-blocking, paces interruptions, and never drops a held question; it routes presentation and neither answers nor suppresses an office's question (GO-2). Applies `l1-intent-resolution` IR-9. Related Specifications extended with `l1-intent-resolution` and `l1-navigation-model`; one rejected alternative (each office asks directly). Additive — L1 stays Stable (C9); `l2-global-orchestration` carries GO-7 as a pending compliance row. |

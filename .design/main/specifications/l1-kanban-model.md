@@ -1,6 +1,6 @@
 # Kanban Model
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -31,7 +31,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 
 - **KAN-1 (Canonical pipeline):** every office has exactly one board of record with the fixed, ordered states `triage → todo → ready → running → blocked → done`. The canonical states always exist, keep their semantics, and cannot be removed or renamed; custom structures extend them, never replace them (KAN-8).
 - **KAN-2 (Office-managed, not client-managed):** cards are created and moved by the manager and agents. The client MAY view the board but MUST NOT be required to manage it (consistent with OFF-5).
-- **KAN-3 (Auto-archival terminal):** `done` cards are archived automatically by a defined condition (e.g. age, or project closure). Archival is an automatic action, not a manual board column.
+- **KAN-3 (Auto-archival terminal):** `done` cards are archived automatically by a defined condition — by default a fixed age after the card entered `done`, and at once on project closure. [ADDED v1.2.0] A card may be **pinned**, which exempts it from the age condition (never from project closure). Archival is an automatic action, not a manual board column.
 - **KAN-4 (Non-destructive archive):** archived cards are retained as durable history; archival MUST NOT destroy the record of completed work.
 - **KAN-5 (Card = unit of work):** a card represents one task/work unit; its state reflects progress. A `blocked` card MUST record the reason for the block.
 - **KAN-6 (One board per office / isolation):** exactly one board exists per workspace and never spans offices (consistent with OFF-1).
@@ -68,7 +68,7 @@ The office manager triages incoming work and routes it; agents pull `ready` work
 
 ### 4.3 Archival
 
-When a `done` card meets the archival condition, it is moved out of the active board into the archive store, preserved for history and learning (KAN-3, KAN-4). The active board therefore shows only live and recently-finished work.
+When a `done` card meets the archival condition, it is moved out of the active board into the archive store, preserved for history and learning (KAN-3, KAN-4). The active board therefore shows only live and recently-finished work. The age is counted from the card's last entry into `done` — a card that leaves and re-enters it starts again — and a pinned card stays on the board until its pin is removed or the project closes.
 
 ### 4.4 Custom columns & boards
 
@@ -81,7 +81,8 @@ A custom board is a saved view (filter/scope/grouping) over the office's single 
 - **Fixed states reduce flexibility:** resolved in v1.1.0 — the canonical pipeline stays the mandatory semantic backbone, and offices layer custom columns/boards on top as mapped extensions (KAN-8). The universal vocabulary is preserved because every custom column anchors to a canonical state.
 - **Alternative — freeform user-defined state sets (no canonical backbone):** rejected; cross-office projections, archival semantics, and convergence relations would lose their shared vocabulary, and every consumer would need per-office mapping tables.
 - **Alternative — manual archive column:** rejected; it would force the client to tidy the board, violating KAN-2/OFF-5.
-- **Alternative — no archive:** rejected; loses the record of completed work needed for learning (OFF-9). <!-- TBD: default auto-archival condition (age threshold vs project-closure) -->
+- **Alternative — no archive:** rejected; loses the record of completed work needed for learning (OFF-9).
+- **Default archival condition — resolved (KAN-3):** age after `done`, plus an immediate sweep at project closure. Age alone would leave a finished project's board cluttered until its last card aged out; closure alone would let a long-running project's board grow without bound. The age threshold itself is a realization setting.
 
 ## Canonical References
 
@@ -96,3 +97,4 @@ A custom board is a saved view (filter/scope/grouping) over the office's single 
 | --- | --- | --- |
 | 1.0.0 | 2026-06-24 | Initial stable spec — canonical pipeline, office-managed movement, auto-archival, KAN-1…KAN-7 |
 | 1.1.0 | 2026-07-03 | KAN-8 added — custom columns/boards legitimized as mapped extensions: every custom column anchors to exactly one canonical state, custom boards are views over the single card set; KAN-1 rephrased (canonical states non-removable rather than "not user-redefinable"); §4.4 mapping model added; resolves the contradiction with l1-office-model §4 ("custom columns allowed") and l2-app-ui ("+ custom boards"). Additive — L1 stays Stable; L2 kanban-board reconciled in the same batch. |
+| 1.2.0 | 2026-10-03 | KAN-3 amended — the open §5 question of the default auto-archival condition is resolved: age after `done`, plus an immediate sweep at project closure (age alone leaves a finished project's board cluttered, closure alone lets a long-running board grow without bound), and a card may be **pinned** to stay past the age condition (never past closure). The age counts from the card's last entry into `done`. The threshold is a realization setting. Additive — L1 stays Stable (C9); `l2-kanban-board` carries the default and the `pinned` field in the same pass. |

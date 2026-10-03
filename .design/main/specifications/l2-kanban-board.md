@@ -1,6 +1,6 @@
 # Kanban Board
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-kanban-model.md
@@ -35,7 +35,7 @@ The model requires a single per-office board, office-driven movement, and automa
 | --- | --- |
 | KAN-1 Canonical pipeline | A single board of record with the fixed ordered canonical states; the canonical state is an enum and cannot be removed or renamed. |
 | KAN-2 Office-managed | Manager/agents call `board.move`; the client UI is read-first; no client setup required. |
-| KAN-3 Auto-archival | A scheduled archival job moves `done` cards meeting the condition into `<ws>/kanban/archive/`. |
+| KAN-3 Auto-archival | A scheduled archival job moves `done` cards meeting the condition into `<ws>/kanban/archive/`. The default condition is age after the card last entered `done` (14 days) plus an immediate sweep at project closure; a `pinned` card is exempt from the age condition, never from the closure sweep (§4.3). |
 | KAN-4 Non-destructive archive | Archived cards are moved (not deleted); they remain readable in the archive store. |
 | KAN-5 Card = unit of work | Each card record references a task and carries `state`; `blocked` requires a `reason`. |
 | KAN-6 One board / isolation | Exactly one board per `<ws>/kanban/`; no cross-office board. |
@@ -69,6 +69,7 @@ Card record (conceptual):
   workspace_kind: "local"|"remote"|"ssh"|null,  // where the task executes
   workspace_path: String | null,     // local dir path or SSH remote path for execution
   max_retries: u8,                   // max retry attempts on failure; 0 = no retry (default)
+  pinned: bool,                      // KAN-3: exempts the card from the age archival condition; default false
   history[ {from, to, actor, at, reason} ],  // KAN-7 traceability
   created_at, updated_at
 }
@@ -86,7 +87,14 @@ Forward flow is normal; backward moves (`blocked → ready`, `running → todo`)
 
 ### 4.3 Auto-archival job
 
-A scheduled job (run by the core, owned operationally by the archivist/curator) scans `done` cards and moves those meeting the condition into `archive/`. Default condition is configurable. <!-- TBD: default condition — age threshold (e.g. N days in done) vs only-on-project-closure -->
+A scheduled job (run by the core, owned operationally by the archivist/curator) scans `done` cards and moves those meeting the condition into `archive/`. The condition is configured in `board.json`:
+
+```text
+[REFERENCE]
+archive_condition: { type: "age", days: 14 }   // default — days since the card last entered `done`
+```
+
+The age clock starts when the card enters `done` and restarts if it leaves and re-enters (a backward move is explicit, KAN-7). A `pinned` card is exempt from the age condition. Project closure archives every `done` card at once, pinned or not. Archival is a move, never a deletion (KAN-4): the archived card keeps its history, events and comments, and `board.archive` is also the manual withdrawal used for a cancelled unit (`l1-task-graph-model` §5.1). A card in a custom column archives by its anchor state (KAN-8). The 14-day default is a starting point to be tuned against real boards.
 
 ### 4.4 Command surface
 
@@ -192,8 +200,8 @@ KanbanEvent {
   id: String,
   card_id: String,
   run_id: String | null,   // set when the event is scoped to a specific run
-  kind: String,            // "state_changed"|"skill_applied"|"retry_triggered"|"comment_added"
-  payload: JSON | null,    // kind-specific data; e.g. {from, to} for state_changed
+  kind: String,            // "state_changed"|"skill_applied"|"retry_triggered"|"comment_added"|"routine_fire_folded"
+  payload: JSON | null,    // kind-specific data; e.g. {from, to} for state_changed; {count, last_fire_at_ms, skipped} for routine_fire_folded (SCH-9)
   created_at: i64          // Unix ms
 }
 ```
@@ -440,3 +448,4 @@ Symmetrically for P2 → P3.
 | ≤1.0.5 | 2026-06-24…2026-07-02 | Initial stable spec and incremental extensions (storage, transitions, archival job, execution semantics, event/comment logs) |
 | 1.1.0 | 2026-07-03 | KAN-8 reconciliation — "no user-defined boards" constraint replaced with the mapped-extension model: custom columns carry a mandatory canonical `anchor` in `board.json`, custom boards are saved views over the single card set; compliance row added; storage comment extended. Aligns with l1-kanban-model 1.1.0. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): `checkoutRunId` was "never cleared by the run itself", so a normally finished run kept its card claimed — released when the run ends, by stale cleanup when it dies, never by another run; stale-cleanup returns now count against `max_retries`, so a card whose runs keep dying cannot cycle forever. The card delegation cap (10) exceeded the runtime spawn cap (3) and was unreachable — it defaults to and moves with `MAX_SPAWN_DEPTH`. The sprint status file claimed to be the single source of truth for completion beside the board of record (KAN-1) — it is a projection of the board, with the story-status mapping defined. `priority` carried two vocabularies (urgency and P1–P3 delivery tier) — the tier is its own field; a non-canonical `Backlog` state and mismatched field names (`status`, `depends_on`) aligned with the card record. Plan-task criteria (`verify`, acceptance, done) are immutable to their executor (LG-3), run sandboxed, and a check that cannot fail is not proof; a checkpoint's resume signal comes only from the user. |
+| 1.2.0 | 2026-10-03 | §4.3: the default auto-archival condition is decided (it was a TBD since 1.0.0) — age after the card last entered `done`, 14 days, plus an immediate sweep at project closure; `[DR]` 14 days because it keeps a fortnight of finished work visible to the client without letting a long-running board grow without bound, and it is a starting point tuned against real boards. New card field `pinned` (default false) exempts a card from the age condition, never from the closure sweep; `board.archive` is also the manual withdrawal for a cancelled unit (`l1-task-graph-model` §5.1, KAN-4). §4.7: new `routine_fire_folded` event kind, the mark a routine fire leaves on the still-open card it was folded into (`l2-scheduler` §4.4, SCH-9). KAN-3 compliance row updated. Realizes `l1-kanban-model` 1.2.0. |

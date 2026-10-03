@@ -1,6 +1,6 @@
 # Global Orchestration
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-global-orchestration.md
@@ -17,6 +17,7 @@ The concrete building-level coordinator in `crates/core`, embodied by the home w
 - [l2-office-control.md](l2-office-control.md) — OfficeState events feeding the aggregate view (GO-4) and routing decisions.
 - [l2-deliberation.md](l2-deliberation.md) — cross-office deliberation rounds (GO-6).
 - [l2-workspace-management.md](l2-workspace-management.md) — the home workspace hosting the global orchestrator.
+- [l1-intent-resolution.md](l1-intent-resolution.md) — [ADDED v1.0.2] IR-9: the question classes and the one attention budget that the GO-7 dispatch applies across offices.
 
 ## 1. Motivation
 
@@ -40,6 +41,7 @@ The model requires one building-level coordinator that routes across offices, en
 | GO-4 Unified visibility | A building event bus subscribes to every office's `OfficeStateChanged` + kanban-summary + budget + session events into a read-only aggregate view; mutation only via each office's own path. |
 | GO-5 ACP routing | Cross-office messages route over the l2-acp relay; the coordinator is the relay's decision layer — it inspects the envelope (target, session) but never message content. |
 | GO-6 Escalation authority | An office escalation resolves directly, requests a cross-office deliberation round (l2-deliberation) among affected offices' orchestrators, or escalates to the user (HITL, ORC-9). |
+| GO-7 One attention budget across offices | **Pending.** The dispatch of `l1-global-orchestration` §4.5 — merge identical questions, order blocking first, pace interruptions, never drop a held one — reads each office's held questions through the same read-only aggregate view as GO-4 and presents them in the home workspace's Poll/Clarify facet; answers route back over the ACP relay (GO-5) with content untouched. The pacing limit is a presentation setting. Not built: the aggregate view carries no question queue yet. |
 
 ## 4. Detailed Design
 
@@ -100,5 +102,6 @@ An office deadlock / multi-office conflict escalates to the coordinator, which r
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-10-03 | Core Team | GO-7 (one attention budget across offices, added to the parent in 1.1.0) mapped as a **Pending** row: the question dispatch reads the held questions of every office through the read-only aggregate view and presents them in the home Poll/Clarify facet, with answers routed back over ACP; the aggregate view carries no question queue yet. Related Specifications extended with `l1-intent-resolution`. No other behaviour changed. |
 | 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): GO-3 had the coordinator write annotations into an office's card, contradicting GO-2/GO-4 and its own "never mutates office internals", and it reacted to card creation, racing the office's start — it is now a gate the office runs before a new-component card moves to running, with the office applying the concerns itself (and applying the catalog on its own when no coordinator exists). A message to a paused or hibernating office was "bypassed" — returned or held, never dropped. Cross-office sends are outbound sinks subject to confidentiality capacity checked on side-band labels (CF-4/CF-10). Phase numbering now reads the office's plan artifacts, not an ambiguous `PLAN.md`. |
 | 1.0.0 | 2026-07-03 | Core Team | Initial implementation spec — home-manager coordinator, event-bus aggregate view, ACP relay router, phase-awareness card annotation, building-level escalation with cross-office deliberation + HITL; maps GO-1…GO-6. |

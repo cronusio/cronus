@@ -1,6 +1,6 @@
 # Intent Resolution
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -17,6 +17,10 @@ How the office turns under-specified client intent into correct action **without
 - [l1-memory-model.md](l1-memory-model.md) - Memory and prior decisions are grounding sources resolved before any question.
 - [l2-agent-autonomy.md](l2-agent-autonomy.md) - Risk-class gating (read/write/network/install/destructive) the ask-or-assume threshold composes with; destructive always escalates.
 - [l1-task-graph-model.md](l1-task-graph-model.md) - TG-9 drift-driven re-planning: correcting an assumption re-plans dependent work rather than letting it drift.
+- [l1-global-orchestration.md](l1-global-orchestration.md) - [ADDED v1.2.0] GO-7: the building-level dispatch that applies IR-9's one attention budget across offices.
+- [l1-action-gating.md](l1-action-gating.md) - [ADDED v1.2.0] AG-3: an approval is a gate decision on the friction ladder, a consent act and not a question (IR-9 d).
+- [l1-navigation-model.md](l1-navigation-model.md) - [ADDED v1.2.0] the Inbox's Poll/Clarify facet, where held questions stay visible and answerable (IR-6, IR-9).
+- [l1-honest-solicitation.md](l1-honest-solicitation.md) - [ADDED v1.2.0] how each ask reads: an ask informs the decision and never moves it (HSO).
 
 ## 1. Motivation
 
@@ -51,6 +55,8 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **IR-7 (Correction propagates; assumptions feed learning):** correcting an assumption re-plans the dependent work rather than leaving it to drift (TG-9). A class of assumption the client repeatedly confirms is promoted to a stated default/preference (user model) so the office stops re-deriving it; a class repeatedly corrected becomes a recorded anti-pattern (self-improvement) so the office stops repeating the wrong guess.
 
 - **IR-8 (Interpretation fidelity — confirm a stated intent when its reading is genuinely uncertain):** IR-1…IR-7 resolve what the client left *unsaid*; IR-8 governs the distinct risk of *misreading what they did say*. When the office's confidence in its **interpretation** of a stated idea or requirement is genuinely low — the phrasing admits materially different readings, or the idea is about to be transformed into a durable, high-leverage artifact (a specification, a plan) where a misread would propagate into everything built from it — the office confirms its understanding **before** building on it, by **restating its interpretation back** ("here is what I understood: … — is that right?") for the client to validate or correct. This is not a front-loaded interview (it reaffirms IR-2 / §4.4): it is **uncertainty-gated** — only genuine interpretation-doubt or a high-leverage transform triggers it, never a routine quiz — and it is **lower-friction than a clarifying question**, reflecting the office's own reading back for a cheap confirm/adjust rather than interrogating the client for missing information (that is gap-resolution, IR-2). A confidently-wrong interpretation carried silently into a spec is the failure this prevents; a corrected interpretation propagates and feeds learning exactly as a corrected assumption does (IR-7).
+
+- **IR-9 (Questions come in classes, each with its own bound, and all of them draw on one budget of the client's attention):** [ADDED v1.2.0] IR-2 governs *whether* to ask; this governs how the different kinds of question the office can put to a client relate to each other. The classes are distinct and not interchangeable: (a) an **intake or planning clarification** — a batch put before work is planned from an under-specified brief; (b) a **blocking question mid-work** — a gap that cannot be assumed past (IR-2, IR-5), bounded per task, beyond which the office assumes and records (IR-3); (c) a **post-session ask-back** — a system-drafted question from a session that ended in confusion, bounded per project and never blocking the next task; (d) an **approval** — a gate decision (ORC-9, the action-gating tiers), which is a consent act and is not counted as a question; (e) an **open-clarification measure** — a health figure over a planning artifact, which describes the office's state and is never itself put to the client. The owning specification of each class states its bound, and a bound is a ceiling, never a target: every question still passes IR-1 and IR-2 first. Across classes and across offices the client has **one budget of attention**: whatever a class's own bound, the questions that reach the client are ordered blocking-first, merged when two offices or two classes ask the same thing, and never dropped silently — a question held back is kept, visible and answerable later (IR-6), and one that gains a blocker is promoted. The building-level dispatch that applies this across offices is GO-7. A client-chosen engagement or autonomy profile, if one is offered, modulates only how questions are explained and how often non-blocking ones are batched; it never lowers an approval gate (AG-3) or removes a class bound.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -141,12 +147,27 @@ interpretation-uncertainty and for the moment an idea is about to become a durab
 high-leverage artifact where a silent misread would propagate into everything built from
 it — the ideation → specification boundary being the canonical trigger.
 
+### 4.7 Question classes and the attention budget (IR-9)
+
+The bounds live with the specifications that own each class, so they can change without this spec changing; the table fixes the classes and what each one is *for*.
+
+| Class | Typical case | Blocks work? | Bound stated by | When held back |
+| --- | --- | --- | --- | --- |
+| (a) Intake or planning clarification | a batch of scope questions before a plan is written | planning waits for it | `l2-mission-mode` §4.14 | kept in the clarify list, answerable later |
+| (b) Blocking question mid-work | which of two incompatible readings to build | that task | `l2-agent-constitution` §4.24 | until the task needs it, then promoted |
+| (c) Post-session ask-back | a question drafted after a session that ended in confusion | never | `l2-self-improvement` §4.4 | one pending per project; the rest are not stored |
+| (d) Approval | a gate decision before an irreversible act | the gated act | `l1-action-gating`, ORC-9 | not a question — a separate consent channel |
+| (e) Open-clarification measure | the count of unanswered planning clarifications in a health score | no | `l2-self-improvement` §4.11 | never put to the client |
+
+Presentation across all of them is blocking-first, merged on identical asks, and never silent about what is held. The Poll/Clarify facet of the inbox (`l1-navigation-model`) is where held questions stay visible, and how each one reads is governed by `l1-honest-solicitation`.
+
 ## 5. Drawbacks & Alternatives
 
 - **Recording overhead.** Writing down every assumption is more than guessing. Mitigation: only *material* assumptions need surfacing (IR-6); trivial defaults are recorded cheaply and never shown unless asked. The cost is small against one avoided wrong build (the "40% of the budget spent producing the wrong thing" failure).
 - **Wrong assumptions still happen.** Grounding can miss and a default can be wrong. Mitigation: IR-4 reversibility + IR-6 surfacing make a wrong assumption cheap to correct, and IR-7 ensures the same wrong guess is not repeated. The guarantee is correctability, not omniscience.
 - **Alternative — interview the client up front.** Rejected for this office: it violates the non-technical, autonomy-first, under-the-hood posture (OFF-5), and most of its questions are answerable without the client.
 - **Alternative — pure OFF-6 (ask only on blocking ambiguity, nothing else).** Insufficient alone: it says when to ask but leaves every non-asked gap to a silent guess. IR-3's assume-and-record is the missing half that makes "rarely ask" safe.
+- **Alternative — one global question cap (IR-9).** Rejected: the classes differ in what they cost the client and whether work waits (a blocking question and a post-session ask-back are not interchangeable), so a single number would either starve the urgent class or license the idle one. A shared *budget of attention* with per-class ceilings and a blocking-first order keeps both.
 - **Alternative — treat assumptions as ledger facts.** Rejected: an assumption is provisional and the ledger is asserted ground truth; conflating them lets soft guesses harden into unquestioned fact (violates OL semantics) — IR-4 keeps them distinct.
 
 ## Canonical References
@@ -165,3 +186,4 @@ it — the ideation → specification boundary being the canonical trigger.
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-06-26 | Core Team | Initial spec — autonomous intent-gap resolution without interviewing: ground-before-ask (IR-1), ask-only-when-blocking-and-costly minimal/non-technical/batched (IR-2), assume-and-record-never-silently-guess (IR-3), assumption≠fact/reversible (IR-4), risk-proportional ask-or-assume (IR-5), surface-at-the-right-gate (IR-6), correction-propagates + assumptions-feed-learning (IR-7); operationalizes OFF-5/OFF-6 and resolves the acting-on-misread-intent risk; adapts the external "spec-first / 0%-guesses / interview-me" pattern to the office's autonomy-first, non-technical-client posture (interview deliberately rejected). |
 | 1.1.0 | 2026-07-15 | Core Team | Added IR-8 (interpretation fidelity — confirm a stated intent when its reading is genuinely uncertain) + §4.6 — a distinct axis from IR-1…7 gap-resolution: IR-1…7 resolve what the client left *unsaid*, IR-8 guards against *misreading what they did say*. When confidence in the *interpretation* of a stated idea/requirement is genuinely low (phrasing admits materially different readings) or the idea is about to become a durable high-leverage artifact (a spec/plan) where a misread propagates, the office confirms understanding *before* building on it by **restating its interpretation back** ("here's what I understood: … — right?") for validate/correct; uncertainty-gated and lower-friction than an IR-2 clarifying question (it *reflects* the office's reading rather than *interrogating* the client for missing info), reaffirming IR-2/§4.4 anti-interview; a corrected interpretation propagates + feeds learning as a corrected assumption does (IR-7); the ideation → specification boundary is the canonical trigger. Sharpens the "acting-on-misread-intent" claim the 1.0.0 spec made only via gap-resolution. Additive — L1 stays Stable (C9). |
+| 1.2.0 | 2026-10-03 | Core Team | Added IR-9 + §4.7 — questions come in **classes**, each with its own bound, and all of them draw on **one budget of the client's attention**. IR-2 governs whether to ask; the corpus nonetheless carried four unrelated question limits in four places (a ceiling on the planning-clarification batch, a per-task budget, a one-pending ask-back per project, a "few open" health threshold) with no shared frame, so nothing said how they combine and nothing bounded the total a client sees across offices. IR-9 names five classes (intake/planning clarification, blocking question mid-work, post-session ask-back, approval — a consent act that is not counted as a question —, and the open-clarification measure — a health figure never put to the client), leaves each bound with its owning specification as a ceiling rather than a target, and states the cross-class rule: questions reach the client blocking-first, merged when identical, never dropped silently, and promoted if they gain a blocker. `l1-global-orchestration` GO-7 applies it across offices. Related Specifications extended with `l1-global-orchestration`, `l1-action-gating`, `l1-navigation-model`, `l1-honest-solicitation`. Additive — L1 stays Stable (C9). |

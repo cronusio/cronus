@@ -1,6 +1,6 @@
 # Backup & Restore
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-storage-model.md
@@ -16,6 +16,7 @@ The concrete backup/restore realization of the storage model's restore-by-copy i
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - What is in the state tier; cache/log locations excluded.
 - [l2-security.md](l2-security.md) - Secrets excluded from backups.
 - [l2-scheduler.md](l2-scheduler.md) - Optional scheduled backups.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.1.2] SAU-5: what a backup includes is decided by each kind's declared authority, not by file type or storage engine; the map is `l2-filesystem-layout` §4.6.
 
 ## 1. Motivation
 
@@ -40,6 +41,7 @@ The storage model guarantees the state tier is restorable by copying it. This sp
 | STO-7 Restore-by-copy | A backup is a copy of the state tier (minus secrets/cache); restore drops it back into an empty state tier, and over an existing one only through the guarded path of §4.2. |
 | STO-8 Human-inspectable state | The archive is a plain container of the state tier's own files and database snapshots — inspectable with ordinary tools, not a proprietary blob. |
 | STO-9 Versioned state with forward migration | Every archive records the program and state-schema version it was taken from. Restoring an archive from an older version migrates it forward on load; one from a **newer** version is refused rather than loaded into a shape the program does not understand. Restoring over an existing state tier is a destructive rewrite, so it is preceded by a timestamped backup of the current state, and a cross-installation transfer merges by record identity instead of overwriting blindly (§4.2). |
+| SAU-5 Backup, restore, export, sync and repair decide by the declared class (`l1-state-authority`) | The include/exclude sets of §4.1 are read from the authority map (`l2-filesystem-layout` §4.6): every authority is included, a projection or cache is excluded by that declaration, so excluding a "derived" store can never exclude a truth; a costly-to-rebuild projection may be included for rebuild cost and is then marked as a projection in the archive. A restore brings authorities back and leaves projections to re-derive. |
 
 ## 4. Detailed Design
 
@@ -51,6 +53,8 @@ The storage model guarantees the state tier is restorable by copying it. This sp
 | memory, graph, skills | cache (regenerable) |
 | workspaces (offices): board, sessions, schedules, snapshots, office layout | logs (optional) |
 | hired employees (config, memory, skills, skins) | — |
+
+The sets above follow the authority map: each row is an authority (or a costly-to-rebuild projection kept for cost), and the cache row is a projection excluded by declaration (`l1-state-authority` SAU-5). A new kind of state is added to the map first and lands in one column here by its class, never by its file type.
 
 ### 4.2 Flow
 
@@ -105,6 +109,7 @@ A restore keeps workspace identities exactly: encrypted memory is bound to its w
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.2 | 2026-10-03 | Patch — the include/exclude sets of §4.1 are now stated as following the authority map (`l2-filesystem-layout` §4.6): every authority is included and a projection or cache is excluded by declaration, so excluding a "derived" store can never exclude a truth (`l1-state-authority` SAU-5). Compliance row added; no set changed. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): STO-3, STO-4, STO-8 and STO-9 were unmapped. Restore "placed the state tier back" — a blind overwrite of current state that STO-9 forbids, with no version check: archives now carry their version (a newer archive is refused, an older one migrated forward), and restoring over existing state first backs it up and asks replace-or-merge-by-identity; offices are paused first. A restore that would rename a workspace is stopped, since encrypted memory is bound to workspace identity; encrypted memory returns with the user's password. |
 | 1.1.0 | 2026-07-04 | Non-blocking consistent capture (§4.2): backup runs on the durable background tier with progress events; live SQLite captured via online-backup snapshot semantics (never raw-copied under active writers); rate-capped I/O. |
 | 1.0.0 | 2026-06-24 | Initial spec — include/exclude sets, flow, command surface. |

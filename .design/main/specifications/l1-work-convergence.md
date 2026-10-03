@@ -1,6 +1,6 @@
 # Work Convergence
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** concept
 
@@ -14,12 +14,13 @@ This is a **model-spec** — a sibling to [l1-kanban-model.md](l1-kanban-model.m
 
 - [l1-kanban-model.md](l1-kanban-model.md) - The single board activity converges onto; supplies the pipeline (KAN-1), the card as unit of work (KAN-5), office-management (KAN-2), and traceable transitions (KAN-7) this contract binds every stream to.
 - [l1-scheduler-model.md](l1-scheduler-model.md) - Time-driven streams: `routine` fires *materialize* cards (SCH-3), `wake`/pulse *drives* the board without creating a card (SCH-4), `reminder` *surfaces*; this spec classifies each and reconciles "pulse passes through the board" with SCH-4.
-- [l1-task-graph-model.md](l1-task-graph-model.md) - The decomposition algebra whose task units *materialize* as cards; the board *tracks* what the plan produces.
+- [l1-task-graph-model.md](l1-task-graph-model.md) - The decomposition algebra whose task units *materialize* as cards; the board *tracks* what the plan produces. [ADDED v1.3.0] TG-11 reads a materialized unit's execution status from the card (CONV-10) instead of storing a second one; its §5.1 carries the plan-status ↔ board-state mapping.
 - [l1-automation-pipeline.md](l1-automation-pipeline.md) - Event-driven reactions: `kanban_event` triggers and board-mutating actions are *drive*-relation participants; work an automation spawns *materializes* as a card, never a shadow queue.
 - [l1-work-liveness.md](l1-work-liveness.md) - The affirmative liveness contract (WL-3) is why the board can hold no silently-dead work; convergence makes the board the surface that contract keeps honest.
 - [l1-office-model.md](l1-office-model.md) - Managed work lifecycle (OFF-7) and client-not-managing (OFF-5); convergence never shifts board management to the client.
 - [l1-global-orchestration.md](l1-global-orchestration.md) - Building-level unified visibility (GO-4) is a read-only projection *of* office boards; convergence makes each board the ground truth those views roll up from.
 - [l1-work-import.md](l1-work-import.md) - Onboarding migration of an existing external backlog; imported work-items are a *materialize* stream (§4.2) that lands as canonical cards, never a shadow queue.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.3.0] the general contract CONV-10 instantiates for work: one authority per kind of state, every other representation a projection or a description of a different object. CONV-8 and CONV-10 are its two work-side cases.
 
 ## 1. Motivation
 
@@ -51,6 +52,8 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **CONV-8 (Aggregate views project from boards, never replace them):** any higher-level or cross-office activity view is a read-only projection *of* office boards, not an independent source of truth (composing GO-4). The per-office board is ground truth; building-level visibility rolls up from it and never becomes a competing off-board record.
 
 - **CONV-9 (A decision-shaped unit converges like any other; it is not a second queue):** [ADDED v1.2.0] work whose product is a **decision** rather than a deliverable — a question whose resolution unblocks planning — converges on the same board, under the same rules, as every other stream. CONV-3's *one kind of work unit* is honoured **by construction**: a decision unit is a card whose completion criterion is a **recorded answer**, never a parallel representation with its own lifecycle, its own states, or its own private queue. Two rules keep this from becoming a loophole. It declares its relation from the **same closed set** (CONV-2), so an exploratory effort is exactly as visible as an executing one and *what is this office doing* is answered identically whether the office is deciding or building. And a decision unit **may not carry a deliverable as its product**: a unit that produced one has changed kind, and the board shows the change rather than absorbing it silently. The failure this closes is a planning phase run off-board on the grounds that it is "not work yet" — which is the shadow work CONV-1 forbids, wearing a phase name.
+
+- **CONV-10 (Execution state has one owner — the card; every other status is a projection or describes a different object):** [ADDED v1.3.0] whether a unit of work is waiting, running, blocked or done is its **execution state**, and it has exactly one authority: the card on the board (KAN-1, CONV-3). Every other place that carries a status for the same work is one of two things, and declares which. It is a **projection** — a plan unit's status, a progress-ledger row, a sprint or milestone file, a report line, an office-view node — read from the card or written in the same act as the card's transition, never edited on its own, and never allowed to disagree with the card for longer than one propagation. Or it describes a **different object** — whether an artifact exists and validates, whether a change record has merged, whether a unit has been scoped out of the plan — in a vocabulary that does not claim the work is complete. A status that is neither is a competing truth: two records each believing they know whether the work is finished, which diverge at the first interruption between the two writes. Journals, ledgers and reports stay authoritative for **the events they record** — what was approved, what was committed — and are the evidence a card's transition rests on (QLY-1, QLY-7); they carry no completion flag of their own. A planning disposition the board has no state for (deferred, cancelled) is a fact about the *plan* and lives with it; a card that exists for such a unit follows the board's own vocabulary — a custom column anchored to a canonical state (KAN-8), or withdrawal to the archive with the reason recorded (KAN-4) — and the board gains no state for it (KAN-1). The general contract is `l1-state-authority`; this is its work-state case.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -102,11 +105,27 @@ The scheduler model already calls the heartbeat "the office's pulse" and says it
 
 CONV-3 and CONV-6 together forbid the most common way convergence erodes in practice: a subsystem quietly keeping its own list of "pending things to do" that never surfaces as cards. A scheduled routine does not maintain a private backlog — it materializes a card and the card *is* the backlog entry. An automation does not hold a hidden queue of reactions — its board-affecting effects are cards (materialize) or transitions (drive). The board is not a *reflection* of where the work is; it is *where the work is*. Any design that would answer "what work is pending?" from somewhere other than the board (plus its archive) has already violated CONV-1.
 
+### 4.5 One execution state, many views (CONV-10)
+
+CONV-3 and CONV-6 stop a second *queue* of work. CONV-10 stops a second *verdict* on the same work, which is the quieter way for convergence to erode: the units are all cards, but a plan, a tracking file, a progress ledger or an artifact registry each keep a word of their own for "finished". Seen from the board:
+
+| Where a status appears | Relation to the card | Reads from |
+| --- | --- | --- |
+| Plan unit status (task graph) | projection | the card's state, through the mapping in `l1-task-graph-model` §5.1 |
+| Sprint or milestone tracking file | projection | the card's state (`l2-kanban-board` §4.8) |
+| Progress-ledger row | projection (the status) and evidence (commits, verdicts) | the card for status; the verdicts and commits are the ledger's own events |
+| Artifact registry status | a different object | whether the artifact exists and validates; never "done" about the work |
+| Change-record lifecycle (active, archived) | a different object | whether the change has merged and been archived |
+| Office view, dashboards, wiki | projection | the card's state (CONV-8, OVZ-1, PW-3) |
+
+The test for any new status vocabulary is one question: *if this record and the card disagreed, which would be believed?* The answer must always be the card, or the record must not be about the work's completion.
+
 ## 5. Drawbacks & Alternatives
 
 - **Pressure to over-materialize:** a naive reading of "everything goes through the board" tempts an implementation to spawn a card for every heartbeat and every notification, which would flood the board and violate SCH-4. The three-relation model (CONV-2) exists exactly to resist this: *drive* and *surface* are first-class, so most activity legitimately relates to the board **without** a card. The reconciliation is normative (§4.3), not incidental.
 - **Alternative — let each stream keep its own queue and merely *report* to a board:** rejected. A board that only mirrors private queues is a dashboard, not a source of truth; the queues drift, and the board silently lies (violating CONV-1/CONV-3). Convergence requires the board *be* the record, not a copy of one.
 - **Alternative — fold this into the kanban model as another KAN invariant:** rejected. The convergence contract spans the scheduler, the plan, the automation pipeline, and the liveness contract; hanging it inside the board-structure spec would overload a spec that should stay focused on states, archival, and isolation. A sibling model-spec (the same choice the task-graph model made) keeps each concept at its own altitude.
+- **Alternative — let each representation keep its own status and reconcile by sync (CONV-10):** rejected. Two authorities for one fact agree only until the first interruption between the two writes; a sync job narrows the window and never closes it. Making one the owner and the rest projections removes the question instead of managing it.
 - **Custom/multi-board futures:** the current model assumes one board per office (KAN-6). If user-defined or per-project sub-boards are ever introduced, CONV-1's "one legible surface" must be restated as "one legible surface *set* with a defined roll-up," and CONV-8's projection rule extended accordingly. <!-- TBD: revisit CONV-1/CONV-8 if multi-board-per-office is introduced (tracks KAN-6 and kanban-model custom-columns TBD) -->
 
 ## Document History
@@ -116,6 +135,7 @@ CONV-3 and CONV-6 together forbid the most common way convergence erodes in prac
 | 1.0.0 | 2026-07-02 | Initial concept: convergence contract (CONV-1…8) binding every activity stream (task, `routine`, pulse, `reminder`, automation) to the single Kanban board via three relations — materialize / drive / surface; reconciles the pulse with SCH-4 as *drive*, not *materialize*. |
 | 1.1.0 | 2026-07-09 | Onboarding import of an existing external backlog added as a **materialize** stream — CONV-1 enumeration, §4.1 materialize examples, and the §4.2 stream→relation map extended so imported work-items land as canonical cards through triage, never a shadow queue; migration mechanics delegated to the new l1-work-import (source adapters / entity reconciliation / provenance). Additive — no CONV invariant changes (materialize already covered it); L1 stays Stable (C9). |
 | 1.2.0 | 2026-08-26 | Amended — CONV-9: a **decision-shaped unit** converges like any other and is not a second queue. Work whose product is a decision rather than a deliverable lands on the same board under the same rules, honouring CONV-3's *one kind of work unit* **by construction** — a card whose completion criterion is a recorded answer, not a parallel representation with its own lifecycle. It declares its relation from the same closed CONV-2 set, so an exploratory effort is as visible as an executing one; and it **may not carry a deliverable as its product** — a unit that produced one has changed kind, and the board shows the change. Closes the loophole of a planning phase run off-board because it is "not work yet", which is CONV-1's shadow work wearing a phase name. |
+| 1.3.0 | 2026-10-03 | Amended — CONV-10: **execution state has one owner, the card**; every other status for the same work is a projection (read from the card or written in the same act, never edited on its own) or describes a different object (an artifact's existence, a change record's merge state, a plan disposition) in a vocabulary that does not claim the work is complete. CONV-3/CONV-6 forbid a second *queue*; CONV-10 closes the quieter erosion, a second *verdict* — a plan status, a tracking file, a progress ledger and an artifact registry each holding their own word for "finished". Journals and ledgers stay authoritative for the events they record and are the evidence a transition rests on, with no completion flag of their own; planning dispositions the board has no state for (deferred, cancelled) live with the plan and reach the board only through its own vocabulary (KAN-8 anchored columns, KAN-4 archive). Adds §4.5 and one rejected alternative; links `l1-state-authority`. `l1-task-graph-model` TG-11 (which called plan status "the single source of execution truth") is amended in the same pass. L1 stays Stable (C9, additive). |
 
 ## Canonical References
 

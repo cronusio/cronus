@@ -1,6 +1,6 @@
 # Mission Mode
 
-**Version:** 1.0.6
+**Version:** 1.0.7
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md
@@ -17,6 +17,8 @@ Mission Mode is a focused, two-phase autonomous execution unit: the agent first 
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Workspace path where missions are stored.
 - [l2-security.md](l2-security.md) - Sandbox constrains what the executing agent can do.
 - [l2-tool-security.md](l2-tool-security.md) - Tool guard is active throughout mission execution.
+- [l1-intent-resolution.md](l1-intent-resolution.md) - [ADDED v1.0.7] IR-9: the clarification batch of §4.14 is the intake/planning class of question; its ceiling is not a target and it draws on the client's one attention budget.
+- [l1-work-convergence.md](l1-work-convergence.md) - [ADDED v1.0.7] CONV-10: the phase statuses of §4.9 are derived from artifacts and plan cards, never stored beside them.
 
 ## 1. Motivation
 
@@ -235,7 +237,7 @@ Gray areas are implementation choices the user cares about that could go multipl
 
 ### 4.9 Phase lifecycle state machine
 
-Mission phases follow a deterministic status progression. Each phase status is machine-readable and gates whether planning, execution, or verification may run:
+Mission phases follow a deterministic status progression. Each phase status is machine-readable and gates whether planning, execution, or verification may run. The statuses are *derived* — from which artifacts exist and from the state of the cards of the phase's plans — and are never stored as a second verdict beside them (`l1-work-convergence` CONV-10):
 
 ```text
 [REFERENCE]
@@ -504,6 +506,8 @@ The agent generates up to 7 clarifying questions from the PRD and CONTEXT.md con
 - Non-functional requirements (uptime, data retention)
 - Out-of-scope confirmation ("is X intentionally excluded?")
 
+The ceiling of 7 is the bound of the intake/planning clarification class (`l1-intent-resolution` IR-9 a). It is a ceiling, not a target: every question has already failed grounding and cleared minimality (`l1-intent-resolution` IR-1, IR-2) before it is written down, and the batch draws on the client's one attention budget with the other question classes (GO-7), so a batch of seven is the exception.
+
 Questions are written to `.planning/clarifications.md`:
 
 ```markdown
@@ -601,5 +605,6 @@ The classification is a heuristic read from prompt wording (SEC-12), so it may *
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.7 | 2026-10-03 | Core Team | Patch — §4.14's "up to 7 clarifying questions" is named as the bound of the intake/planning clarification class (`l1-intent-resolution` IR-9 a): a ceiling, not a target, each question having failed grounding and cleared minimality first, and the batch drawing on the client's one attention budget. §4.9 states that the phase statuses are derived from the phase's artifacts and the state of its plans' cards and are never stored as a second verdict (`l1-work-convergence` CONV-10). No bound or transition changed. Related Specifications extended with `l1-intent-resolution` and `l1-work-convergence`. |
 | 1.0.6 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ORC-6: the executing agent set the `passes` flags that terminate the loop — self-assessment the spec claimed to exclude. The executor now records `claimed`; `passes` is set only by the story's host-run check or the independent judge, with falsifiable criteria (AO-3/AO-7/AO-10). ORC-9: Phase 1 had full tool access before the plan was confirmed, and in Phase 2 the executor could rewrite the confirmed stories — Phase 1 writes only planning artifacts, and the confirmed story set is bound to the confirmation (CB-3). Resume matched the recorded session, which never matches after a restart. Mission ids could collide within a second. The verification-rigor mode could be lowered through an agent-writable file and a mode mismatch on resume was unspecified. A `status: accepted` written by the agent counted as proposal acceptance. The agent could answer or skip the user's clarification questions (XPL-4). Keyword work-type classification could remove gates — it may only add them. A vendor-specific heading in the decision template renamed; the adversarial-review reference pointed at the wrong quality-pipeline section (§4.8 → §4.11); living-spec regeneration archives what it overwrites. |
 | 1.0.5 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

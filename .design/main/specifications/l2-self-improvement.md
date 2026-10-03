@@ -1,6 +1,6 @@
 # Self-Improvement
 
-**Version:** 1.0.9
+**Version:** 1.0.10
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -18,6 +18,7 @@ The self-improvement subsystem tracks what the agent gets wrong and distills wha
 - [l2-github-issue.md](l2-github-issue.md) - Error fingerprinting that feeds the mistake log.
 - [l2-execution-workspace.md](l2-execution-workspace.md) - The worktree workspace an executor is dispatched into (§4.7).
 - [l2-security.md](l2-security.md) - §4.11: a secret is never reproduced in any form, partial included (§4.15 redaction).
+- [l1-intent-resolution.md](l1-intent-resolution.md) - [ADDED v1.0.10] IR-9: an ask-back is the post-session class of question and the "open clarifications" score is a measure, not a question; both draw on, or stay outside, the client's one attention budget.
 
 ## 1. Motivation
 
@@ -157,6 +158,8 @@ The trigger string normalisation allows path-based pattern matching without brit
 System-generated clarifying questions. When a session ends in failure or partial outcome with vague user intent, the session pipeline drafts one question and queues it as a pending ask-back for the next interaction.
 
 **Key invariant**: at most one pending ask-back per project at any time. This prevents question flooding — only one open question is surfaced in the brief: the oldest pending one, which holds the slot until it is served or dismissed (a later question is not stored meanwhile, §5).
+
+**Class.** An ask-back is the post-session class of question (`l1-intent-resolution` IR-9 c): it never blocks the next task, one is pending per project, and it counts toward the client's one attention budget at the lowest priority — a blocking question from any office is presented before it (GO-7). The slot above bounds this class only; it neither replaces nor is replaced by the per-task budget of `l2-agent-constitution` §4.24 or the planning-clarification ceiling of `l2-mission-mode` §4.14.
 
 #### Schema
 
@@ -586,9 +589,11 @@ Behavior gates (§4.10) validate yes/no pass conditions. A scoring layer gives a
 | --- | --- |
 | **Architecture readiness** | AD artifacts stable, decision rationale present, alternatives documented |
 | **Process compliance** | Phase gates executed in order, review quorum met, VERIFIED findings present |
-| **Decision freshness** | Age of last D-NN update, open clarifications ≤2, proposal review date within threshold |
+| **Decision freshness** | Age of last D-NN update, open planning clarifications ≤2 (unanswered items of the mission clarification file, `l2-mission-mode` §4.14), proposal review date within threshold |
 | **Verification coverage** | % stories with Independent Test; % acceptance criteria with a VERIFIED finding |
 | **Spec specificity** | Average proposal grade (§4.20 of `l2-quality-pipeline.md`); % proposals graded A or B |
+
+These are measures of planning artifacts. "Open planning clarifications" counts unanswered items in the artifact; it is a health figure about the office's own planning, never a question put to the client (`l1-intent-resolution` IR-9 e), and the ceiling that governs how many such questions are asked is the separate planning-clarification bound of `l2-mission-mode` §4.14.
 
 #### Scoring formula
 
@@ -955,5 +960,6 @@ Before committing an evolved skill document to the training pipeline, a static s
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.10 | 2026-10-03 | Core Team | Patch — the question limits in this corpus (this spec's one-pending ask-back, the constitution's per-task budget, the mission clarification ceiling, this spec's "open clarifications ≤2" health threshold) were four unrelated numbers in four places. §4.4 now names an ask-back as the post-session class of `l1-intent-resolution` IR-9 (c) — bounded here, never blocking, lowest priority in the client's one attention budget — and says its slot bounds this class only; §4.11 says what "open clarifications" counts (unanswered items of the mission clarification file) and that it is a measure of planning artifacts, never a question put to the client (`l1-intent-resolution` IR-9 e). No bound changed. Related Specifications extended with `l1-intent-resolution`. |
 | 1.0.9 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Config redaction kept a secret's first and last four characters and matched only `api_key` — full redaction of every secret-shaped value (`l2-security` §4.11 forbids partial values). §4.14 re-implemented the learning-loop curator with different timings (archive 120 days vs 90) and scope (skills "patched by agents") — it now defines only the activity record, the one curator governs. Ask-backs no longer block the next task (OFF-5/OFF-6), and the slot is described as first-come rather than "most relevant". Store failures mark a brief section unavailable instead of empty. Host-harness tool names in §4.7 replaced by the execution-workspace model. Installing a trained skill over an active one is a reviewed pending revision. The no-unwrap probe's line-filter grader could not exclude test modules — replaced by a syntax-aware lint. |
 | 1.0.8 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

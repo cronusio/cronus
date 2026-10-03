@@ -1,6 +1,6 @@
 # Execution Workspace
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-storage-model.md
@@ -17,6 +17,7 @@ Isolated filesystem environments in which agents execute tasks. Each workspace i
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) - The confinement backend the `sandbox` provider delegates to, and the coverage statement it owes (SEC-12).
 - [l2-kanban-board.md](l2-kanban-board.md) - Issues reference `executionWorkspaceId`; `workspace_finalize=failed` blocks dependent wakes.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `<state>/execution/` tree where workspace metadata lives.
+- [l1-multi-device-sync.md](l1-multi-device-sync.md) - [ADDED v1.0.3] SY-10: the optional, consented version-control transport of a declared state subset — a different act from anything an execution workspace does (§4.4).
 
 ## 1. Motivation
 
@@ -114,6 +115,8 @@ Worktree workspaces operate on a local git branch. The contract:
 4. SSH workspaces transfer via `rsync`-style sync, not git push.
 
 Violations of this contract fail the finalize step; the workspace transitions to `abandoned`.
+
+The contract governs **execution workspaces**. Optional version-control transport of a declared subset of the project-local state root is a different act — governed by `l1-multi-device-sync` SY-10 and `l2-filesystem-layout` §4.3, performed by the sync operation under the user's recorded consent for a named remote and subset — and does not loosen this contract: a workspace still never pushes.
 
 ### 4.5 Finalization protocol
 
@@ -314,5 +317,6 @@ Events:
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.3 | 2026-10-03 | Core Team | Patch — §4.4 states the scope of the no-remote-git contract: it governs execution workspaces. An optional version-control transport of a declared subset of the project-local state root (`l1-multi-device-sync` SY-10) is a separate act under the user's recorded consent for a named remote and subset, performed by the sync operation, and does not loosen the contract — a workspace still never pushes. Documentation clarification only; no rule changed. Related Specifications extended with `l1-multi-device-sync`. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance table cited the wrong invariants (ORC-2 is adaptive topology, ORC-6 judged termination, `STORE-3` does not exist): now ORC-5, ORC-11, SEC-6, STO-1. `local_fs` is declared unconfined and human-selected only (SEC-10/SEC-12); `sandbox` points at `l2-execution-sandbox` instead of claiming full OS isolation. Project start commands run only in a trusted workspace (`l2-security` §4.8). Removal is confined to the canonical worktree root, and an abandoned workspace keeps its branch so unreviewed work is not destroyed by timed cleanup. Provider table row for `local_fs` aligned with §2 (unconfined, human-selected only). |
 | 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

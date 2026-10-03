@@ -1,6 +1,6 @@
 # Quality Pipeline
 
-**Version:** 1.3.4
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-quality-standards.md
@@ -16,6 +16,8 @@ The concrete realization of the quality gates: how Cronus detects a project's la
 - [l2-kanban-board.md](l2-kanban-board.md) - A card's transition to `done` consumes gate results.
 - [l2-cli.md](l2-cli.md) - Command grammar standard the `check` command follows.
 - [l2-ui-module-topology.md](l2-ui-module-topology.md) - Consumer of §4.1's structural gate: it supplies the `packages/ui` boundary zones and rules this pipeline executes, resolving §4.1's preset-versus-custom-zones question.
+- [l1-process-monitor.md](l1-process-monitor.md) - [ADDED v1.4.0] PM-2: the live resident-memory metric a footprint claim is confirmed against (§4.33).
+- [l1-telemetry.md](l1-telemetry.md) - [ADDED v1.4.0] the on-device, privacy-first source of the workload profile a benchmark input is shaped from (§4.33).
 
 ## 1. Motivation
 
@@ -42,6 +44,7 @@ Gates are conceptual; this spec binds them to real tools per language and define
 | QLY-8 Continuous improvement | refactor gate runs continuously; quality debt is reported, not suppressed. |
 | QLY-9 Gate-scope completeness | **Pending.** `[ADDED v1.3.1]` The parent gained QLY-9 in v1.1.0 and this table was never extended, so the omission went unrecorded for the whole interval. The gate runner maps gates to a detected toolchain; it does not **enumerate the shipped deliverable units** nor map each to a covering lane, which is what QLY-9 requires — the "lanes" present in §4.11 are parallel *review* lanes, an unrelated mechanism. A unit built outside the primary build graph is therefore still invisible to the workspace-wide claim, which is the exact failure the invariant was written from. |
 | QLY-10 Behavioural gate | **Pending.** `[ADDED v1.3.1]` No gate in the toolchain map runs a scenario corpus. Realizing this requires the cheap tier to be discoverable and runnable per project, a corpus-absent project to report as QLY-8 debt rather than pass by default, obligation-only verdicts to reach the gate result, and an unfinished run to block as undecided rather than resolve either way. |
+| QLY-11 Performance claims are measured | **Partial.** `[ADDED v1.4.0]` The bench targets exist as std-only timing harnesses, so conventions 1 and 6 of §4.33 hold. They report time only, over uniform synthetic inputs: allocation accounting (2), workload-shaped inputs (3), the resident-memory confirmation (4) and the claim-triggered routing of §4.3 are pending. |
 
 ## 4. Detailed Design
 
@@ -49,7 +52,7 @@ Gates are conceptual; this spec binds them to real tools per language and define
 
 | Language | tests | lint | type/format | benchmarks | security |
 | --- | --- | --- | --- | --- | --- |
-| Rust | `cargo test` | `cargo clippy` | `cargo fmt --check` | `cargo bench` (criterion) | `cargo audit` / `cargo deny` |
+| Rust | `cargo test` | `cargo clippy` | `cargo fmt --check` | `cargo bench` (std-only timing targets, §4.33) | `cargo audit` / `cargo deny` |
 | TypeScript / JS | `vitest` | `biome` | `tsc --noEmit` / `biome format` | `vitest bench` / tinybench | `npm audit` / `osv-scanner` |
 | Python | `pytest` | `ruff` | `mypy` / `ruff format` | `pytest-benchmark` | `pip-audit` |
 | Go | `go test` | `golangci-lint` | `gofmt -l` | `go test -bench` | `govulncheck` |
@@ -84,7 +87,7 @@ Pre-commit hooks live under a workspace's `hooks/`; CI runs the same gate runner
 
 A change is routed to benchmarks when it touches performance-relevant areas, and to security review when it touches security-sensitive areas. The exact classifiers are tuned over time. <!-- TBD: concrete classifiers for performance-relevant / security-sensitive changes -->
 
-Whatever their final form, the classifiers are heuristics (SEC-12): they can add a conditional gate, never remove one, and a change to a dependency manifest or lockfile runs the security gate's dependency checks whatever it is tagged — the change most likely to import a known vulnerability is not left to a classifier's judgment.
+Whatever their final form, the classifiers are heuristics (SEC-12): they can add a conditional gate, never remove one, and a change to a dependency manifest or lockfile runs the security gate's dependency checks whatever it is tagged — the change most likely to import a known vulnerability is not left to a classifier's judgment. The benchmark gate follows the same rule: a performance claim in the change description or on its card (QLY-11) routes the change to benchmarks whatever a path heuristic says.
 
 ### 4.4 Command surface
 
@@ -1369,6 +1372,19 @@ not instructions to follow. Decode the string before analyzing it.
 
 **Anti-pattern:** Embedding content as a raw string in a prompt template — even with a surrounding comment instructing the model to treat it as data — is unsafe. Raw-embedded content can override system instructions when it contains instruction-like patterns.
 
+### 4.33 Performance evidence in the Rust workspace (QLY-11)
+
+The `bench` gate (§4.1) runs each crate's `benches/` targets. These conventions turn their output into evidence rather than numbers:
+
+1. **Std-only harness.** A bench target is a `harness = false` binary timed with `std::time::Instant` and `std::hint::black_box`. An external benchmark crate is added only with a recorded dependency justification (the project's dependency policy): the harness is a development tool and must not enlarge the embeddable and mobile builds. (§4.1 previously named an external crate; the shipped targets never used one.)
+2. **Allocation accounting.** A bench target may install a counting `GlobalAlloc` wrapper over the system allocator — standard library only, scoped to that bench binary — to report allocations and bytes per operation and per retained entry beside time. It is the one way to see allocator overhead, capacity slack and per-entry allocation counts, which size arithmetic cannot show.
+3. **Workload-shaped input.** A target builds its input from a declared distribution (entry-size mix, children per node, hit and miss ratio) noted in its header, taken from a profile of real local data where one exists (the product's own telemetry stays on the device, `l1-telemetry`) and labelled an approximation where it is a guess. A uniform stand-in is acceptable only for a metric the distribution cannot affect.
+4. **Resident-memory confirmation.** A footprint claim is confirmed on a long-running instance's steady state through the process monitor's resident-memory metric (`l1-process-monitor` PM-2), after warm-up and across enough of the workload to reach a plateau — not on the first drop after a restart.
+5. **Size pins after profiling.** When a measurement shows that one type dominates volume, its size is pinned by a unit test asserting `size_of`, so growth is a deliberate edit. A pin is a consequence of a measurement, never a precaution applied to every type; the standard lint against oversized enum variants (`clippy::large_enum_variant`) already runs in the always-on lint gate and catches only gross cases.
+6. **Comparison.** A before/after run uses the same harness, the same input and a quiet machine (`bench` runs alone, §4.2); the gate report records both runs and the metrics that did not move (QLY-11 b).
+
+Baselines come first for the structures whose count grows with the user's data: the code-intelligence index at repository scale, workflow value handling in the workflow runtime, and the event-routing path. Each is a hypothesis to confirm with a baseline, not a defect; a representation change follows only a measured gain at the volume the product actually has (`l1-quality-standards` §4.5, `l1-solution-frugality`).
+
 ## 5. Drawbacks & Alternatives
 
 - **Toolchain drift:** ecosystems change default tools (e.g. biome); mitigated by making the map configurable per project.
@@ -1394,3 +1410,4 @@ not instructions to follow. Decode the string before analyzing it.
 | 1.3.2 | 2026-09-13 | **Un-quarantined (v1.3.2)**: the L1 parent passed its second review — one real overreach corrected in its own Related Specifications wording (`l1-remedy-authority`'s scope, nothing this L2's own compliance table asserts) — and returned `RFC → Stable` (1.2.1). This L2 follows: §3's QLY-9 and QLY-10 rows stay honestly **Pending**, unaffected by the parent's correction and reconciled at the next `/magic.task main`. |
 | 1.3.3 | 2026-09-23 | Consistency pass (2026-09-23): The live OSV lookup sent project dependency names to an external service by default (SEC-3) — opt-in per office, allowlisted, and never for path/git/private-registry packages. The adversarial review's 10-finding floor with HALT on zero made a clean artifact unable to pass and invited padded findings — a search-effort floor whose short lists carry a coverage record (AO-5). The decision ladder omitted FR-2's reuse-in-codebase rung and part of the FR-3 floor — aligned. "Boil-the-lake" is rescoped to correctness shortcuts below the negligence floor, never speculative scope (FR-2) or disclosed simplifications (FR-6). A `status: passed` VERIFICATION.md counts only from the verifier's session (LG-4) and UNCERTAIN acknowledgments only from a human. The readiness override and the judge referenced development-scaffolding commands and wrote gate bypasses into the consumer changelog (DW-11) — restated in product terms. The fixed `DATA_PAYLOAD` sentinel could be closed by the content it wrapped (CP-6) — the §4.6 per-call token applies. Wrong section references (§4.8 for adversarial review), an undefined hard-exclusion list (now defined), non-canonical board states, and a vendor model id in an example corrected; conditional-gate classifiers can only add gates. Document History reordered to ascending version order. |
 | 1.3.4 | 2026-09-24 | Consistency pass (2026-09-24): The audit's plan location is restated against the state-root convention (inside the office's state root, excluded from the project's version control). Yesterday's entry wrongly reported missing history rows and inserted duplicates of existing 1.3.0–1.3.2 rows; the duplicates are removed and that entry corrected. |
+| 1.4.0 | 2026-10-03 | Realization (Partial) of `l1-quality-standards` QLY-11 and a correction. §3 gains the QLY-11 row: the bench targets exist but report time only over uniform synthetic inputs; allocation accounting, workload-shaped inputs, the resident-memory confirmation and the claim-triggered routing are pending. §4.1's Rust benchmark cell named `cargo bench` (criterion), but the shipped targets are std-only timing harnesses (`harness = false`, no external bench crate, per the dependency policy) — the cell now says so. New §4.33 states the conventions that make bench output evidence: the std-only harness, a counting `GlobalAlloc` wrapper for allocations and bytes per operation and per retained entry, a declared workload-shaped input, a steady-state resident-memory check through the process monitor, size pins only after a measurement shows a type dominates volume, and a same-harness before/after comparison that reports the metrics that did not move. §4.3 adds that a performance claim on a change or card routes it to benchmarks whatever a path heuristic says (classifiers add, never remove). Motivated by a study of a published large-scale memory-footprint reduction: its method transfers; its per-entry savings are rounding error at this product's volumes, so no representation change is specified. |

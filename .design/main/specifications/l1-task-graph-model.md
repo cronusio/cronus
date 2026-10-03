@@ -1,6 +1,6 @@
 # Task Graph Model
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -36,6 +36,8 @@ design; this model is the shared vocabulary they compose around.
 - [l1-version-control.md](l1-version-control.md) - Commit authority, card-aligned boundaries, isolated staging; the commit/branch guardrails of TG-14.
 - [l1-lookahead-planning.md](l1-lookahead-planning.md) - Pre-execution consequence simulation; complements TG-6 complexity scoring as a second analytical gate.
 - [l1-workspace-lifecycle.md](l1-workspace-lifecycle.md) - Home vs project workspaces; the heavier sibling that isolated planning contexts (TG-10) sit *inside*, not duplicate.
+- [l1-work-convergence.md](l1-work-convergence.md) - [ADDED v1.2.0] CONV-10: a materialized unit's execution state is its card's; TG-11 reads it from there instead of holding a second status.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.2.0] the general contract behind TG-11's rewrite: one authority per kind of state, every other representation a projection.
 
 ## 1. Motivation
 
@@ -132,10 +134,16 @@ Layer 2 realizations and concrete subsystems MUST NOT violate these.
   switching); a default context always exists; and legacy single-context data migrates into
   the default context transparently, with zero disruption to existing operations.
 - **TG-11 Bounded status lifecycle.** Each unit occupies exactly one status from a bounded
-  set (pending / in-progress / done / review / deferred / blocked / cancelled); status is
-  the single source of execution truth. Cancellation is distinguished from removal —
-  excluding a unit from active planning while preserving it is preferred over deletion, and
-  removing a unit cleans up every dangling dependency that referenced it.
+  set (pending / in-progress / done / review / deferred / blocked / cancelled). [MODIFIED
+  v1.2.0] Once a unit is materialized as a board card, its **execution** statuses —
+  in-progress, review, blocked, done, and pending once a card exists — are the card's
+  state, **read, never stored a second time**: the plan holds no completion flag of its
+  own, and `set-status` on a materialized unit is the card's transition (CONV-10, KAN-1,
+  KAN-8). The remaining values — pending while no card exists, deferred and cancelled — are
+  **planning facts** the board has no state for, and live with the plan (§5.1 maps each
+  value to the board). Cancellation is distinguished from removal — excluding a unit from
+  active planning while preserving it is preferred over deletion, and removing a unit
+  cleans up every dangling dependency that referenced it.
 - **TG-12 Role-bound generation with external novelty.** Plan-shaping operations
   (generation, complexity analysis, expansion, update) may bind to distinct model roles: a
   default generation role, a **research role** that injects fresh external information
@@ -186,7 +194,7 @@ needs.
 | --- | --- |
 | Identifier | Stable hierarchical address (`N`, `N.M`, `N.M.K`); dotted notation encodes parentage (TG-2). |
 | Title / description | Brief name plus a concise summary of what the unit involves. |
-| Status | Exactly one lifecycle state (TG-11). |
+| Status | Exactly one lifecycle state (TG-11); for a materialized unit, the card's state read through the §5.1 mapping. |
 | Priority | Importance tier used by next-selection (TG-5). |
 | Dependencies | Identifiers of prerequisite units; edges of the DAG (TG-4). |
 | Detail | In-depth implementation guidance for the unit. |
@@ -202,6 +210,24 @@ next-selection (TG-5), validation/repair (TG-4), and re-planning (TG-9) operate 
 **Planning context** — a named, isolated namespace holding one task graph (TG-10).
 Contexts let parallel lines of work (a feature, a risky refactor, a teammate's slice) keep
 fully separate graphs while sharing the same office, board, and tooling.
+
+**Status mapping (TG-11).** For a materialized unit the plan status is *read* from the
+card through the canonical pipeline (KAN-1) and its custom-column anchors (KAN-8); the
+plan never stores a second copy:
+
+| Plan status | Owner | Board state |
+| --- | --- | --- |
+| pending | the plan until a card exists, then the card | no card, or `triage` / `todo` / `ready` |
+| in-progress | the card | `running` |
+| review | the card | `running` — a `review` column anchored to `running` where an office defines one |
+| blocked | the card | `blocked` (reason recorded, KAN-5) |
+| done | the card | `done`, and unchanged once archived (KAN-4) |
+| deferred | the plan | no card, or `todo` — a `deferred` column anchored to `todo` where an office defines one |
+| cancelled | the plan | no board state; a card that exists is withdrawn to the archive with the cancellation recorded as the reason (KAN-4) |
+
+A write that would contradict the card is a *request for the card's transition*, not an
+edit of the plan; a disagreement found on recovery is settled in the card's favour and
+reported (SAU-4).
 
 ### 5.2 The core development loop
 
@@ -221,7 +247,8 @@ graph LR
 `list` surveys the graph and its statuses; `next` applies deterministic selection (TG-5);
 `show` reads a unit's full contract; `expand` decomposes it when complexity warrants
 (TG-6); implementation proceeds; `journal` appends findings (TG-8); `set-status` advances
-the lifecycle (TG-11). Most sessions never leave this loop.
+the lifecycle (TG-11) — for a materialized unit, by transitioning its card (CONV-10). Most
+sessions never leave this loop.
 
 ### 5.3 Requirement-to-graph pipeline
 
@@ -402,3 +429,4 @@ are named by structural idea, not by product.
 | 1.0.0 | 2026-06-25 | Initial model: requirement-to-graph decomposition algebra, complexity-gated breakdown, dependency DAG with deterministic next-selection, isolated planning contexts, append-only journal, drift-driven re-planning, and the coordinator/executor work-unit protocol for guarded autonomous delivery (TG-1…TG-14). |
 | 1.1.0 | 2026-08-26 | Amended — TG-15: absent its source artifact, generation is **refused, never improvised**. TG-1 states where a graph comes from and was silent on the case that actually occurs — no requirements artifact exists. A planner asked for a plan produces one anyway, filling the absent requirement with plausible scope, and the result is **indistinguishable in form** from a real graph while every unit below the invented part carries invented scope. An artifact that exists but is **substantially unsettled** counts as absent, since generating from it produces the same guessing with better cover; and the refusal **names the upstream phase** (`l1-exploratory-planning`) rather than terminating, because the work is not blocked, it is upstream. |
 | 1.1.1 | 2026-09-11 | Patch — cross-reference to `l1-scenario-derivation`: the scenario set derived from the same requirements artifact in the same act, the demarcation that TG-3's per-unit verification strategy cannot hold a cross-unit journey, and TG-9 drift as the trigger for re-derivation. Documentation linkage only; no invariant added or changed. |
+| 1.2.0 | 2026-10-03 | Amended — TG-11 no longer claims plan status as "the single source of execution truth". The board model already makes the card the board of record (KAN-1) and `l1-work-convergence` states the general rule (CONV-10); two authorities for whether a piece of work is finished is the defect. A materialized unit's execution statuses are now the **card's state, read through a mapping and never stored a second time**; only the planning facts the board has no state for (pending before a card exists, deferred, cancelled) live with the plan. §5.1 gains the plan-status ↔ board-state table (it generalizes what `l2-kanban-board` §4.8 already did for the sprint tracking file: a `review` column anchored to `running`, a `deferred` column anchored to `todo`, cancellation as archive-with-reason), §5.1's Status facet and §5.2's `set-status` follow. Related Specifications extended with `l1-work-convergence` and `l1-state-authority`. L1 stays Stable (C9). |

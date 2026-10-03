@@ -1,6 +1,6 @@
 # Orchestration
 
-**Version:** 1.1.2
+**Version:** 1.1.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-office-model.md
@@ -21,6 +21,8 @@ The concrete coordination mechanics: how the orchestrator delegates via assigned
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Worktree isolation, the finalize write-back gate, and the no-remote-git contract §4.12 and §4.19 rely on.
 - [l2-scheduler.md](l2-scheduler.md) - Tier-2 scheduled work and its `run_timeout_secs` (§4.20).
 - [l1-consent-binding.md](l1-consent-binding.md) - CB-1/CB-11: consent binds the patched arguments; a contributed ruleset can narrow, never widen (§4.7, §4.10).
+- [l1-work-convergence.md](l1-work-convergence.md) - [ADDED v1.1.3] CONV-10: execution state has one owner, the card; the artifact, change and plan statuses of §4.15–§4.17 are projections or describe other objects.
+- [l2-inbox.md](l2-inbox.md) - [ADDED v1.1.3] §4.9: the recorded sibling exchange inside a parallel-staffing episode, beside the orchestrator-as-hub of §4.1.
 
 ## 1. Motivation
 
@@ -66,7 +68,7 @@ The protocol needs concrete, local, resumable mechanics: a delegation channel (t
 ### 4.1 Delegation and messaging
 
 - **Delegation:** the orchestrator creates a board card with an `assignee` (a hired role) and the task reference; a missing role triggers a hire (role catalog).
-- **Messaging:** agents exchange messages (a mailbox) for hand-offs and questions; the orchestrator is the hub for cross-role coordination.
+- **Messaging:** agents exchange messages (a mailbox) for hand-offs and questions; the orchestrator is the hub for cross-role coordination *decisions*. A direct exchange between the instances of one parallel-staffing episode is allowed beside it when it is recorded, typed and bounded (`l1-parallel-staffing` PS-12, `l2-inbox` §4.9).
 - **Shared task list:** the board is the single shared work list; claiming/assignment is atomic to avoid two agents grabbing the same card.
 
 ### 4.2 Context-isolated execution
@@ -764,6 +766,8 @@ Status values:
   failed    — generation was attempted and produced an invalid artifact
 ```
 
+**Relation to the board.** `artifact-status.json` describes the **artifact** — whether the file exists and validates — not the work that produces it. Its `complete` means "the artifact is present and valid" and is never read as the work being done; whether the work behind an artifact is finished is its card's state (CONV-10), and a graph node's `in-progress` is a projection of that card, not a second status. An artifact marked `complete` whose card is not `done`, or the reverse, is a disagreement to report (`l1-state-authority` SAU-4), not a state to accept.
+
 ### 4.16 Change dependency metadata
 
 When a workspace contains multiple in-progress changes (parallel development, feature branches, staged migrations), each change declares its dependency relationships explicitly. This enables the orchestrator to detect conflicts before they happen and surface unblocked work clearly.
@@ -820,6 +824,8 @@ Validation (run at plan-time and at archive-time):
     Attempting to archive out of order: HARD STOP with explanation.
 ```
 
+A change's `Complete` describes the **change record** — the cards of its units are `done` and its merge has landed — and carries no state of its own that could contradict them (CONV-10).
+
 #### Change DAG commands
 
 ```text
@@ -853,7 +859,7 @@ phases:
     tasks: [...]
 ```
 
-The orchestrator enforces: before spawning any wave-2 agent, it checks that all wave-1 (foundation) tasks carry `status: done`. If any remain, it emits:
+The orchestrator enforces: before spawning any wave-2 agent, it checks that all wave-1 (foundation) tasks carry `status: done` — read from their cards, the plan's `status` being a projection of the card's state (CONV-10, `l1-task-graph-model` TG-11). If any remain, it emits:
 
 ```text
 ⚠️ FOUNDATION GATE: phase "foundation" has N incomplete task(s). Story work blocked.
@@ -1112,6 +1118,7 @@ The length prefix makes the concatenation injective: without it, the same bytes 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.3 | 2026-10-03 | Patch — status vocabularies made explicit. §4.15–§4.17 carried an artifact registry with its own `complete`, a change lifecycle that "moves to Complete", and plan tasks with `status: done` beside the board's states, with nothing saying how they relate to the card. Each now states its relation (CONV-10): the artifact registry describes the *artifact* and never the work; a change's `Complete` describes the change record (its units' cards are `done` and its merge has landed); a plan task's `status` is a projection of its card, which is what the foundation gate reads. A disagreement is reported, not accepted (`l1-state-authority` SAU-4). §4.1's messaging line said the orchestrator is "the hub for cross-role coordination" — it is the hub for coordination *decisions*, and a recorded direct exchange between the instances of one parallel-staffing episode is allowed beside it (PS-12, `l2-inbox` §4.9). No behaviour changed. |
 | 1.1.2 | 2026-09-24 | Consistency pass (2026-09-24): The spec realizes the office model's delegation surface but mapped only l1-orchestration — OFF-2…OFF-8 (role catalog, hiring through the catalog under the approval gate, client contact only at ORC-9 gates, the clarification channel for blocking ambiguity, intent → plan → board states, unattended operation resuming ORC-10) had no compliance rows. `Implements` now names l1-office-model and the rows are added. OFF-1 (office isolation: delegation, messaging and the board never cross an office boundary) and OFF-9 (compounding capability, carried by the memory specifications — not realized here) complete the office-model rows. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): ORC-11…ORC-14 compliance rows added (ORC-11/13/14 pending realization). §4.7 ruleset evaluation feeds the single autonomy gate: agent-controlled rulesets may narrow but their `allow` rules are ignored (SEC-10, CB-11; pending realization), and `ask` follows the approval lifecycle incl. AG-9. Generated agents are clamped to their author's grants. Argument patching runs before the gate; overrides never alter the recorded result. File-mutation queue pseudo-code no longer runs `fn` twice or wedges on failure. Safe-resume grep uses `--all-match`; wave placement for conflicting plans is deterministic; sequential plans go through the write-back gate. WIP checkpoints are never pushed (no-remote-git contract; `checkpoint_push` → `checkpoint_commit`). Tier-2 timeout defers to `l2-scheduler` (was 3 min vs 3600 s). Fingerprint uses a length prefix; a reference product file name removed. |
 | 1.1.0 | 2026-07-04 | Read-only ⇒ parallel tool policy (§4.10): built-in read-only tools declare `executionMode: "parallel"`; effectful tools keep the sequential default; file-mutation queue remains the write-safety guarantee. History table added with this entry. |

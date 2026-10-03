@@ -1,6 +1,6 @@
 # Inbox (Inter-Actor Messaging)
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-orchestration.md
@@ -17,6 +17,8 @@ The inbox is a lightweight SQLite-backed messaging channel between actors within
 - [l2-workflow-runtime.md](l2-workflow-runtime.md) - Workflow completion sends an inbox notification to the parent actor.
 - [l1-storage-model.md](l1-storage-model.md) - Inbox rows live in the workspace state-tier SQLite database.
 - [l2-tool-security.md](l2-tool-security.md) - §4.6: a delegated agent's result is untrusted data — how a drained row reaches the model.
+- [l1-parallel-staffing.md](l1-parallel-staffing.md) - [ADDED v1.1.0] PS-12: the recorded, typed, bounded, ack-free exchange between the instances of one episode; §4.9 fixes what this transport carries for it. The staffing contract has no Layer 2 yet.
+- [l1-fanout-attestation.md](l1-fanout-attestation.md) - [ADDED v1.1.0] FAN-1/FAN-2: the episode and its sealed member set that bound who may exchange (§4.9).
 
 ## 1. Motivation
 
@@ -35,7 +37,7 @@ Agents run as isolated sessions; they cannot share mutable state directly. Yet b
 | L1 Invariant | Implementation |
 | --- | --- |
 | ORC-8 Synchronization | Agents receive briefings and completion notifications via inbox drain (synthetic user message). |
-| ORC-12 Transparent, intervenable coordination | The inbox table is the agent mailbox and the orchestrator is the hub for cross-role coordination; every `send` publishes `InboxArrived` on the event bus (§4.7), so no inter-agent message travels off the record. |
+| ORC-12 Transparent, intervenable coordination | The inbox table is the agent mailbox and the orchestrator is the hub for cross-role coordination decisions; a direct sibling exchange inside a parallel-staffing episode is also allowed, on the same record (§4.9). Every `send` publishes `InboxArrived` on the event bus (§4.7), so no inter-agent message travels off the record. |
 | OFF-1 Office-per-project isolation | Rows are workspace-scoped and a receiver must be a registered actor of the same workspace (§4.3 step 1); no office delivers into another. |
 | STO-2 Durable, restartable state | Inbox rows persist in the workspace state-tier database and survive a receiver that is sleeping, busy or restarting; they are deleted after delivery or at the §4.6 TTL. |
 
@@ -150,11 +152,39 @@ Subscribers (e.g., TUI, dashboard) can react to incoming messages for real-time 
 
 The inbox is an implementation detail; it has no direct user-facing commands. Observability is through the session message history (drained rows appear as synthetic user messages) and the audit log.
 
+### 4.9 Sibling exchange inside a fan-out episode (`l1-parallel-staffing` PS-12)
+
+The inbox is also the transport for the recorded exchange between the instances of one parallel-staffing episode. The staffing contract has no Layer 2 yet; this section fixes only what the transport must carry so that the exchange stays on the record, typed, bounded and ack-free. **Pending realization.**
+
+```text
+[REFERENCE]
+// Episode traffic extends SendInput (§4.3); ordinary traffic is unchanged.
+SendInput {
+  ...,
+  type:        String,                // episode traffic: one of EXCHANGE_KINDS; otherwise "text" | ...
+  episode_id:  Option<String>,        // the fan-out episode (FAN-1); present on all episode traffic
+  thread_id:   Option<String>,        // groups the messages of one question or decision
+  scope:       "actor" | "episode",   // "episode" fans one send out to every sibling as one row each
+  ratified_by: Option<String>,        // decision only: the lead's actor id, or the delegation it falls under
+}
+
+EXCHANGE_KINDS = { information, question, proposal, decision_request, decision, result }
+```
+
+Rules the transport enforces:
+
+1. **Closed kinds, no acknowledgement kind.** A send with an `episode_id` and a type outside `EXCHANGE_KINDS` is refused. There is no `ack`: delivery is attested by the `InboxArrived` event and the drained row in the receiver's session history, never by a reply.
+2. **Recorded.** Every episode send publishes `InboxArrived` (§4.7) carrying `episode_id` and `thread_id`, so the lead and the human see the whole exchange (ORC-12). There is no episode channel outside the inbox.
+3. **Bounded.** The lead declares `max_exchange_rounds` when it opens the episode (default 3). A round is a message in a thread from a different sender than the previous one. At the bound the transport refuses further sibling messages in that thread and publishes `ExchangeBoundReached { episode_id, thread_id }` to the lead; the lead decides (DL-3) and its own message is always accepted.
+4. **Decisions bind by ratification.** A `decision` row without `ratified_by` is delivered and rendered as a `proposal`. Only the lead may write `ratified_by`, or the delegation scope the lead recorded when it opened the episode names the author; a sibling cannot ratify itself.
+5. **Inside the episode.** Episode traffic is accepted only between the instances in the episode's sealed member set (FAN-2) and its lead. Deliberation arguments and rival attempts are not episodes and use no such channel (DL-1, CE-3).
+
 ## 5. Drawbacks & Alternatives
 
 - **Non-transactional drain:** duplicate delivery on crash is acceptable; a transactional approach would require a unified transaction across session + inbox layers.
 - **ULID ordering:** monotone time ordering gives arrival-order drain without a separate sequence column.
 - **Alternative — in-memory channels:** rejected; durable rows survive receiver restarts. An in-memory channel loses messages on crash.
+- **Alternative — a separate peer channel for sibling exchange (§4.9):** rejected. It would be the hidden back-channel ORC-12 forbids and a second durable transport to keep; the same inbox with a closed kind set and an episode id gives the lead and the human the whole exchange for free.
 - **Alternative — separate notification queue (Redis, NATS):** rejected; all-on-SQLite is the storage contract for Cronus (on-device, no external services).
 
 ## Canonical References
@@ -170,6 +200,7 @@ The inbox is an implementation detail; it has no direct user-facing commands. Ob
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-03 | Core Team | New §4.9 — the transport side of `l1-parallel-staffing` PS-12 (sibling exchange inside a fan-out episode): episode traffic carries `episode_id`, `thread_id`, a `scope` (one actor or the whole episode) and, for decisions, `ratified_by`; the kinds are a closed set with no `ack` (delivery is attested by `InboxArrived` and the drained row, never a reply); the lead declares `max_exchange_rounds` (default 3, `[DR]` matching the other bounded loops in the corpus) and the transport escalates a thread that reaches it with `ExchangeBoundReached`; an unratified `decision` is rendered as a `proposal`; episode traffic is accepted only inside the episode's sealed member set. The ORC-12 row now says the orchestrator is the hub for cross-role coordination *decisions* and that recorded sibling exchange is allowed beside it (it had said "the hub for cross-role coordination", which read as forbidding any direct message). One rejected alternative (a separate peer channel). Pending realization — the staffing contract has no Layer 2 yet. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): A drained row reached the model as a synthetic user message "indistinguishable from a real user turn" — a subagent or workflow could speak with the principal's authority; parts are now labeled by sender and non-human senders are wrapped as untrusted data (`l2-tool-security` §4.6), the user role being transport only. Compliance cited nonexistent `OM-3`/`STORE-2` — now ORC-12, OFF-1, STO-2. |
 | 1.0.1 | 2026-07-10 | Core Team | Fixed broken Related Specifications link — the storage tier is an L1 concept (l1-storage-model.md); the l2- prefix pointed at a non-existent file (Canonical References already used the correct l1- path) |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — SQLite-backed inter-actor inbox, ULID ordering, drain-on-turn, synthetic user messages |

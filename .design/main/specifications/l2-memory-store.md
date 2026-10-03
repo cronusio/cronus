@@ -1,6 +1,6 @@
 # Memory Store
 
-**Version:** 1.4.2
+**Version:** 1.4.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -17,6 +17,7 @@ The concrete realization of the memory model for v0.1.0: an embedded store using
 - [l2-core-library.md](l2-core-library.md) - Hosts the memory service on the hot path.
 - [l2-agent-constitution.md](l2-agent-constitution.md) - §4.25 standing-instruction sink rule the quick-memory files share (§4.11).
 - [l1-action-gating.md](l1-action-gating.md) - AG-10: a write into text loaded as standing instruction is a privileged sink.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.4.3] the authority classes MEM-4 is the first declaration of, and the rule that a repair never rebuilds an authority from its projection.
 
 ## 1. Motivation
 
@@ -36,7 +37,7 @@ The model demands cheap, multi-signal, local recall with clean forgetting and co
 | MEM-1 Four scopes | Separate stores per scope: global `<state>/memory/`, workspace `<ws>/memory/`, employee `<role>/memory/`, session `<ws>/sessions/`. |
 | MEM-2 Most-specific-first | Recall queries employee → workspace → global; merges with specificity precedence; truncates to a token budget. |
 | MEM-3 Multi-signal recall | Fuse sqlite-vec similarity + FTS5 BM25 + tag filter into one ranked set. |
-| MEM-4 Source of truth by kind | **Learned corpus:** the `memory_item` row (`content` column) is authoritative; `memory_fts` / `memory_vec` are derived and rebuildable from it — no external note file. **Authored quick-memory:** `MEMORY.md` / `USER.md` (§4.11) are human-readable-authoritative, the one tier a human edits directly. A text export of the learned corpus is a projection, not a second truth. |
+| MEM-4 Source of truth by kind | **Learned corpus:** the `memory_item` row (`content` column) is authoritative; `memory_fts` / `memory_vec` are derived and rebuildable from it — no external note file. **Authored quick-memory:** `MEMORY.md` / `USER.md` (§4.11) are human-readable-authoritative, the one tier a human edits directly. A text export of the learned corpus is a projection, not a second truth. Declared classes (`l1-state-authority` SAU-3): store-authoritative for the learned corpus, text-authoritative for authored quick-memory; `l2-doctor` re-derives `memory_fts` / `memory_vec` from the row and never rebuilds the corpus from an export. |
 | MEM-5 Decay & prune | `validity_scope` sets a half-life; a prune job deletes expired low-utility rows and old sessions. |
 | MEM-6 Compounding, non-destructive | Archivist promotes/distills; contradictions set `invalid_at` (supersede), never hard-delete durable knowledge. |
 | MEM-7 Ownership split | Core service exposes read/write/recall; archivist role runs consolidation; no agent writes the DB directly. |
@@ -950,6 +951,7 @@ The archivist's `reconcile` stage reads the pending review queue and either:
 
 | Version | Change |
 | --- | --- |
+| 1.4.3 | Patch (2026-10-03): MEM-4's compliance row now names the authority classes it declares (`l1-state-authority` SAU-3 — the learned corpus store-authoritative, authored quick-memory text-authoritative) and the repair direction (`l2-doctor` re-derives the indices from the row, never the corpus from an export). The storage model's and the filesystem layout's blanket "databases are derived indices" had outlived this declaration; both are corrected in the same pass. No behaviour changed. |
 | 1.4.2 | Consistency pass (2026-09-23): One recall fusion formula defined in §4.2 (it had four incompatible forms across §4.2.2, §4.6, §4.15, §4.16); the other sections now name their term. §4.3 no longer writes `notes/*.md` (the dual write v1.4.0 removed). The HRR capacity guard bounded the wrong quantity and deleted real memories to relieve a fallback encoding — the SNR limit applies to components bundled into one vector, and the guard never prunes (MEM-6). `MEMORY.md` had three incompatible definitions (§-delimited 2200-char file, consolidation output, 25 KB link index): the topic index is now `INDEX.md` with `topics/` files, `MEMORY.md` stays the small always-injected file. Quick-memory files are a standing-instruction sink like the constitution's (§4.25 there, AG-10): untrusted-provenance machine writes are staged under `.pending/`. Phase 2 no longer removes human-authored entries and lists every removal. `/forget` confirms the model-selected target before deleting. |
 | 1.4.1 | Disclosed simplification (FR-6) recorded in §5: the shipped HRR encoder is a zeroed-vector stub, so the HRR fallback recall leg is inert until a real encoding (or an embedding model) lands; no schema or contract change |
 | 1.4.0 | Reconciled to l1-memory-model MEM-4 v1.1 (source-of-truth by kind): the learned `memory_item` corpus is store-authoritative (`content` column is truth, `memory_fts`/`memory_vec` derived from it, no external `notes/*.md`); authored quick-memory (`MEMORY.md`/`USER.md`, §4.11) stays human-readable-authoritative. Removed the db+notes dual-write; a text export of the corpus is now a projection, not a second truth. Updated §2 constraint, Invariant Compliance MEM-4 row, and Drawbacks |
