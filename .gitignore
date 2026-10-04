@@ -30,12 +30,13 @@ pids
 # Coverage directory
 coverage/
 
-# Temporary folders
+# Temporary folders and files
 tmp/
 temp/
 cache/
 *cache/
 .references/
+*.*~*
 
 # Build outputs
 dist/
