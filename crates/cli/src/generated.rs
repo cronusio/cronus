@@ -359,7 +359,7 @@ pub fn invocation_from_matches<'a>(
 
 #[cfg(test)]
 mod tests {
-    use cronus_contract::{Invocable, InvocableId, Stability};
+    use cronus_contract::{Invocable, InvocableId, LiveEffect, Stability};
 
     use super::*;
 
@@ -533,7 +533,9 @@ mod tests {
             ..descriptor("core:pane.focus", "pane", Vec::new())
         };
         let installation = Invocable {
-            locus: Locus::Installation,
+            locus: Locus::Installation {
+                effect: LiveEffect::Inspect,
+            },
             ..descriptor("core:init", "init", Vec::new())
         };
         let retired = Invocable {

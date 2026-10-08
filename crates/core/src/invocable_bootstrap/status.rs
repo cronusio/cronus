@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cronus_contract::{Binder, Invocable, Locus, Outcome, OutcomeValue, Stability};
+use cronus_contract::{Binder, Invocable, LiveEffect, Locus, Outcome, OutcomeValue, Stability};
 use cronus_domain::invocable::{Dispatcher, InvocableRegistry, Registrant};
 use cronus_domain::{Capabilities, Engine};
 
@@ -17,15 +17,16 @@ pub(super) fn register(
         name: "Version",
         summary: "Show the engine/product version.",
         group: "status",
-        // Diagnoses the product's own installation, not the user's work —
+        // Reports on the product's own installation, not the user's work —
         // reclassified from `Semantic` once `Locus::Installation` existed
-        // to fit it. Unlike `core:status` (moved to the CLI frontend's own
-        // installation grammar once that frontend needed to declare its
-        // installation verbs in one place — the facade is not that
-        // frontend), the product version is genuinely a fact any surface
-        // might want, so it stays registered here rather than moving with
-        // it.
-        locus: Locus::Installation,
+        // to fit it, and read-only, so it may run at any moment. Unlike
+        // `core:status` (held in the installation declaration beside the
+        // other installation verbs), the product version is genuinely a
+        // fact any surface might want, so it stays registered here rather
+        // than moving with them.
+        locus: Locus::Installation {
+            effect: LiveEffect::Inspect,
+        },
         binders: Vec::<Binder>::new(),
         stability: Stability::Shipped,
         journal_raw_input: true,

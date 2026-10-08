@@ -66,8 +66,8 @@ impl DesktopProjection {
 impl SurfaceProjection for DesktopProjection {
     /// The real bridge's own `catalog()` — the identical call the shell's
     /// IPC command (`capability_catalog`) answers with, already filtered to
-    /// `Semantic`+`ClientLocal`+`Shipped` (`Invocable::is_projected`) by
-    /// `Bridge` itself.
+    /// `Semantic`+`ClientLocal`+`Shipped` (`Invocable::is_projected_for` with
+    /// the bridge's own `PROJECTED_LOCI`) by `Bridge` itself.
     fn exposed(&self) -> Vec<Invocable> {
         self.bridge.catalog()
     }

@@ -1,0 +1,13 @@
+id = "backup-create-from-the-shell-succeeds"
+
+[[step]]
+argv = ["init"]
+expect_exit = 0
+
+[[step]]
+argv = ["backup", "create"]
+expect_exit = 0
+
+[[step]]
+argv = ["backup", "list"]
+expect_exit = 0

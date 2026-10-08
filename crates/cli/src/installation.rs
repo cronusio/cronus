@@ -1,32 +1,31 @@
-//! The installation half of the command surface: workspace
-//! initialization, diagnostics, and developer-office admission — verbs that
-//! configure or inspect the product itself rather than act on the user's
-//! work.
+//! The command line's side of the installation half of the command surface:
+//! workspace initialization, diagnostics, developer-office admission — verbs
+//! that configure or inspect the product itself rather than act on the
+//! user's work.
 //!
-//! Unlike the semantic half ([`crate::generated`]), this grammar is not
-//! generated from the registry — it is declared **once**, right here, and
-//! that one declaration has two consumers: [`build_installation_tree`]
-//! builds the parser from it before composition even runs, and
-//! [`declared_invocables`] feeds the same list into the catalog at
-//! composition, so another surface can see these verbs exist and declare
-//! that it deliberately does not offer them, instead of looking merely
-//! unfinished. A verb declared in a hand-written parser and again as a
-//! hand-written descriptor is two statements of one fact — the exact fork
-//! this whole command-surface redesign exists to close, one level up from
-//! where the semantic half closes it.
+//! The verbs themselves are declared once, in `cronus_core::installation`,
+//! below every frontend. This module is one of that declaration's
+//! consumers: [`build_installation_tree`] builds the parser from it before
+//! composition even runs, and the core's bootstrap registers the same list
+//! into the catalog at composition, so a surface that does not offer these
+//! verbs can declare the exclusion instead of looking merely unfinished.
+//! Declaring a verb in a hand-written parser and again as a hand-written
+//! descriptor is two statements of one fact; declaring it here and again in
+//! a second frontend would be the same fork one level up.
 //!
-//! This is also why an installation verb answers directly, through the
-//! functions already proven in [`crate::commands`], rather than through the
-//! shared [`cronus_core::invocable::Dispatcher`]: that shared pipeline
-//! exists so one handler can serve every surface, and no other surface ever
-//! projects the `Installation` locus (only the command line does), so the
-//! indirection would buy nothing here. `tui` is the one exception to
-//! *which* function it answers through — it launches the sibling terminal
-//! frontend's own composition (`cronus_tui::run`) rather than a
-//! `crate::commands` handler, since that frontend's own registry/dispatcher
-//! pair is what actually runs a session, not this launcher's.
+//! An installation verb answers directly, through the functions in
+//! [`crate::commands`], rather than through the shared
+//! [`cronus_core::invocable::Dispatcher`]: it must stay answerable when the
+//! composition it would configure is exactly what failed to come up. Those
+//! functions render and prompt; where the terminal UI shows the same verb
+//! too, what the verb *reads* — paths, names, the shape of an answer — comes
+//! from `cronus_core::installation::inspect`, so neither frontend holds its
+//! own copy of it. `tui` is the one exception to *which* function it answers
+//! through — it launches the sibling terminal frontend's own composition
+//! (`cronus_tui::run`) rather than a `crate::commands` handler, since that
+//! frontend's own registry/dispatcher pair is what actually runs a session.
 //!
-//! All twelve installation groups live here — `init`, `status`, `doctor`,
+//! All twelve installation groups are parsed and dispatched here — `init`, `status`, `doctor`,
 //! `restore`, `dev`, `workspace`, `backup`, `activation`, `archetype`,
 //! `registry`, `ext`, and `tui` — covering four tree shapes: **flat** (a
 //! group's one verb's id-tail equals its group name, so it renders as a
@@ -44,451 +43,10 @@
 use std::collections::HashSet;
 
 use clap::{Arg, ArgMatches, Command};
-use cronus_contract::{Binder, BinderKind, Invocable, InvocableId, Locus, Stability};
+use cronus_contract::Invocable;
 
 use crate::generated::verb_of;
 use crate::output::Context;
-
-fn id(tail: &str) -> InvocableId {
-    InvocableId::new(format!("core:{tail}"))
-        .expect("literal installation-verb identity must be well-formed — a bug if it isn't")
-}
-
-fn text(name: &'static str, optional: bool) -> Binder {
-    Binder {
-        name,
-        kind: BinderKind::Text,
-        optional,
-    }
-}
-
-fn flag(name: &'static str) -> Binder {
-    Binder {
-        name,
-        kind: BinderKind::Flag,
-        optional: true,
-    }
-}
-
-/// A value bound as a named `--name <value>` flag rather than positionally.
-/// A missing optional one reads back as absent from `ArgValues`, and the
-/// handler applies its own default the same way an absent positional `Text`
-/// binder's caller already would — `Binder` carries no default-value slot
-/// of its own, matching the minimalism the rest of this mechanism already
-/// holds to.
-fn named_text(name: &'static str, optional: bool) -> Binder {
-    Binder {
-        name,
-        kind: BinderKind::NamedText,
-        optional,
-    }
-}
-
-/// The single declaration both the pre-composition parser and the
-/// post-composition catalog registration read from.
-pub fn declared_invocables() -> Vec<Invocable> {
-    vec![
-        Invocable {
-            id: id("init"),
-            name: "Init",
-            summary: "Initialize a Cronus workspace in the target directory",
-            group: "init",
-            locus: Locus::Installation,
-            binders: vec![text("path", true)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("status"),
-            name: "Status",
-            summary: "Show the current workspace status",
-            group: "status",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("doctor"),
-            name: "Doctor",
-            summary: "Self-healing: run health checks, optionally applying safe repairs",
-            group: "doctor",
-            locus: Locus::Installation,
-            binders: vec![flag("fix")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("restore"),
-            name: "Restore",
-            summary: "Restore a backup into the current state tier",
-            group: "restore",
-            locus: Locus::Installation,
-            binders: vec![text("backup", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("dev.status"),
-            name: "Dev Status",
-            summary: "Print the resolved developer-office admission tier for the current directory",
-            group: "dev",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("dev.admit"),
-            name: "Dev Admit",
-            summary: "Grant developer-office admission — a human-operator act; run this \
-                       yourself, never through an agent-invoked path",
-            group: "dev",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("dev.revoke"),
-            name: "Dev Revoke",
-            summary: "Revoke developer-office admission",
-            group: "dev",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("workspace.create"),
-            name: "Workspace Create",
-            summary: "Create a new workspace",
-            group: "workspace",
-            locus: Locus::Installation,
-            binders: vec![
-                text("id", false),
-                named_text("name", true),
-                named_text("path", true),
-            ],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("workspace.list"),
-            name: "Workspace List",
-            summary: "List all workspaces",
-            group: "workspace",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("workspace.switch"),
-            name: "Workspace Switch",
-            summary: "Switch the active workspace",
-            group: "workspace",
-            locus: Locus::Installation,
-            binders: vec![text("id", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("workspace.delete"),
-            name: "Workspace Delete",
-            summary: "Delete a workspace",
-            group: "workspace",
-            locus: Locus::Installation,
-            binders: vec![text("id", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("workspace.check"),
-            name: "Workspace Check",
-            summary: "Check the status of a workspace",
-            group: "workspace",
-            locus: Locus::Installation,
-            binders: vec![text("id", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("backup.create"),
-            name: "Backup Create",
-            summary: "Create a backup",
-            group: "backup",
-            locus: Locus::Installation,
-            binders: vec![named_text("to", true), flag("include-logs")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("backup.list"),
-            name: "Backup List",
-            summary: "List backups under the state tier's backups/ directory",
-            group: "backup",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("activation.status"),
-            name: "Activation Status",
-            summary: "Print the observed activation state — read from the OS, never a \
-                       remembered value",
-            group: "activation",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("activation.enable"),
-            name: "Activation Enable",
-            summary: "Register background activation for a mode — an autonomy grant, not a \
-                       preference, disclosed and confirmed before it takes effect",
-            group: "activation",
-            locus: Locus::Installation,
-            binders: vec![
-                named_text("mode", false),
-                flag("acknowledge-unattended-execution"),
-            ],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("activation.disable"),
-            name: "Activation Disable",
-            summary: "Remove whatever activation registration is currently active — removed \
-                       and verified, never left partially registered",
-            group: "activation",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("archetype.list"),
-            name: "Archetype List",
-            summary: "List archetypes — the shipped catalog, or the office's active one",
-            group: "archetype",
-            locus: Locus::Installation,
-            binders: vec![flag("catalog"), flag("active")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("archetype.info"),
-            name: "Archetype Info",
-            summary: "Show one archetype's pool, shape, and seed (or its blocked reason)",
-            group: "archetype",
-            locus: Locus::Installation,
-            binders: vec![text("id", false), flag("deviations")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("archetype.set"),
-            name: "Archetype Set",
-            summary: "Apply an archetype, or return to the archetype-free default. Changes \
-                       what the manager expects, never staff — non-destructive by construction",
-            group: "archetype",
-            locus: Locus::Installation,
-            binders: vec![text("id", true), flag("clear")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("archetype.create"),
-            name: "Archetype Create",
-            summary: "Create a custom archetype by copying a preset into the state tier",
-            group: "archetype",
-            locus: Locus::Installation,
-            binders: vec![text("name", false), named_text("from", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("registry.list"),
-            name: "Registry List",
-            summary: "List all agent definitions",
-            group: "registry",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("registry.show"),
-            name: "Registry Show",
-            summary: "Show an agent definition",
-            group: "registry",
-            locus: Locus::Installation,
-            binders: vec![text("name", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("registry.create"),
-            name: "Registry Create",
-            summary: "Create a custom agent entry",
-            group: "registry",
-            locus: Locus::Installation,
-            binders: vec![text("name", false), text("description", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("registry.disable"),
-            name: "Registry Disable",
-            summary: "Disable an agent",
-            group: "registry",
-            locus: Locus::Installation,
-            binders: vec![text("name", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("registry.enable"),
-            name: "Registry Enable",
-            summary: "Enable a previously disabled agent",
-            group: "registry",
-            locus: Locus::Installation,
-            binders: vec![text("name", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.list"),
-            name: "Ext List",
-            summary: "List registered extensions",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.add"),
-            name: "Ext Add",
-            summary: "Add an extension by manifest path",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("path", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.remove"),
-            name: "Ext Remove",
-            summary: "Remove an extension",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("id", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.scan"),
-            name: "Ext Scan",
-            summary: "Scan an extension for security issues",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("path", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.activate"),
-            name: "Ext Activate",
-            summary: "Activate an extension — an explicit grant of what its manifest declares, \
-                       confirmed before it takes effect",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("id", false), flag("yes")],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.deactivate"),
-            name: "Ext Deactivate",
-            summary: "Deactivate an extension",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("id", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        // `ext skill …` — one level deeper than every other `ext` verb
-        // (§ the flat-vs-nested-vs-sub-nested note on `build_installation_tree`):
-        // the dot in the verb tail (`skill.import`) is what signals it.
-        Invocable {
-            id: id("ext.skill.import"),
-            name: "Ext Skill Import",
-            summary: "Import and convert a foreign skill package",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("path", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.skill.create"),
-            name: "Ext Skill Create",
-            summary: "Author a new skill from a natural-language prompt",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![named_text("prompt", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        Invocable {
-            id: id("ext.skill.status"),
-            name: "Ext Skill Status",
-            summary: "Show conversion and review status for one or all tracked skills",
-            group: "ext",
-            locus: Locus::Installation,
-            binders: vec![text("id", true)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        // `Installation`, not `Semantic`/`ClientLocal`: launching the
-        // terminal UI has no meaning inside an already-running session, the
-        // same reasoning that places every other verb here.
-        // Answerable with zero composition, matching every other
-        // installation verb — the terminal UI composes its own registry and
-        // dispatcher internally the moment it starts, so this launcher never
-        // needs to build one first.
-        Invocable {
-            id: id("tui"),
-            name: "Tui",
-            summary: "Launch the terminal UI — also the default composition when no verb is given",
-            group: "tui",
-            locus: Locus::Installation,
-            binders: Vec::new(),
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-        // `Installation`: shell completion is asked far more often than the
-        // product runs and must be answerable from this frontend's own
-        // grammar. The generated script is emitted from the composed command
-        // tree once, at install time — the script itself does the
-        // per-keystroke work without calling back (a pre-composition
-        // artifact refinement is future work; this verb still composes once).
-        Invocable {
-            id: id("completion"),
-            name: "Completion",
-            summary: "Print a shell completion script (bash, zsh, fish, powershell, elvish)",
-            group: "completion",
-            locus: Locus::Installation,
-            binders: vec![text("shell", false)],
-            stability: Stability::Shipped,
-            journal_raw_input: true,
-        },
-    ]
-}
 
 /// A nested group's own about text — declared here rather than invented as
 /// a generic `"<group> operations"` fallback, since a nested installation
@@ -950,6 +508,8 @@ fn dispatch_leaf(group: &str, verb: &str, matches: &ArgMatches, ctx: &Context) -
 mod tests {
     use std::collections::HashSet as Set;
 
+    use cronus_contract::Locus;
+    use cronus_core::installation::declared_invocables;
     use cronus_core::invocable::{InvocableRegistry, Registrant};
 
     use super::*;
@@ -1176,7 +736,7 @@ mod tests {
         }
         let catalog_verbs: Set<(String, String)> = registry
             .all()
-            .filter(|invocable| matches!(invocable.locus, Locus::Installation))
+            .filter(|invocable| matches!(invocable.locus, Locus::Installation { .. }))
             .map(|invocable| (invocable.group.to_string(), verb_of(invocable).to_string()))
             .collect();
 

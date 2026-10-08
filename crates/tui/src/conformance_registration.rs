@@ -172,58 +172,99 @@ fn attach_handlers(dispatcher: &mut Dispatcher) {
 mod tests {
     use super::*;
     use cronus_conformance::{ConformanceReport, Corpus, DeclaredExclusion, check_surface_set};
-    use cronus_contract::{Locus, Stability};
+    use cronus_contract::{LiveEffect, Locus, Stability};
 
-    /// A local corpus (never the shared `fixtures::corpus()` itself) that
-    /// adds exactly one synthetic `Installation`-locus canonical member to
-    /// the real shared fixture set — an installation verb has no meaning
-    /// inside a live session, so this surface must never expose it, and
-    /// that must be a **declared** omission the corpus can check, not a
-    /// silent one.
-    fn corpus_with_an_installation_only_member() -> (Corpus, InvocableId) {
-        let mut data = corpus();
-        let id = InvocableId::new("conformance:installation-only")
-            .expect("well-formed synthetic fixture id");
-        data.canonical.push(Invocable {
+    /// A descriptor of the `Installation` locus under `id`, for adding to a
+    /// local corpus and to the projection's own registry.
+    fn installation_member(id: &InvocableId) -> Invocable {
+        Invocable {
             id: id.clone(),
-            name: "Installation only",
-            summary: "Meaningful only before a live session exists.",
+            name: "Installation member",
+            summary: "Acts on the product's own installation.",
             group: "conformance",
-            locus: Locus::Installation,
+            locus: Locus::Installation {
+                effect: LiveEffect::Inspect,
+            },
             binders: Vec::new(),
             stability: Stability::Shipped,
             journal_raw_input: true,
-        });
-        (data, id)
+        }
     }
 
-    /// The positive half: with the exclusion declared, the surface-set
-    /// family reports nothing — the locus difference is accounted for, not
-    /// merely true by accident.
+    /// A local corpus (never the shared `fixtures::corpus()` itself) and a
+    /// projection that both hold one extra `Installation`-locus member under
+    /// `id`.
+    fn corpus_and_projection_with_an_installation_member(
+        id: &InvocableId,
+    ) -> (Corpus, TuiProjection) {
+        let mut data = corpus();
+        data.canonical.push(installation_member(id));
+
+        let mut projection = TuiProjection::new();
+        let registrant = if id.qualifier() == "core" {
+            Registrant::core()
+        } else {
+            Registrant::extension(id.qualifier(), "conformance-corpus-test")
+                .with_grant(CONTRIBUTE_GRANT)
+        };
+        projection
+            .registry
+            .register(&registrant, installation_member(id))
+            .expect("the installation member registers cleanly");
+        projection.dispatcher.attach(
+            id.clone(),
+            Arc::new(|_args| Outcome::Value(OutcomeValue::Empty)),
+        );
+        (data, projection)
+    }
+
+    /// This surface takes the `Installation` locus, so an installation member
+    /// of the catalog is offered with no exclusion needed — the locus
+    /// difference the earlier revision declared is gone, and the corpus
+    /// confirms it rather than a comment asserting it.
+    #[test]
+    fn an_installation_member_is_offered_here_with_no_exclusion_declared() {
+        let id = InvocableId::new("conformance:installation-member").expect("well-formed id");
+        let (data, projection) = corpus_and_projection_with_an_installation_member(&id);
+
+        assert_eq!(check_surface_set(&projection, &data, &[]), Vec::new());
+        assert!(
+            projection.exposed().iter().any(|i| i.id == id),
+            "the installation member is in this surface's exposed set"
+        );
+    }
+
+    /// The exclusions this surface really declares (`command::INSTALLATION_EXCLUSIONS`)
+    /// are load-bearing in both directions. Positive half: with the exclusion
+    /// declared, the surface-set family reports nothing — the omission is
+    /// accounted for, not merely true by accident.
     #[test]
     fn a_declared_installation_exclusion_produces_zero_surface_set_divergence() {
-        let (data, installation_only) = corpus_with_an_installation_only_member();
-        let projection = TuiProjection::new();
-        let exclusions = [DeclaredExclusion::new(
-            installation_only,
-            "an installation verb has no meaning inside a live session",
-        )];
+        let (excluded, reason) = command::INSTALLATION_EXCLUSIONS[0];
+        let id = InvocableId::new(excluded).expect("well-formed excluded id");
+        let (data, projection) = corpus_and_projection_with_an_installation_member(&id);
 
+        let exclusions = [DeclaredExclusion::new(id.clone(), reason)];
         assert_eq!(
             check_surface_set(&projection, &data, &exclusions),
             Vec::new()
         );
+        assert!(
+            projection.exposed().iter().all(|i| i.id != id),
+            "the excluded verb is in the catalog but not in this surface's exposed set"
+        );
     }
 
-    /// The negative half, and the point of this task: remove the exclusion
-    /// and the same real projection now reports the installation-only id as
+    /// The negative half, and the point of the mechanism: remove the
+    /// exclusion and the same real projection reports the excluded id as
     /// missing — proving the declaration is load-bearing, not a statement
     /// that could never fail. A declared exclusion nobody checks is the same
     /// shape as the deleted hand-copied catalog mirror.
     #[test]
-    fn removing_the_declared_exclusion_reports_the_installation_only_id_as_missing() {
-        let (data, installation_only) = corpus_with_an_installation_only_member();
-        let projection = TuiProjection::new();
+    fn removing_the_declared_exclusion_reports_the_excluded_id_as_missing() {
+        let (excluded, _) = command::INSTALLATION_EXCLUSIONS[0];
+        let id = InvocableId::new(excluded).expect("well-formed excluded id");
+        let (data, projection) = corpus_and_projection_with_an_installation_member(&id);
 
         let reports = check_surface_set(&projection, &data, &[]);
         match reports.as_slice() {
@@ -233,7 +274,7 @@ mod tests {
                     unexpected,
                 },
             ] => {
-                assert_eq!(missing, &vec![installation_only]);
+                assert_eq!(missing, &vec![id]);
                 assert!(unexpected.is_empty());
             }
             other => panic!("expected exactly one SurfaceSet report, got {other:?}"),

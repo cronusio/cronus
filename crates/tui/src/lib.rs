@@ -13,6 +13,7 @@ pub mod command;
 #[cfg(test)]
 mod conformance_registration;
 pub mod dispatch;
+pub mod installation;
 pub mod pane_actions;
 pub mod terminal;
 pub mod view;
@@ -28,6 +29,7 @@ pub use dispatch::{bind_args, dispatch_command, render_outcome};
 pub use pane_actions::PaneAction;
 pub use terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
 pub use view::{
-    AgentActivity, BoardCard, BoardColumn, BoardView, Focus, OfficeView, PanelAreas, SessionsView,
-    layout, render_board, render_office, render_sessions, render_status,
+    AgentActivity, BoardCard, BoardColumn, BoardView, Focus, OfficeView, PanelAreas, ResultBlock,
+    SessionsView, layout, render_board, render_office, render_result_block, render_sessions,
+    render_status,
 };

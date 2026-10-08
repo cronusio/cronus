@@ -2056,13 +2056,81 @@ pub enum Locus {
     /// omitted.
     HostOnly { reason: &'static str },
     /// Acts on the product's own installation rather than on the user's
-    /// work — runs to completion without a session and never appears on a
-    /// session-scoped surface (workspace init, configuration, extension
-    /// management, diagnostics). Declared once in the launcher's own closed
-    /// grammar and registered here so a session-scoped surface can
-    /// *declare* that it deliberately does not offer it, rather than
-    /// merely omitting it.
+    /// work (workspace init, configuration, extension management,
+    /// diagnostics). It never runs as part of a conversation or an agent's
+    /// turn; a surface that is composed alongside live work may still offer
+    /// it, as long as it runs beside that work. Declared once and
+    /// registered here, so a surface that deliberately does not offer it
+    /// *declares* the exclusion rather than merely omitting it.
+    ///
+    /// `effect` says what the verb does to a composition that is running at
+    /// the same time — a verb cannot be declared without one.
+    Installation { effect: LiveEffect },
+}
+
+/// What an installation verb does to a composition running beside it. The
+/// variants are ordered by how much they disturb it, so "may only rise" is
+/// the derived ordering: [`LiveEffect::raised_to`] takes the larger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum LiveEffect {
+    /// Reads installation state and changes nothing; safe at any moment.
+    Inspect,
+    /// Changes installation state that the running composition does not
+    /// hold open.
+    Install,
+    /// Changes what the running composition is built from, and so must not
+    /// run while work it would alter is in flight.
+    Recompose { apply: Apply },
+}
+
+impl LiveEffect {
+    /// The effect of an invocation whose arguments raise this verb's base
+    /// effect: never lower than the base, whatever the argument says.
+    pub fn raised_to(self, other: LiveEffect) -> LiveEffect {
+        self.max(other)
+    }
+}
+
+/// How a `Recompose` change reaches the running composition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum Apply {
+    /// The composition picks the change up without restarting.
+    InPlace,
+    /// The change needs the process to start again; the surface returns the
+    /// user to where they were.
+    Relaunch,
+}
+
+/// A [`Locus`] with its payload dropped, for deciding which loci a surface
+/// takes without caring about a variant's reason or effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocusKind {
+    Semantic,
+    ClientLocal,
+    HostOnly,
     Installation,
+}
+
+impl Locus {
+    pub fn kind(&self) -> LocusKind {
+        match self {
+            Locus::Semantic => LocusKind::Semantic,
+            Locus::ClientLocal => LocusKind::ClientLocal,
+            Locus::HostOnly { .. } => LocusKind::HostOnly,
+            Locus::Installation { .. } => LocusKind::Installation,
+        }
+    }
+
+    /// The declared base effect of an installation verb; `None` for every
+    /// other locus.
+    pub fn live_effect(&self) -> Option<LiveEffect> {
+        match self {
+            Locus::Installation { effect } => Some(*effect),
+            _ => None,
+        }
+    }
 }
 
 /// Whether an invocable is on the shipped surface. An action the
@@ -2183,16 +2251,13 @@ impl Invocable {
     /// catalog, an action registry, an IPC catalog command — should offer
     /// this descriptor at all. The single predicate every surface's
     /// catalog filter is defined in terms of, so no surface hand-rolls this
-    /// rule a second time: only a live, generically-dispatchable action
-    /// belongs on a discovery surface — `ClientLocal` because it is
-    /// per-surface by design, `Semantic` because it is the core's own
-    /// reachable-everywhere case; `HostOnly`/`Installation` are each
-    /// reachable by their own declared, non-generic path instead, and a
-    /// `Stability` other than `Shipped` is not yet (or no longer) meant for
-    /// a user to discover.
-    pub fn is_projected(&self) -> bool {
-        matches!(self.locus, Locus::Semantic | Locus::ClientLocal)
-            && matches!(self.stability, Stability::Shipped)
+    /// rule a second time. What differs per surface is the set of loci it
+    /// takes, so that set is the argument: each surface names its own
+    /// instead of sharing one constant that would be wrong for the next
+    /// surface to differ. A `Stability` other than `Shipped` is not yet (or
+    /// no longer) meant for a user to discover, whatever the locus.
+    pub fn is_projected_for(&self, taken: &[LocusKind]) -> bool {
+        taken.contains(&self.locus.kind()) && matches!(self.stability, Stability::Shipped)
     }
 }
 
@@ -2309,15 +2374,77 @@ mod invocable_tests {
         );
     }
 
+    const INSPECT: Locus = Locus::Installation {
+        effect: LiveEffect::Inspect,
+    };
+
     #[test]
     fn installation_locus_is_distinct_from_the_other_three() {
-        assert_ne!(Locus::Installation, Locus::Semantic);
-        assert_ne!(Locus::Installation, Locus::ClientLocal);
+        assert_ne!(INSPECT, Locus::Semantic);
+        assert_ne!(INSPECT, Locus::ClientLocal);
         assert_ne!(
-            Locus::Installation,
+            INSPECT,
             Locus::HostOnly {
                 reason: "unrelated"
             }
+        );
+    }
+
+    #[test]
+    fn installation_loci_with_different_effects_are_different_loci() {
+        let install = Locus::Installation {
+            effect: LiveEffect::Install,
+        };
+        assert_ne!(INSPECT, install);
+        assert_eq!(install.live_effect(), Some(LiveEffect::Install));
+        assert_eq!(Locus::Semantic.live_effect(), None);
+    }
+
+    #[test]
+    fn live_effects_are_ordered_by_how_much_they_disturb_the_composition() {
+        let in_place = LiveEffect::Recompose {
+            apply: Apply::InPlace,
+        };
+        let relaunch = LiveEffect::Recompose {
+            apply: Apply::Relaunch,
+        };
+        assert!(LiveEffect::Inspect < LiveEffect::Install);
+        assert!(LiveEffect::Install < in_place);
+        assert!(in_place < relaunch);
+    }
+
+    #[test]
+    fn a_raised_effect_never_goes_below_the_base() {
+        let relaunch = LiveEffect::Recompose {
+            apply: Apply::Relaunch,
+        };
+        assert_eq!(LiveEffect::Inspect.raised_to(relaunch), relaunch);
+        assert_eq!(
+            relaunch.raised_to(LiveEffect::Inspect),
+            relaunch,
+            "an argument must not be able to lower a verb's declared effect"
+        );
+        assert_eq!(
+            LiveEffect::Install.raised_to(LiveEffect::Install),
+            LiveEffect::Install
+        );
+    }
+
+    #[test]
+    fn locus_kind_drops_the_payload() {
+        assert_eq!(Locus::Semantic.kind(), LocusKind::Semantic);
+        assert_eq!(Locus::ClientLocal.kind(), LocusKind::ClientLocal);
+        assert_eq!(Locus::HostOnly { reason: "x" }.kind(), LocusKind::HostOnly);
+        assert_eq!(INSPECT.kind(), LocusKind::Installation);
+        assert_eq!(
+            Locus::Installation {
+                effect: LiveEffect::Recompose {
+                    apply: Apply::Relaunch
+                }
+            }
+            .kind(),
+            LocusKind::Installation,
+            "every effect is the same kind of locus"
         );
     }
 
@@ -2372,6 +2499,55 @@ mod invocable_tests {
         assert_eq!(invocable.binders.len(), 2);
         assert!(!invocable.binders[0].optional);
         assert!(invocable.binders[1].optional);
+    }
+
+    fn invocable_at(locus: Locus, stability: Stability) -> Invocable {
+        Invocable {
+            id: InvocableId::new("core:probe.run").expect("well-formed invocable id"),
+            name: "Probe",
+            summary: "A probe descriptor",
+            group: "probe",
+            locus,
+            binders: Vec::new(),
+            stability,
+            journal_raw_input: true,
+        }
+    }
+
+    #[test]
+    fn a_surface_projects_exactly_the_loci_it_names() {
+        let semantic = invocable_at(Locus::Semantic, Stability::Shipped);
+        let client_local = invocable_at(Locus::ClientLocal, Stability::Shipped);
+        let installation = invocable_at(INSPECT, Stability::Shipped);
+        let host_only = invocable_at(Locus::HostOnly { reason: "x" }, Stability::Shipped);
+
+        let narrow = [LocusKind::Semantic, LocusKind::ClientLocal];
+        assert!(semantic.is_projected_for(&narrow));
+        assert!(client_local.is_projected_for(&narrow));
+        assert!(!installation.is_projected_for(&narrow));
+        assert!(!host_only.is_projected_for(&narrow));
+
+        let wide = [
+            LocusKind::Semantic,
+            LocusKind::ClientLocal,
+            LocusKind::Installation,
+        ];
+        assert!(
+            installation.is_projected_for(&wide),
+            "a surface that names Installation must see installation verbs"
+        );
+        assert!(
+            !host_only.is_projected_for(&wide),
+            "naming one more locus must not widen the set beyond it"
+        );
+        assert!(!semantic.is_projected_for(&[]));
+    }
+
+    #[test]
+    fn a_retired_invocable_is_never_projected_whatever_loci_a_surface_takes() {
+        let superseded_by = InvocableId::new("core:probe.new").expect("well-formed invocable id");
+        let retired = invocable_at(Locus::Semantic, Stability::Retired { superseded_by });
+        assert!(!retired.is_projected_for(&[LocusKind::Semantic]));
     }
 
     #[test]
@@ -2763,6 +2939,22 @@ mod serde_tests {
         assert_eq!(json["name"], "Add card");
         assert_eq!(json["binders"][0]["name"], "id");
         assert_eq!(json["binders"][0]["optional"], false);
+    }
+
+    #[test]
+    fn an_installation_locus_serializes_with_its_live_effect() {
+        let locus = Locus::Installation {
+            effect: LiveEffect::Recompose {
+                apply: Apply::Relaunch,
+            },
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&locus).expect("serialize"))
+                .expect("valid json");
+        assert_eq!(
+            json["Installation"]["effect"]["Recompose"]["apply"], "Relaunch",
+            "a catalog crossing the wire must carry the effect class, not drop it: {json}"
+        );
     }
 
     #[test]

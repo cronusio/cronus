@@ -278,6 +278,13 @@ impl Dispatcher {
         DispatchHandle { id }
     }
 
+    /// Whether executable behavior is attached for `id` — the question a
+    /// surface asks before it projects a descriptor, because a projected verb
+    /// with no handler is a command that can only ever answer "unavailable".
+    pub fn has_handler(&self, id: &InvocableId) -> bool {
+        self.handlers.contains_key(id)
+    }
+
     /// Replace the secret values every dispatched [`Outcome`] is masked
     /// against. Starts empty — populating it from the core's real
     /// secret store is a separate, recorded obligation this method makes
@@ -641,6 +648,21 @@ mod tests {
         let outcome = ran(dispatcher.dispatch(&registry, &invocation_with(args)));
 
         assert!(matches!(outcome, Outcome::Unavailable { .. }));
+    }
+
+    #[test]
+    fn has_handler_reports_exactly_the_ids_with_attached_behavior() {
+        let attached = InvocableId::new("core:board.add").expect("well-formed invocable id");
+        let other = InvocableId::new("core:board.list").expect("well-formed invocable id");
+        let mut dispatcher = Dispatcher::new();
+        assert!(!dispatcher.has_handler(&attached), "nothing attached yet");
+
+        dispatcher.attach(
+            attached.clone(),
+            Arc::new(|_args: &ArgValues| Outcome::Value(OutcomeValue::Empty)),
+        );
+        assert!(dispatcher.has_handler(&attached));
+        assert!(!dispatcher.has_handler(&other));
     }
 
     #[test]

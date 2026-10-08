@@ -85,8 +85,19 @@ fn real_app() -> App {
 }
 
 /// Feed one command-bar line (without the leading `/`) followed by Enter,
-/// then tick, returning the feedback the loop produced.
+/// then tick, returning the one-line feedback the loop produced.
 fn submit_line(app: &mut App, line: &str) -> Option<String> {
+    submit(app, line);
+    app.view().command_feedback.clone()
+}
+
+/// The same, returning the multi-line result block the loop produced.
+fn submit_block(app: &mut App, line: &str) -> Option<cronus_tui::ResultBlock> {
+    submit(app, line);
+    app.view().result_block.clone()
+}
+
+fn submit(app: &mut App, line: &str) {
     // The command bar only accepts text input while it has focus; cycle
     // into it first through the real, registered `pane.focus-next` action
     // — one Tab, one tick, re-checking the *updated* focus each time
@@ -112,7 +123,6 @@ fn submit_line(app: &mut App, line: &str) -> Option<String> {
     events.push(TermEvent::Key(Key::Enter));
     app.tick(&events, &mut NullSource, &mut NullRenderer)
         .expect("ticking an in-memory app never fails");
-    app.view().command_feedback.clone()
 }
 
 /// Safety-valve bound for the Tab-cycling loop in [`submit_line`] — the
@@ -174,22 +184,233 @@ fn an_unrecognized_group_surfaces_an_inline_catalog_error() {
 }
 
 #[test]
-fn help_lists_the_real_bootstrapped_catalog() {
+fn help_lists_the_real_bootstrapped_catalog_with_installation_verbs_set_apart() {
     let mut app = real_app();
-    let feedback = submit_line(&mut app, "help");
+    let block = submit_block(&mut app, "help").expect("/help always produces a result block");
 
-    let feedback = feedback.expect("/help always produces feedback");
-    assert!(
-        feedback.starts_with("commands: "),
-        "unexpected /help feedback shape: {feedback:?}"
-    );
-    for expected in ["board", "pane"] {
+    assert_eq!(block.title, "/help");
+    let position = |prefix: &str| {
+        block
+            .lines
+            .iter()
+            .position(|line| line.starts_with(prefix))
+            .unwrap_or_else(|| panic!("/help must list {prefix:?}; got: {:?}", block.lines))
+    };
+    let heading = position("Installation");
+    for work in ["/board", "/pane"] {
         assert!(
-            feedback.contains(expected),
-            "the real catalog derived from the bootstrapped registry must \
-             list '{expected}' as a discoverable group; got: {feedback:?}"
+            position(work) < heading,
+            "{work} is a command on the user's work and is listed before the installation heading"
         );
     }
+    for installation in ["/status", "/doctor", "/backup", "/ext", "/workspace"] {
+        assert!(
+            position(installation) > heading,
+            "{installation} is an installation verb and is listed under its own heading"
+        );
+    }
+}
+
+/// The installation set this surface offers: exactly the command line's
+/// declaration, minus the verbs this surface declares it does not offer.
+#[test]
+fn the_catalog_offers_the_command_lines_installation_verbs_less_the_declared_exclusions() {
+    let (registry, dispatcher) =
+        cronus_core::invocable_bootstrap::bootstrap(cronus_core::Engine::new());
+    let declared = cronus_core::installation::declared_invocables();
+
+    let projected: std::collections::BTreeSet<String> = registry
+        .all()
+        .filter(|i| i.locus.kind() == cronus_contract::LocusKind::Installation)
+        .filter(|i| command::is_projected(i))
+        .map(|i| i.id.as_str().to_string())
+        .collect();
+    let expected: std::collections::BTreeSet<String> = declared
+        .iter()
+        .filter(|i| command::installation_exclusion(&i.id).is_none())
+        .map(|i| i.id.as_str().to_string())
+        .collect();
+    assert_eq!(
+        projected, expected,
+        "this surface's installation set must be a subset of the command line's, short only by \
+         what it declares"
+    );
+
+    for id in &projected {
+        let id = cronus_contract::InvocableId::new(id.clone()).expect("registered ids are valid");
+        assert!(
+            dispatcher.has_handler(&id),
+            "{id} is offered here but has no handler to run"
+        );
+    }
+    for (excluded, reason) in command::INSTALLATION_EXCLUSIONS {
+        assert!(
+            !reason.is_empty(),
+            "{excluded} is excluded without a reason"
+        );
+        let id = cronus_contract::InvocableId::new(excluded).expect("excluded ids are valid");
+        assert!(
+            registry.resolve(&id).is_found(),
+            "{excluded} is declared excluded but is not in the catalog — an exclusion of nothing"
+        );
+    }
+}
+
+/// One name per surface: an installation group never shares its name with a
+/// group of any other locus, or the slash catalog would hold two commands
+/// under one name.
+#[test]
+fn no_catalog_name_is_held_by_two_commands() {
+    let app_catalog = {
+        let (mut registry, mut dispatcher) =
+            cronus_core::invocable_bootstrap::bootstrap(cronus_core::Engine::new());
+        pane_actions::register(&mut registry, &mut dispatcher);
+        let invocables: Vec<&Invocable> = registry.all().collect();
+        command::build_catalog(&invocables)
+    };
+    let mut seen = std::collections::HashSet::new();
+    for spec in &app_catalog {
+        assert!(
+            seen.insert(spec.name),
+            "two commands share the name /{}",
+            spec.name
+        );
+    }
+}
+
+#[test]
+fn an_installation_verb_that_only_reads_runs_for_real_and_shows_its_answer_as_a_block() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("status");
+    // SAFETY: serialized by `PORTABLE_DIR_ENV_LOCK`.
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+    let root = cronus_core::paths::resolve_workspace_root();
+    assert!(
+        root.starts_with(&base),
+        "the workspace root resolved to {root:?}, outside the isolated directory {base:?} — a \
+         workspace marker above the test's working directory would be overwritten"
+    );
+    std::fs::create_dir_all(&root).expect("the isolated state root is creatable");
+    std::fs::write(root.join("app.json"), "{}\n").expect("the marker is writable");
+
+    let mut app = real_app();
+    let block = submit_block(&mut app, "status");
+    let feedback = app.view().command_feedback.clone();
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    let block = block.expect("an installation verb answers with a block");
+    assert_eq!(block.title, "/status");
+    assert!(
+        block.lines.iter().any(|line| line == "phase: ready"),
+        "{:?}",
+        block.lines
+    );
+    assert!(
+        block
+            .lines
+            .iter()
+            .any(|line| line.starts_with("workspace: ")),
+        "{:?}",
+        block.lines
+    );
+    assert_eq!(
+        feedback, None,
+        "the one-line feedback is left to ordinary commands"
+    );
+}
+
+/// "There is no workspace" is a different fact from "the workspace is empty",
+/// and the block must say which.
+#[test]
+fn a_missing_workspace_is_reported_as_unavailable_not_as_an_empty_answer() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("status-none");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    let block = submit_block(&mut app, "status");
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    let block = block.expect("an installation verb answers with a block");
+    assert_eq!(block.lines.len(), 1, "{:?}", block.lines);
+    assert!(
+        block.lines[0].starts_with("unavailable: No workspace initialized"),
+        "{:?}",
+        block.lines
+    );
+}
+
+/// A verb that would change the installation is not carried out from this
+/// surface yet; it says so and names the command that does.
+#[test]
+fn a_verb_that_changes_the_installation_is_refused_with_the_command_line_that_does_it() {
+    let mut app = real_app();
+    let block = submit_block(&mut app, "backup create --to elsewhere").expect("block");
+
+    assert_eq!(block.title, "/backup create --to elsewhere");
+    assert!(
+        block.lines[0].starts_with("not run from here"),
+        "{:?}",
+        block.lines
+    );
+    assert!(
+        block
+            .lines
+            .iter()
+            .any(|line| line.contains("`cronus backup create --to elsewhere`")),
+        "{:?}",
+        block.lines
+    );
+}
+
+#[test]
+fn diagnostics_inspects_but_diagnostics_with_repair_is_raised_and_refused() {
+    let mut app = real_app();
+    let repair = submit_block(&mut app, "doctor --fix").expect("block");
+    assert!(
+        repair.lines[0].contains("recompose, applied by relaunch"),
+        "{:?}",
+        repair.lines
+    );
+    assert!(
+        repair
+            .lines
+            .iter()
+            .any(|line| line.contains("`cronus doctor --fix`")),
+        "{:?}",
+        repair.lines
+    );
+}
+
+/// The one declared exclusion that matters to a person who types it: asking
+/// for `/tui` inside the terminal UI is answered, not called unknown.
+#[test]
+fn an_excluded_installation_verb_is_explained_rather_than_called_unknown() {
+    let mut app = real_app();
+    let feedback = submit_line(&mut app, "tui").expect("an explained refusal");
+    assert!(feedback.contains("not offered here"), "{feedback}");
+    assert!(!feedback.contains("unknown command"), "{feedback}");
+
+    let completion = submit_line(&mut app, "completion bash").expect("an explained refusal");
+    assert!(completion.contains("cronus completion"), "{completion}");
+}
+
+/// The next keystroke begins a new line, so the block of the last one goes.
+#[test]
+fn the_next_keystroke_dismisses_the_result_block() {
+    let mut app = real_app();
+    assert!(submit_block(&mut app, "backup create").is_some());
+    app.tick(
+        &[TermEvent::Key(Key::Char('x'))],
+        &mut NullSource,
+        &mut NullRenderer,
+    )
+    .expect("ticking an in-memory app never fails");
+    assert_eq!(app.view().result_block, None);
 }
 
 #[test]

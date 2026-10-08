@@ -49,6 +49,11 @@ pub fn bootstrap(engine: Engine) -> (InvocableRegistry, Dispatcher) {
     let engine = Arc::new(engine);
 
     status::register(&mut registry, &mut dispatcher, engine);
+    // The installation verbs ride the same door as everything else: one
+    // declaration, registered once per composition, so every surface that
+    // composes — the command line, the terminal UI, the desktop shell — sees
+    // them in the catalog, whether it projects them or declares it does not.
+    crate::installation::register(&mut registry, &mut dispatcher);
     memory::register(&mut registry, &mut dispatcher);
     codegraph::register(&mut registry, &mut dispatcher);
     agent::register(&mut registry, &mut dispatcher);

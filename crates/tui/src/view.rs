@@ -8,7 +8,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Paragraph, Widget};
+use ratatui::widgets::{Block, Clear, Paragraph, Widget};
 
 /// The focusable regions, in tab order.
 ///
@@ -436,9 +436,153 @@ pub fn render_sessions(
     );
 }
 
+// ── Result block ────────────────────────────────────────────────────────────
+
+/// A multi-line result shown over the lower part of the view, just above the
+/// command bar: the output of a command that has more to say than the bar's
+/// one line of feedback — the discovery listing, an installation verb's
+/// answer. Cleared by the next keystroke in the bar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultBlock {
+    /// What produced it, e.g. `/backup list`.
+    pub title: String,
+    /// The result, one entry per line.
+    pub lines: Vec<String>,
+}
+
+/// Break `line` into rows of at most `width` characters, so a long path stays
+/// readable instead of being clipped at the right edge.
+fn wrap_row(line: &str, width: usize) -> Vec<String> {
+    if width == 0 || line.chars().count() <= width {
+        return vec![line.to_string()];
+    }
+    line.chars()
+        .collect::<Vec<_>>()
+        .chunks(width)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+/// The rows a block shows inside a frame `inner_width` wide and `inner_rows`
+/// tall: every line wrapped to the width, then cut to the height with a final
+/// row saying how many rows were left out.
+fn block_rows(block: &ResultBlock, inner_width: usize, inner_rows: usize) -> Vec<String> {
+    let rows: Vec<String> = block
+        .lines
+        .iter()
+        .flat_map(|line| wrap_row(line, inner_width))
+        .collect();
+    if rows.len() <= inner_rows {
+        return rows;
+    }
+    let Some(shown) = inner_rows.checked_sub(1) else {
+        return Vec::new();
+    };
+    let left_out = rows.len() - shown;
+    let mut cut: Vec<String> = rows.into_iter().take(shown).collect();
+    cut.push(format!("… {left_out} more row(s)"));
+    cut
+}
+
+/// Render `block` as a bordered overlay anchored above `command_bar`, as tall
+/// as its content needs and no taller than the space above the bar leaves.
+/// Pure function of the block and the areas, like every other renderer here.
+pub fn render_result_block(area: Rect, buf: &mut Buffer, command_bar: Rect, block: &ResultBlock) {
+    let available = command_bar.y.saturating_sub(area.y);
+    if available < 3 || area.width < 6 {
+        return;
+    }
+    let inner_width = usize::from(area.width - 2);
+    let wanted_rows: usize = block
+        .lines
+        .iter()
+        .map(|line| wrap_row(line, inner_width).len())
+        .sum();
+    let height = u16::try_from(wanted_rows.saturating_add(2))
+        .unwrap_or(u16::MAX)
+        .min(available);
+    let rect = Rect {
+        x: area.x,
+        y: command_bar.y - height,
+        width: area.width,
+        height,
+    };
+    let rows = block_rows(block, inner_width, usize::from(height - 2));
+
+    Clear.render(rect, buf);
+    let frame = Block::bordered()
+        .title(format!(" {} ", block.title))
+        .border_style(Style::new().fg(Color::Cyan));
+    Paragraph::new(rows.into_iter().map(Line::from).collect::<Vec<_>>())
+        .block(frame)
+        .render(rect, buf);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn block(lines: &[&str]) -> ResultBlock {
+        ResultBlock {
+            title: "/probe".to_string(),
+            lines: lines.iter().map(|l| l.to_string()).collect(),
+        }
+    }
+
+    fn full_row(buf: &Buffer, y: u16, width: u16) -> String {
+        (0..width)
+            .map(|x| buf[(x, y)].symbol().to_string())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn a_long_line_wraps_instead_of_being_clipped() {
+        assert_eq!(wrap_row("abcdefgh", 3), vec!["abc", "def", "gh"]);
+        assert_eq!(wrap_row("abc", 3), vec!["abc"]);
+        assert_eq!(wrap_row("", 3), vec![""]);
+    }
+
+    #[test]
+    fn a_block_taller_than_the_space_is_cut_with_a_count_of_what_is_left_out() {
+        let rows = block_rows(&block(&["1", "2", "3", "4", "5"]), 10, 3);
+        assert_eq!(rows, vec!["1", "2", "… 3 more row(s)"]);
+        assert_eq!(
+            block_rows(&block(&["1", "2"]), 10, 3),
+            vec!["1", "2"],
+            "a block that fits is shown whole"
+        );
+    }
+
+    #[test]
+    fn the_block_sits_directly_above_the_command_bar_and_carries_its_title() {
+        let area = Rect::new(0, 0, 40, 12);
+        let bar = Rect::new(0, 11, 40, 1);
+        let mut buf = Buffer::empty(area);
+        render_result_block(
+            area,
+            &mut buf,
+            bar,
+            &block(&["workspace: main", "phase: ready"]),
+        );
+
+        // Two content rows plus two border rows end on the row above the bar.
+        assert!(full_row(&buf, 7, 40).contains("/probe"), "title row");
+        assert!(full_row(&buf, 8, 40).contains("workspace: main"));
+        assert!(full_row(&buf, 9, 40).contains("phase: ready"));
+        assert!(
+            full_row(&buf, 11, 40).trim().is_empty(),
+            "the bar's own row is left to the bar"
+        );
+    }
+
+    #[test]
+    fn a_frame_too_small_to_hold_a_block_draws_nothing() {
+        let area = Rect::new(0, 0, 40, 3);
+        let bar = Rect::new(0, 2, 40, 1);
+        let mut buf = Buffer::empty(area);
+        render_result_block(area, &mut buf, bar, &block(&["x"]));
+        assert_eq!(buf, Buffer::empty(area));
+    }
 
     #[test]
     fn layout_focus_splits_into_four_panels_plus_command_bar() {

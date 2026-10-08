@@ -8,7 +8,7 @@
 //! ever consumes an already-fetched `&[&Invocable]` slice, the same shape data
 //! the sibling CLI frontend's own `generated.rs` consumes.
 
-use cronus_contract::Invocable;
+use cronus_contract::{Invocable, InvocableId, LocusKind};
 
 /// A parsed slash command: the verb plus its whitespace-separated arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,23 +96,64 @@ pub struct CommandSpec {
     pub name: &'static str,
     /// One-line summary shown by `/help`.
     pub summary: String,
+    /// Whether this is an installation group — a verb that configures or
+    /// inspects the product rather than acting on the user's work. Such
+    /// groups are listed under their own heading, so they are never mistaken
+    /// for work commands.
+    pub installation: bool,
 }
 
-/// Whether this surface projects `invocable` at all: `Semantic` (the shared
-/// vocabulary cross-surface parity binds) plus `ClientLocal` (this surface's own
-/// pane/panel actions) — never `Installation` or `HostOnly`, which belong to
-/// the command line and the host respectively — and only `Shipped` stability:
-/// a retired or unshipped invocable is unrepresentable here, not
-/// merely undiscoverable.
+/// The loci this surface projects: `Semantic` (the shared vocabulary
+/// cross-surface parity binds), `ClientLocal` (this surface's own pane/panel
+/// actions) and `Installation` (the verbs that configure or inspect the
+/// product, run here beside the work). `HostOnly` belongs to the host.
+pub const PROJECTED_LOCI: [LocusKind; 3] = [
+    LocusKind::Semantic,
+    LocusKind::ClientLocal,
+    LocusKind::Installation,
+];
+
+/// The installation verbs this surface declares it does not offer, each with
+/// its reason. A verb left out without a stated reason is indistinguishable
+/// from one not yet built, so the exclusion is data that a test can check
+/// against the catalog, never a silence.
+pub const INSTALLATION_EXCLUSIONS: [(&str, &str); 3] = [
+    (
+        "core:tui",
+        "it brings up this composition; inside it there is nothing to bring up",
+    ),
+    (
+        "core:completion",
+        "the script is generated from the command line's own grammar, which this \
+         surface does not hold; run `cronus completion <shell>`",
+    ),
+    (
+        "core:version",
+        "the command line answers it as the --version flag, not as a verb",
+    ),
+];
+
+/// Why this surface does not offer the installation verb `id`, when it
+/// declares that it does not.
+pub fn installation_exclusion(id: &InvocableId) -> Option<&'static str> {
+    INSTALLATION_EXCLUSIONS
+        .iter()
+        .find(|(excluded, _)| *excluded == id.as_str())
+        .map(|(_, reason)| *reason)
+}
+
+/// Whether this surface projects `invocable` at all: one of the loci in
+/// [`PROJECTED_LOCI`], only `Shipped` stability, and not a declared
+/// installation exclusion — a retired or unshipped invocable is
+/// unrepresentable here, not merely undiscoverable.
 ///
-/// Delegates to [`Invocable::is_projected`] — the same predicate the desktop
-/// shell's own IPC catalog now consumes, so "what does a frontend expose"
+/// Delegates to [`Invocable::is_projected_for`], the predicate every
+/// frontend's catalog is decided by, so "what does a frontend expose"
 /// stays decided in exactly one place (the contract crate) rather than each
-/// surface hand-rolling the rule again. This free function stays as the
-/// name [`build_catalog`] and this surface's conformance registration both
-/// already call.
+/// surface hand-rolling the rule again; what a surface contributes is its own
+/// set of loci and its own declared exclusions.
 pub fn is_projected(invocable: &Invocable) -> bool {
-    invocable.is_projected()
+    invocable.is_projected_for(&PROJECTED_LOCI) && installation_exclusion(&invocable.id).is_none()
 }
 
 /// Build the slash-command catalog from the core's invocable registry.
@@ -139,22 +180,44 @@ pub fn is_projected(invocable: &Invocable) -> bool {
 /// task deletes, just relocated from verb *names* (which broke parity) to
 /// verb *prose* (which would only ever degrade quietly).
 pub fn build_catalog(invocables: &[&Invocable]) -> Vec<CommandSpec> {
-    let mut groups: Vec<&'static str> = invocables
+    let mut groups: Vec<(&'static str, bool)> = invocables
         .iter()
         .filter(|invocable| is_projected(invocable))
-        .map(|invocable| invocable.group)
+        .map(|invocable| {
+            (
+                invocable.group,
+                invocable.locus.kind() == LocusKind::Installation,
+            )
+        })
         .collect();
     groups.sort_unstable();
     groups.dedup();
+
+    // An installation group of exactly one verb (`doctor`, `restore`, …) is
+    // described by that verb's own summary; every other group keeps the
+    // generic text.
+    let summary_of = |group: &'static str| {
+        let mut members = invocables
+            .iter()
+            .filter(|invocable| invocable.group == group && is_projected(invocable));
+        match (members.next(), members.next()) {
+            (Some(only), None) if only.locus.kind() == LocusKind::Installation => {
+                only.summary.to_string()
+            }
+            _ => format!("{group} operations"),
+        }
+    };
 
     let mut catalog = Vec::with_capacity(groups.len() + 1);
     catalog.push(CommandSpec {
         name: "help",
         summary: "List available slash commands".to_string(),
+        installation: false,
     });
-    catalog.extend(groups.into_iter().map(|group| CommandSpec {
+    catalog.extend(groups.into_iter().map(|(group, installation)| CommandSpec {
         name: group,
-        summary: format!("{group} operations"),
+        summary: summary_of(group),
+        installation,
     }));
     catalog
 }
@@ -174,12 +237,35 @@ pub fn names(catalog: &[CommandSpec]) -> impl Iterator<Item = &str> {
     catalog.iter().map(|c| c.name)
 }
 
-/// The `/help` discovery listing: one `"/verb — summary"` line per command.
+/// The `/help` discovery listing: one `"/verb — summary"` line per command,
+/// with the installation verbs set apart under their own heading so they are
+/// never mistaken for commands that act on the user's work.
 pub fn help_lines(catalog: &[CommandSpec]) -> Vec<String> {
-    catalog
+    let line = |c: &CommandSpec| format!("/{:<10} — {}", c.name, c.summary);
+    let mut lines: Vec<String> = catalog
         .iter()
-        .map(|c| format!("/{:<9} — {}", c.name, c.summary))
-        .collect()
+        .filter(|c| !c.installation)
+        .map(line)
+        .collect();
+    let installation: Vec<String> = catalog
+        .iter()
+        .filter(|c| c.installation)
+        .map(line)
+        .collect();
+    if !installation.is_empty() {
+        lines.push("Installation — runs beside the work, never as a turn".to_string());
+        lines.extend(installation);
+    }
+    lines
+}
+
+/// The reason a slash verb that names an excluded installation verb is not
+/// offered here, so asking for it is answered rather than called unknown.
+fn exclusion_for_verb(verb: &str) -> Option<&'static str> {
+    INSTALLATION_EXCLUSIONS
+        .iter()
+        .find(|(id, _)| id.strip_prefix("core:") == Some(verb))
+        .map(|(_, reason)| *reason)
 }
 
 /// What submitting a command-bar line resolves to.
@@ -200,14 +286,17 @@ pub fn classify(input: &str, catalog: &[CommandSpec]) -> CommandOutcome {
         Err(ParseError::Empty) => CommandOutcome::Error("type a command, e.g. /help".to_string()),
         Ok(cmd) if cmd.verb == "help" => CommandOutcome::Help,
         Ok(cmd) if is_known(&cmd.verb, catalog) => CommandOutcome::Run(cmd),
-        Ok(cmd) => CommandOutcome::Error(format!("unknown command: /{} (try /help)", cmd.verb)),
+        Ok(cmd) => CommandOutcome::Error(match exclusion_for_verb(&cmd.verb) {
+            Some(reason) => format!("/{} is not offered here: {reason}", cmd.verb),
+            None => format!("unknown command: /{} (try /help)", cmd.verb),
+        }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cronus_contract::{InvocableId, Locus, Stability};
+    use cronus_contract::{InvocableId, LiveEffect, Locus, Stability};
 
     #[test]
     fn command_parse_extracts_verb_and_args() {
@@ -271,14 +360,17 @@ mod tests {
             CommandSpec {
                 name: "help",
                 summary: "List available slash commands".to_string(),
+                installation: false,
             },
             CommandSpec {
                 name: "board",
                 summary: "board operations".to_string(),
+                installation: false,
             },
             CommandSpec {
                 name: "memory",
                 summary: "memory operations".to_string(),
+                installation: false,
             },
         ]
     }
@@ -342,14 +434,21 @@ mod tests {
     }
 
     /// Proves the built catalog's verb set equals the registry's own
-    /// `Semantic`+`ClientLocal`+`Shipped` set for a registry this test
-    /// populates itself — never a restated literal
-    /// list, which is the exact defect this task deletes.
+    /// `Semantic`+`ClientLocal`+`Installation`+`Shipped` set for a registry
+    /// this test populates itself — never a restated literal list, which is
+    /// the exact defect this task deletes.
     #[test]
-    fn build_catalog_matches_the_registrys_own_semantic_and_client_local_shipped_set() {
+    fn build_catalog_matches_the_registrys_own_projected_shipped_set() {
         let semantic = descriptor("board.list", "board", Locus::Semantic, Stability::Shipped);
         let client_local = descriptor("pane.focus", "pane", Locus::ClientLocal, Stability::Shipped);
-        let installation = descriptor("status", "status", Locus::Installation, Stability::Shipped);
+        let installation = descriptor(
+            "status",
+            "status",
+            Locus::Installation {
+                effect: LiveEffect::Inspect,
+            },
+            Stability::Shipped,
+        );
         let host_only = descriptor(
             "settings.write",
             "settings",
@@ -393,8 +492,8 @@ mod tests {
             "a ClientLocal Shipped group must appear"
         );
         assert!(
-            !names.contains(&"status"),
-            "an Installation-locus group must not appear — that half belongs to the CLI"
+            names.contains(&"status"),
+            "a Shipped Installation group must appear"
         );
         assert!(
             !names.contains(&"settings"),
@@ -402,10 +501,95 @@ mod tests {
         );
         assert_eq!(
             names.len(),
-            3,
-            "exactly help + the two Shipped Semantic/ClientLocal groups — a Retired \
-             descriptor is never a member of the shipped set by construction"
+            4,
+            "exactly help + the three Shipped Semantic/ClientLocal/Installation groups — a \
+             Retired descriptor is never a member of the shipped set by construction"
         );
+        let status = catalog
+            .iter()
+            .find(|c| c.name == "status")
+            .expect("status is in the catalog");
+        assert!(
+            status.installation,
+            "the installation group is marked as such"
+        );
+        assert!(
+            catalog
+                .iter()
+                .filter(|c| c.name != "status")
+                .all(|c| !c.installation),
+            "no other group is marked installation"
+        );
+    }
+
+    #[test]
+    fn a_declared_installation_exclusion_is_not_projected_and_stays_explained() {
+        let tui = descriptor(
+            "tui",
+            "tui",
+            Locus::Installation {
+                effect: LiveEffect::Inspect,
+            },
+            Stability::Shipped,
+        );
+        assert!(!is_projected(&tui), "the declared exclusion is not offered");
+        assert!(
+            installation_exclusion(&tui.id).is_some_and(|reason| !reason.is_empty()),
+            "and it carries its reason"
+        );
+        let catalog = build_catalog(&[&tui]);
+        assert!(catalog.iter().all(|c| c.name != "tui"));
+
+        let other = descriptor(
+            "doctor",
+            "doctor",
+            Locus::Installation {
+                effect: LiveEffect::Inspect,
+            },
+            Stability::Shipped,
+        );
+        assert!(is_projected(&other));
+        assert!(installation_exclusion(&other.id).is_none());
+    }
+
+    #[test]
+    fn asking_for_an_excluded_verb_is_answered_with_its_reason_not_called_unknown() {
+        let catalog = sample_catalog();
+        match classify("/tui", &catalog) {
+            CommandOutcome::Error(message) => {
+                assert!(message.contains("not offered here"), "{message}");
+                assert!(!message.contains("unknown command"), "{message}");
+            }
+            other => panic!("expected an explained refusal, got {other:?}"),
+        }
+        match classify("/frobnicate", &catalog) {
+            CommandOutcome::Error(message) => assert!(message.contains("unknown command")),
+            other => panic!("expected the unknown-command error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn help_sets_the_installation_verbs_apart_under_their_own_heading() {
+        let mut catalog = sample_catalog();
+        catalog.push(CommandSpec {
+            name: "doctor",
+            summary: "Run health checks".to_string(),
+            installation: true,
+        });
+        let listing = help_lines(&catalog);
+        let heading = listing
+            .iter()
+            .position(|line| line.starts_with("Installation"))
+            .expect("a heading appears when an installation group exists");
+        let doctor = listing
+            .iter()
+            .position(|line| line.starts_with("/doctor"))
+            .expect("the installation verb is listed");
+        let board = listing
+            .iter()
+            .position(|line| line.starts_with("/board"))
+            .expect("work commands stay listed");
+        assert!(board < heading && heading < doctor);
     }
 
     #[test]

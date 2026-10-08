@@ -8,7 +8,6 @@ mod output;
 
 use clap::{Command, CommandFactory};
 use cronus_contract::{Dispatched, Invocable, Outcome, OutcomeValue};
-use cronus_core::invocable::Registrant;
 use output::{OutputFormat, json_escape};
 
 /// Which of the launcher's top-level modes a raw `argv` resolves to,
@@ -47,7 +46,7 @@ fn launch_mode(args: &[String]) -> LaunchMode {
 }
 
 fn main() -> std::process::ExitCode {
-    let installation_invocables = installation::declared_invocables();
+    let installation_invocables = cronus_core::installation::declared_invocables();
     let installation_refs: Vec<&Invocable> = installation_invocables.iter().collect();
 
     let args: Vec<String> = std::env::args().collect();
@@ -107,14 +106,14 @@ fn main() -> std::process::ExitCode {
     }
 
     // Compose: the shared registry and dispatcher every surface projects,
-    // plus this frontend's own installation descriptors registered into the
-    // same catalog (for cross-surface honesty — this is the *other*
-    // consumer of the one declaration above). Structured as a real `Result`
-    // rather than an early `expect()`: composition cannot actually fail
-    // today (no I/O, no extension loading yet), but the distinction the design
-    // asks for must be representable now rather than retrofitted the day it
-    // can.
-    let (registry, dispatcher) = match compose(&installation_refs) {
+    // with the installation descriptors already in the same catalog (for
+    // cross-surface honesty — the core registers them from the one
+    // declaration this launcher's parser was also built from). Structured as
+    // a real `Result` rather than an early `expect()`: composition cannot
+    // actually fail today (no I/O, no extension loading yet), but the
+    // distinction the design asks for must be representable now rather than
+    // retrofitted the day it can.
+    let (registry, dispatcher) = match compose() {
         Ok(pair) => pair,
         Err(reason) => {
             eprintln!("error: composition failed: {reason}");
@@ -217,29 +216,21 @@ fn pre_composition_command(installation_groups: Vec<Command>) -> Command {
     pre
 }
 
-/// Bring up the registry and dispatcher, then register this frontend's own
-/// installation descriptors into the same catalog through the public
-/// registration door — no privileged path, the same one a contribution
-/// uses. A real `Result`: a registration refusal (a malformed literal
-/// descriptor, a duplicate id) is a genuine composition failure, not a
-/// panic.
-fn compose(
-    installation_invocables: &[&Invocable],
-) -> Result<
+/// Bring up the registry and dispatcher. The installation verbs are already
+/// in the catalog: the core's bootstrap registers them from the same
+/// declaration this launcher's parser was built from, so the launcher adds
+/// nothing of its own. A real `Result`: a composition that can fail is
+/// representable now rather than retrofitted the day it can.
+fn compose() -> Result<
     (
         cronus_core::invocable::InvocableRegistry,
         cronus_core::invocable::Dispatcher,
     ),
     String,
 > {
-    let (mut registry, dispatcher) =
-        cronus_core::invocable_bootstrap::bootstrap(cronus_core::Engine::new());
-    for invocable in installation_invocables {
-        registry
-            .register(&Registrant::core(), (*invocable).clone())
-            .map_err(|e| format!("{e:?}"))?;
-    }
-    Ok((registry, dispatcher))
+    Ok(cronus_core::invocable_bootstrap::bootstrap(
+        cronus_core::Engine::new(),
+    ))
 }
 
 /// What a render pass produced: the lines to print on each stream, in

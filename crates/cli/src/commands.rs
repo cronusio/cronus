@@ -109,6 +109,8 @@ pub(crate) use cronus_core::paths::resolve_workspace_root_from;
 pub(crate) mod status {
     use std::path::Path;
 
+    use cronus_core::installation::inspect;
+
     use crate::output::Context;
 
     pub fn run(ctx: &Context) -> i32 {
@@ -116,22 +118,11 @@ pub(crate) mod status {
     }
 
     fn run_at(state_root: &Path, ctx: &Context) -> i32 {
-        if !state_root.join("app.json").exists() {
-            eprintln!("No workspace initialized. Run 'cronus init' first.");
+        if !inspect::is_initialized(state_root) {
+            eprintln!("{}", inspect::NO_WORKSPACE_MESSAGE);
             return 1;
         }
-        // For a `.cronus` state directory the workspace's name is its parent
-        // (the project directory), not the literal ".cronus".
-        let name_source = if state_root.file_name().and_then(|n| n.to_str()) == Some(".cronus") {
-            state_root.parent().unwrap_or(state_root)
-        } else {
-            state_root
-        };
-        let workspace = name_source
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("default")
-            .to_owned();
+        let workspace = inspect::workspace_name(state_root);
         if ctx.is_json() {
             println!(
                 "{{\"workspace\":\"{}\",\"phase\":\"ready\"}}",
@@ -239,7 +230,8 @@ pub(crate) mod status {
 pub(crate) mod doctor {
     use std::path::Path;
 
-    use cronus_core::doctor::{self, Disposition};
+    use cronus_core::doctor;
+    use cronus_core::installation::inspect;
 
     use crate::output::Context;
 
@@ -261,8 +253,8 @@ pub(crate) mod doctor {
     /// `ConfigSignal::missing_defaults` *was* this same existence check, so
     /// nothing downstream loses coverage by handling it here instead.
     fn run_at(state_root: &Path, fix: bool, ctx: &Context) -> i32 {
-        if !state_root.join("app.json").exists() {
-            eprintln!("No workspace initialized. Run 'cronus init' first.");
+        if !inspect::is_initialized(state_root) {
+            eprintln!("{}", inspect::NO_WORKSPACE_MESSAGE);
             return 1;
         }
         let inputs = doctor::DoctorInputs::default();
@@ -281,15 +273,10 @@ pub(crate) mod doctor {
                 report.escalated.len()
             );
         } else if report.findings.is_empty() {
-            println!("doctor: all checks passed");
+            println!("{}", inspect::DOCTOR_ALL_CLEAR);
         } else {
-            for finding in &report.findings {
-                let tag = match finding.disposition {
-                    Disposition::SafeRepair if fix => "repaired",
-                    Disposition::SafeRepair => "repairable (--fix to apply)",
-                    Disposition::Escalate => "escalate",
-                };
-                println!("[{tag}] {}: {}", finding.id, finding.description);
+            for line in inspect::doctor_lines(&report, fix) {
+                println!("{line}");
             }
         }
         if report.escalated.is_empty() { 0 } else { 1 }
@@ -363,7 +350,7 @@ pub(crate) mod backup_cmd {
     /// into itself regardless of where this resolves.
     fn state_root_and_backups_dir() -> (PathBuf, PathBuf) {
         let root = cronus_core::paths::resolve_workspace_root();
-        let backups_dir = root.join("backups");
+        let backups_dir = cronus_core::installation::inspect::backups_dir(&root);
         (root, backups_dir)
     }
 
@@ -547,27 +534,14 @@ pub(crate) mod backup_cmd {
 pub(crate) mod workspace {
     use std::path::{Path, PathBuf};
 
-    use cronus_core::workspace::{WorkspaceId, WorkspaceManager, WorkspaceTemplate};
+    use cronus_core::installation::inspect::open_workspace_manager as open_manager;
+    use cronus_core::workspace::{WorkspaceId, WorkspaceTemplate};
 
     use crate::output::{Context, json_escape};
 
     // Reached directly from `crate::installation::dispatch` now — the
     // installation half's own generated grammar owns the `workspace` group,
     // so no `WorkspaceCommand`-shaped wrapper is needed here any more.
-
-    fn db_path() -> PathBuf {
-        cronus_core::paths::Paths::os_native()
-            .resolve(cronus_core::paths::Root::State)
-            .join("workspaces.db")
-    }
-
-    fn open_manager() -> Result<WorkspaceManager, String> {
-        let p = db_path();
-        if let Some(parent) = p.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        WorkspaceManager::open(&p).map_err(|e| e.to_string())
-    }
 
     fn parse_id(s: &str) -> Result<WorkspaceId, String> {
         WorkspaceId::new(s).map_err(|e| e.to_string())
@@ -1673,9 +1647,8 @@ pub(crate) mod activation_cmd {
         TransitionError, TransitionOutcome, disable as disable_transition,
         enable as enable_transition,
     };
-    use cronus_core::{
-        ActivationMode, ActivationRegistry, ActivationState, default_activation_registry,
-    };
+    use cronus_core::installation::inspect::activation_state_label;
+    use cronus_core::{ActivationMode, ActivationRegistry, default_activation_registry};
 
     use crate::cli::ActivationModeArg;
     use crate::commands::consent::{self, Gate};
@@ -1690,17 +1663,6 @@ pub(crate) mod activation_cmd {
         match mode {
             ActivationMode::Login => "login",
             ActivationMode::System => "system",
-        }
-    }
-
-    fn state_str(state: &ActivationState) -> String {
-        match state {
-            ActivationState::Inactive => "inactive".to_string(),
-            ActivationState::Active(mode) => format!("active ({})", mode_str(*mode)),
-            ActivationState::RequiresApproval(mode) => {
-                format!("requires-approval ({})", mode_str(*mode))
-            }
-            ActivationState::Unknown { reason } => format!("unknown: {reason}"),
         }
     }
 
@@ -1721,14 +1683,11 @@ pub(crate) mod activation_cmd {
 
     pub(crate) fn status(ctx: &Context) -> i32 {
         let registry = default_activation_registry();
-        let state = registry.observe();
+        let label = activation_state_label(&registry.observe());
         if ctx.is_json() {
-            println!(
-                "{{\"state\":\"{}\"}}",
-                state_str(&state).replace('"', "\\\"")
-            );
+            println!("{{\"state\":\"{}\"}}", label.replace('"', "\\\""));
         } else {
-            println!("activation status: {}", state_str(&state));
+            println!("activation status: {label}");
         }
         0
     }
@@ -1831,6 +1790,7 @@ pub(crate) mod archetype_cmd {
     use std::path::PathBuf;
 
     use cronus_core::archetype::{ArchetypeCatalog, ValidationStatus};
+    use cronus_core::installation::inspect::{active_archetype_marker, read_active_archetype};
 
     use crate::output::{Context, describe_io_error, json_escape};
 
@@ -1850,17 +1810,12 @@ pub(crate) mod archetype_cmd {
         cronus_core::paths::resolve_workspace_root()
     }
 
-    /// The office's active-archetype marker. A single state-tier file: absent
-    /// (or empty) means the archetype-free default.
     fn active_marker() -> PathBuf {
-        state_dir().join("archetype").join("active")
+        active_archetype_marker(&state_dir())
     }
 
     fn read_active() -> Option<String> {
-        std::fs::read_to_string(active_marker())
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+        read_active_archetype(&state_dir())
     }
 
     fn json_str_array(items: impl Iterator<Item = String>) -> String {
@@ -2107,43 +2062,17 @@ pub(crate) mod archetype_cmd {
 // ─── dev ──────────────────────────────────────────────────────────────────────
 
 pub(crate) mod dev_office_cmd {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use cronus_core::auth::{DeveloperAdmissionStore, HumanPrincipal};
-    use cronus_core::dev_office::{AdmissionReader, AdmissionTier, DevOfficeGate, GateInputs};
-    use cronus_core::dev_office_gate::{AuthLocalAdmissionReader, repo_authenticity};
-    use cronus_core::paths::{Paths, Root};
+    use cronus_core::installation::inspect::{
+        dev_admission_path, dev_tier_label, resolve_dev_tier,
+    };
 
     use crate::output::{Context, describe_io_error};
 
-    /// The shipped default: the feedback tier is off. A build/deploy
-    /// opt-in, not something this CLI exposes as a runtime flag.
-    const FEEDBACK_TIER_ENABLED: bool = false;
-
     fn admission_path() -> PathBuf {
-        Paths::os_native()
-            .resolve(Root::State)
-            .join("dev_office")
-            .join("admission.txt")
-    }
-
-    fn resolve_tier(cwd: &Path) -> AdmissionTier {
-        let repo = repo_authenticity(cwd);
-        let reader = AuthLocalAdmissionReader::open(admission_path());
-        let inputs = GateInputs {
-            repo,
-            admitted: reader.is_admitted(),
-            feedback_tier_enabled: FEEDBACK_TIER_ENABLED,
-        };
-        DevOfficeGate::resolve(&inputs)
-    }
-
-    fn tier_label(tier: AdmissionTier) -> &'static str {
-        match tier {
-            AdmissionTier::Absent => "absent",
-            AdmissionTier::Feedback => "feedback",
-            AdmissionTier::Elevated => "elevated",
-        }
+        dev_admission_path()
     }
 
     // Reached directly from `crate::installation::dispatch` now — the
@@ -2151,7 +2080,7 @@ pub(crate) mod dev_office_cmd {
     // group, so no `DevCommand`-shaped wrapper is needed here any more.
     pub(crate) fn status(ctx: &Context) -> i32 {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let label = tier_label(resolve_tier(&cwd));
+        let label = dev_tier_label(resolve_dev_tier(&cwd));
         if ctx.is_json() {
             println!("{{\"tier\":\"{label}\"}}");
         } else {

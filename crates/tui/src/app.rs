@@ -27,9 +27,12 @@ use ratatui::widgets::{Paragraph, Widget};
 
 use crate::command::{self, CommandOutcome, CommandSpec, SlashCommand};
 use crate::dispatch;
+use crate::installation;
 use crate::pane_actions::{self, PaneAction};
 use crate::terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
-use crate::view::{self, BoardView, Focus, OfficeView, Projection, SessionsView, StatusView};
+use crate::view::{
+    self, BoardView, Focus, OfficeView, Projection, ResultBlock, SessionsView, StatusView,
+};
 use cronus_contract::{
     ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, OutcomeValue,
     Surface,
@@ -79,9 +82,13 @@ pub struct ViewModel {
     pub focus: Focus,
     /// In-progress command-bar text (the part after the `/` prompt). View state.
     pub command_input: String,
-    /// The result of the last submitted command (help summary / error / ack),
-    /// shown beside the prompt until the next keystroke.
+    /// The result of the last submitted command (error / ack), shown beside
+    /// the prompt until the next keystroke.
     pub command_feedback: Option<String>,
+    /// A result with more to say than one line — the discovery listing, an
+    /// installation verb's answer — shown over the lower part of the view
+    /// until the next keystroke in the command bar.
+    pub result_block: Option<ResultBlock>,
 }
 
 /// The seam the loop reads core state through.
@@ -227,8 +234,22 @@ impl App {
                     self.view.command_feedback = None;
                 }
                 None => {
-                    self.view.command_feedback =
-                        dispatch::dispatch_command(&self.registry, &self.dispatcher, &command);
+                    // An installation verb is not addressed to any agent and
+                    // runs beside the work; its answer is a block, not the
+                    // bar's one line. Anything else is an ordinary command.
+                    match installation::run(&self.registry, &self.dispatcher, &command) {
+                        Some(block) => {
+                            self.view.command_feedback = None;
+                            self.view.result_block = Some(block);
+                        }
+                        None => {
+                            self.view.command_feedback = dispatch::dispatch_command(
+                                &self.registry,
+                                &self.dispatcher,
+                                &command,
+                            );
+                        }
+                    }
                 }
             }
             needs_redraw = true;
@@ -323,12 +344,12 @@ impl App {
         match key {
             Key::Char(c) => {
                 self.view.command_input.push(c);
-                self.view.command_feedback = None;
+                self.clear_result();
                 true
             }
             Key::Backspace => {
                 self.view.command_input.pop();
-                self.view.command_feedback = None;
+                self.clear_result();
                 true
             }
             Key::Enter => {
@@ -337,24 +358,32 @@ impl App {
             }
             Key::Esc => {
                 self.view.command_input.clear();
-                self.view.command_feedback = None;
+                self.clear_result();
                 true
             }
             _ => false,
         }
     }
 
+    /// Drop whatever the last command left on screen — its one-line feedback
+    /// and its result block — as the next keystroke begins a new line.
+    fn clear_result(&mut self) {
+        self.view.command_feedback = None;
+        self.view.result_block = None;
+    }
+
     /// Classify the current command line. Help and errors resolve inline; a
     /// recognized command is queued for the loop to dispatch (the loop holds the
     /// registry/dispatcher and performs the real call + masking).
     fn submit_command(&mut self) {
+        self.clear_result();
         let line = format!("/{}", self.view.command_input);
         match command::classify(&line, &self.catalog) {
             CommandOutcome::Help => {
-                self.view.command_feedback = Some(format!(
-                    "commands: {}",
-                    command::names(&self.catalog).collect::<Vec<_>>().join(" ")
-                ));
+                self.view.result_block = Some(ResultBlock {
+                    title: "/help".to_string(),
+                    lines: command::help_lines(&self.catalog),
+                });
             }
             CommandOutcome::Run(command) => self.pending_dispatch = Some(command),
             CommandOutcome::Error(message) => self.view.command_feedback = Some(message),
@@ -655,6 +684,10 @@ pub fn render_view(area: Rect, buf: &mut Buffer, view: &ViewModel) {
         view.focus == Focus::Sessions,
     );
 
+    if let Some(block) = &view.result_block {
+        view::render_result_block(area, buf, areas.command_bar, block);
+    }
+
     let bar_text = match &view.command_feedback {
         Some(feedback) if view.command_input.is_empty() => format!("/  {feedback}"),
         _ => format!("/{}", view.command_input),
@@ -821,6 +854,7 @@ mod tests {
         vec![CommandSpec {
             name: "test",
             summary: "test-only catalog entry".to_string(),
+            installation: false,
         }]
     }
 
@@ -1493,6 +1527,7 @@ mod tests {
             focus: Focus::Board,
             command_input: String::new(),
             command_feedback: None,
+            result_block: None,
         }
     }
 
@@ -1525,6 +1560,42 @@ mod tests {
         assert_eq!(
             first, second,
             "the same view-model must render an identical frame"
+        );
+    }
+
+    /// A result block is part of the view-model, so it is drawn from it: it
+    /// appears with its title and lines directly above the command bar, the
+    /// panels underneath keep rendering, and clearing it restores the frame.
+    #[test]
+    fn a_result_block_is_drawn_above_the_command_bar_and_clearing_it_restores_the_frame() {
+        let area = Rect::new(0, 0, 80, 24);
+        let plain = render_to_buffer(&populated_view(), area);
+
+        let mut with_block = populated_view();
+        with_block.result_block = Some(ResultBlock {
+            title: "/status".to_string(),
+            lines: vec!["workspace: main".to_string(), "phase: ready".to_string()],
+        });
+        let drawn = render_to_buffer(&with_block, area);
+        let text = buffer_text(&drawn, area);
+        assert!(text.contains("/status"), "the block's title is drawn");
+        assert!(text.contains("workspace: main"));
+        assert!(text.contains("phase: ready"));
+        assert_ne!(plain, drawn, "the block changes the frame");
+
+        // The block's last border row is the row directly above the bar.
+        let bar_row = area.bottom() - 1;
+        let above = Rect::new(0, bar_row - 1, area.width, 1);
+        assert!(
+            buffer_text(&drawn, above).contains('└'),
+            "the block ends on the row above the command bar"
+        );
+
+        with_block.result_block = None;
+        assert_eq!(
+            render_to_buffer(&with_block, area),
+            plain,
+            "clearing the block restores the frame exactly"
         );
     }
 

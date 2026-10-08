@@ -32,6 +32,7 @@ pub mod dev_office_gate;
 pub mod dev_office_workspace;
 pub mod engine_lock;
 pub mod inbox;
+pub mod installation;
 pub mod invocable_bootstrap;
 pub mod knowledge_bootstrap;
 pub mod loop_bootstrap;

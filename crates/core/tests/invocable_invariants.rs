@@ -18,17 +18,21 @@ use cronus_core::invocable_bootstrap::bootstrap;
 fn core_invocables_and_a_contribution_share_one_registration_door() {
     let (mut registry, _dispatcher) = bootstrap(Engine::new());
 
-    // `core:status` is deliberately not asserted here any more: it moved to
-    // the CLI frontend's own installation-grammar declaration (installation
-    // verbs are declared by the frontend that owns them, not the shared
-    // facade), so the facade's own `bootstrap` no longer registers it.
-    // `core:version` alone still proves this test's actual point.
     assert!(
         registry
             .resolve(&InvocableId::new("core:version").expect("well-formed invocable id"))
             .is_found(),
         "bootstrap must register core:version"
     );
+    // The installation verbs come from their one declaration and ride the
+    // same door: every declared verb is in the bootstrapped catalog.
+    for declared in cronus_core::installation::declared_invocables() {
+        assert!(
+            registry.resolve(&declared.id).is_found(),
+            "bootstrap must register the declared installation verb {}",
+            declared.id
+        );
+    }
 
     let contribution = Invocable {
         id: InvocableId::new("myext:hello").expect("well-formed invocable id"),

@@ -91,7 +91,7 @@ impl std::error::Error for CoverageError {}
 
 /// Derive the product's action catalog from its own shell-completion
 /// script — a **best-effort structural approximation**, not the exact
-/// `Invocable::is_projected()`-filtered set: completion output has no
+/// `Invocable::is_projected_for`-filtered set: completion output has no
 /// locus or stability annotation, so an installation-only or
 /// not-yet-shipped entry cannot be distinguished from an ordinary one here.
 /// Chosen over linking a live registry because that would pull the domain

@@ -23,8 +23,9 @@ impl Context {
 /// Escape a string for embedding inside a double-quoted JSON string literal.
 ///
 /// The installation half answers directly rather than through the shared
-/// `Outcome` renderer (no other surface projects the `Installation` locus), so
-/// its handlers assemble small JSON objects by hand. They must still route every
+/// `Outcome` renderer (its handlers print and return exit codes; no surface
+/// runs them through the shared dispatcher yet), so they assemble small JSON
+/// objects by hand. They must still route every
 /// interpolated value through this — an unescaped Windows path (`C:\Users\…`)
 /// or a `"` in a name otherwise produces output no JSON parser accepts.
 pub(crate) fn json_escape(s: &str) -> String {

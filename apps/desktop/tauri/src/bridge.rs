@@ -16,12 +16,18 @@
 use std::collections::HashMap;
 
 use cronus_contract::{
-    ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, Surface,
+    ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, LocusKind, Outcome,
+    Resolved, Surface,
 };
 use cronus_core::invocable::{Dispatcher, InvocableRegistry};
 use cronus_core::{Capabilities, Engine};
 
 use crate::settings::{SettingsStore, ShellSettings, ShellSettingsPatch};
+
+/// The loci this shell projects: the shared vocabulary plus its own
+/// client-local actions. Installation verbs are not projected here — this
+/// shell has its own settings and process facilities for what they cover.
+pub const PROJECTED_LOCI: [LocusKind; 2] = [LocusKind::Semantic, LocusKind::ClientLocal];
 
 /// Bridge over a core handle, the secret values to mask in any output that
 /// crosses the IPC boundary, and the shared invocable registry/dispatcher
@@ -69,13 +75,13 @@ impl<C: Capabilities> Bridge<C> {
         self.mask(&self.core.status())
     }
 
-    /// Every descriptor a frontend may project: the same predicate
-    /// every surface's own catalog is filtered through, not a second
-    /// hand-rolled list local to this shell.
+    /// Every descriptor this shell projects: the same predicate every
+    /// surface's own catalog is filtered through, given this shell's own set
+    /// of loci, not a second hand-rolled list local to this shell.
     pub fn catalog(&self) -> Vec<Invocable> {
         self.registry
             .all()
-            .filter(|invocable| invocable.is_projected())
+            .filter(|invocable| invocable.is_projected_for(&PROJECTED_LOCI))
             .cloned()
             .collect()
     }
@@ -93,6 +99,16 @@ impl<C: Capabilities> Bridge<C> {
         args: HashMap<String, ArgValue>,
     ) -> Result<Option<Outcome>, String> {
         let id = InvocableId::new(id).map_err(|err| err.to_string())?;
+        // The catalog this shell shows is its whole vocabulary. A registered
+        // id outside the loci it projects — the installation verbs, which the
+        // core registers for every surface that composes — is not this
+        // shell's to run, so it answers the way an unregistered one does
+        // rather than being reachable by anyone who guesses its name.
+        if let Resolved::Found(descriptor) = self.registry.resolve(&id)
+            && !PROJECTED_LOCI.contains(&descriptor.locus.kind())
+        {
+            return Ok(None);
+        }
         let mut values = ArgValues::new();
         for (name, value) in args {
             values.insert(name, value);
@@ -179,7 +195,7 @@ pub fn capability_settings_set(
 mod tests {
     use std::sync::Arc;
 
-    use cronus_contract::{Locus, OutcomeValue, Stability};
+    use cronus_contract::{LiveEffect, Locus, OutcomeValue, Stability};
     use cronus_core::invocable::Registrant;
 
     use super::*;
@@ -365,7 +381,9 @@ mod tests {
                     name: "Installation-only fixture",
                     summary: "Never projected to a session-scoped surface",
                     group: "test",
-                    locus: Locus::Installation,
+                    locus: Locus::Installation {
+                        effect: LiveEffect::Inspect,
+                    },
                     binders: Vec::new(),
                     stability: Stability::Shipped,
                     journal_raw_input: true,
@@ -387,6 +405,52 @@ mod tests {
         let ids: Vec<InvocableId> = bridge.catalog().into_iter().map(|inv| inv.id).collect();
         assert!(ids.contains(&projectable));
         assert!(!ids.contains(&not_projectable));
+    }
+
+    /// The catalog is the shell's whole vocabulary: an installation verb the
+    /// core registered — with a handler that would run — is still not
+    /// reachable through the generic call.
+    #[test]
+    fn invoke_does_not_run_a_registered_descriptor_outside_the_projected_loci() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        let id = InvocableId::new("core:test.installation-only").expect("well-formed test id");
+        registry
+            .register(
+                &Registrant::core(),
+                Invocable {
+                    id: id.clone(),
+                    name: "Installation-only fixture",
+                    summary: "Never projected to a session-scoped surface",
+                    group: "test",
+                    locus: Locus::Installation {
+                        effect: LiveEffect::Inspect,
+                    },
+                    binders: Vec::new(),
+                    stability: Stability::Shipped,
+                    journal_raw_input: true,
+                },
+            )
+            .expect("registers cleanly");
+        dispatcher.attach(
+            id.clone(),
+            Arc::new(|_args| Outcome::Value(OutcomeValue::Text("ran".to_string()))),
+        );
+        let bridge = Bridge::new(
+            StubCore {
+                status: String::new(),
+            },
+            Vec::new(),
+            registry,
+            dispatcher,
+        );
+        let outcome = bridge
+            .invoke(id.as_str().to_string(), HashMap::new())
+            .expect("well-formed id");
+        assert!(
+            outcome.is_none(),
+            "an id outside the projected loci must answer as unknown, not run: {outcome:?}"
+        );
     }
 
     // Command *registration* is verified at compile time: `run()` passes
