@@ -54,6 +54,6 @@ keyring = "4.2.0"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-toml = "1.1.6+spec-1.1.0"
+toml = "1.1.7+spec-1.1.0"
 sha1 = "0.11.0"
 sqlite-vec = "0.1.9"

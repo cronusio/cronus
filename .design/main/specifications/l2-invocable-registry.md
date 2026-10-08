@@ -1,6 +1,6 @@
 # Invocable Registry & Dispatch Contract
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -25,6 +25,9 @@ The registry is simultaneously the `contribute` extension point of the EP-2 taxo
 - [l2-core-library.md](l2-core-library.md) — The facade crate that owns the capability contract.
 - [l1-capability-reachability.md](l1-capability-reachability.md) — REA-1/REA-5: every invocable declares agent-reachable or human-only; the `reach` field (§4.2).
 - [l1-security.md](l1-security.md) — SEC-10: the verbs that write the authority plane are human-only.
+- [l1-action-gating.md](l1-action-gating.md) · [l1-consent-binding.md](l1-consent-binding.md) — `[ADDED v1.2.0]` The friction an installation verb passes through on a composed surface, and what the granted consent covers (§4.8.1).
+- [l2-office-control.md](l2-office-control.md) — `[ADDED v1.2.0]` The drain-and-checkpoint path a `Recompose` installation verb is refused into while work it would alter is running (§4.8.1).
+- [l2-config-hotreload.md](l2-config-hotreload.md) — `[ADDED v1.2.0]` Decides whether a `Recompose` change applies in place or needs a relaunch (§4.8.1).
 
 ## 1. Motivation
 
@@ -61,7 +64,7 @@ The registry is simultaneously the `contribute` extension point of the EP-2 taxo
 | SP-8 Legitimate difference is named, with its reason | The descriptor's `locus` field (§4.8) is the machine-readable form of this rule. Host-owned facilities — the desktop's shell settings are the standing example — are declared `HostOnly` with their reason, not omitted. |
 | SP-9 Extract before the second implementation exists | The registry is extracted before the desktop's generic dispatch and before any further surface. Serialization is designed in at the start (§4.5) precisely because retrofitting it after the WebView projection exists is the expensive branch of the ladder. |
 | SP-10 Converge first, correct second | Adopting the registry is behavior-preserving by construction: a verb's observable result must not change in the same commit that moves it onto the registry. Known-wrong behaviors uncovered during migration — the swallowed store error that reports emptiness, the ignored output-format flag, the unescaped hand-built structured output — are recorded as residuals at the invocable that owns them and corrected in separate, disclosed changes. |
-| SP-11 Shared vocabulary, declared exposure | The registry **is** the catalog. Every invocable carries identity, human-readable name, summary, locus, and declared binders. Menus, help, completion, slash discovery, and agent-facing instructions render from it. A surface that deliberately does not expose an invocable declares the exclusion (§4.8); silence is not an available way to say "not here". `[MODIFIED v1.1.0]` The locus set gains `Installation` (§4.8), which is what stops installation verbs from being modelled as `Semantic` and offered inside a session where they have no meaning. |
+| SP-11 Shared vocabulary, declared exposure | The registry **is** the catalog. Every invocable carries identity, human-readable name, summary, locus, and declared binders. Menus, help, completion, slash discovery, and agent-facing instructions render from it. A surface that deliberately does not expose an invocable declares the exclusion (§4.8); silence is not an available way to say "not here". `[MODIFIED v1.1.0]` The locus set gains `Installation` (§4.8), which is what stops installation verbs from being modelled as `Semantic` and run as session work. `[MODIFIED v1.2.0]` Which surfaces take that locus is itself declared (§4.7): the command line and the terminal UI take it, the desktop shell declares that it does not. |
 | SP-12 Projectable and executable faces, declared per member | `[ADDED v1.1.0]` The handler is not a field of the descriptor — the dispatcher holds it, joined to the descriptor only by identity (§4.2). Serialization is derived in the **outbound direction only**, so a wire payload cannot construct a descriptor and no serialization site has a host handle available to leak. The split is structural rather than a rule each site must remember. |
 | REA-1 (l1-capability-reachability) Reachability declared | The descriptor's `reach` field (§4.2); `HumanOnly` verbs are absent from agent-facing projections and refused for an agent caller; authority-plane verbs are `HumanOnly`. Pending realization. |
 | SP-13 Unrecognized and unavailable are different answers | `[ADDED v1.1.0]` Resolution is a distinct step returning `Found`/`Unknown` (§4.5); `Outcome` exists only for an invocation that resolved, and carries `Unavailable` for one that ran and could not answer. The three surfaces act on `Unknown` in three different ways — fall through, usage error, refresh the stale catalog — none of which an outcome variant could serve. |
@@ -189,10 +192,14 @@ Every surface implements one interface: given the registry, produce this surface
 | Surface | Projects which loci | Projection | Replaces |
 | --- | --- | --- | --- |
 | Command line | `Semantic` + `Installation` | Argument parser built at startup from descriptors; help and completion from the summary and binders | Hand-written command enum, for the semantic half only |
-| Terminal UI | `Semantic` + `ClientLocal` | Slash catalog and its discovery listing | Hand-written catalog + hand-copied verb mirror |
+| Terminal UI | `Semantic` + `ClientLocal` + `Installation` `[MODIFIED v1.2.0]` | Slash catalog and its discovery listing; installation verbs under their command-line names, run out of turn (§4.8.1) | Hand-written catalog + hand-copied verb mirror |
 | Desktop shell | `Semantic` + `ClientLocal` | One generic dispatch IPC command plus the existing subscription channel; the WebView's client is generated from the catalog it receives | Per-capability IPC command list and its hand-written client |
 
-`[ADDED v1.1.0]` **The projected set is a filter on locus, not the whole registry**, and the surfaces genuinely differ in which loci they take. This is what stops the projection from becoming absurd in either direction — a terminal UI offering `/completion` to emit a shell script, or a command line refusing to expose a verb because a session-scoped surface has no use for it. It also bounds what the command line's generated parser covers: `Installation` verbs are declared in the frontend that owns them (§4.7.1), and only the `Semantic` set is generated from descriptors.
+`[ADDED v1.1.0]` **The projected set is a filter on locus, not the whole registry**, and the surfaces genuinely differ in which loci they take. This is what stops the projection from becoming absurd in either direction — a surface offering a verb whose result it cannot render, or a command line refusing to expose a verb because a session-scoped surface has no use for it. It also bounds what the command line's generated parser covers: `Installation` verbs come from their own closed declaration (§4.7.1), and only the `Semantic` set is generated from descriptors.
+
+`[ADDED v1.2.0]` **The filter is per surface, so it is a parameter, not a shared constant.** A single predicate that every surface calls with the same answer — "projected means `Semantic` or `ClientLocal`" — would make the table above unrepresentable the moment two surfaces take different loci. Each surface passes its own locus set to one shared projection function; the function stays single, the set it is given is the surface's declaration.
+
+`[ADDED v1.2.0]` **The terminal UI takes `Installation` and the command line stays its guaranteed path.** An operator inside the terminal UI who must diagnose a broken extension, take a backup or check activation should not have to leave the surface to do it — every comparable terminal agent studied for this revision keeps such verbs reachable inside its own session (diagnostics, extension management, update, sign-out). What none of them does safely by accident is run a verb that rebuilds the running process as if it were ordinary work; §4.8.1 is the discipline that makes the projection safe. The desktop shell declares that it does not take `Installation` in this revision: its own settings and process facilities cover the human need, and a third rendering of the same verbs would be added only with its own consent and live-effect design.
 
 `[ADDED v1.1.0]` **A surface's own extras are still descriptors, never a second list.** Where a surface adds an action that exists nowhere else — the terminal UI's pane focus, the desktop's panel toggle — it registers a `ClientLocal` invocable into the same registry rather than keeping a private table beside the projection. A surface holding one private table is a surface that will hold two, and the second is where the verb the other surfaces never learn about lives.
 
@@ -203,18 +210,36 @@ Every surface implements one interface: given the registry, produce this surface
 | Half | Source | Examples |
 | --- | --- | --- |
 | Semantic verbs | Generated from `Semantic` descriptors at startup | The product's domain operations, including every verb an extension contributed |
-| Installation verbs | Declared by the frontend itself, in its own closed grammar | Workspace initialization, configuration, extension management, diagnostics, completion generation |
+| Installation verbs | `[MODIFIED v1.2.0]` One closed, frontend-neutral declaration, parsed by the command line before composition | Workspace initialization, configuration, extension management, diagnostics, completion generation |
 
 The second half is the launcher's grammar and obeys [l1-launch-handoff.md](l1-launch-handoff.md): it is closed, small, self-owned, and contains no name an extension can define (LH-1/LH-5). The first half is resolved after composition, which is when the extensions that contribute to it exist.
 
-**Installation verbs are still catalog entries, and they are declared exactly once.** SP-11 forbids expressing a boundary by silence, so an installation verb must appear in the catalog for the other surfaces to *declare* that they deliberately do not offer it — a terminal UI that simply lacks `config` is indistinguishable from one that has not implemented it yet. But a verb declared both in a launcher grammar and again as a descriptor is two statements of one fact, which is the fork this spec exists to close. The resolution is a single direction of derivation:
+`[ADDED v1.2.0]` **The installation declaration leaves the command-line frontend and becomes frontend-neutral.** While one frontend took `Installation`, "declared by the frontend itself" and "declared once" were the same statement. With two, they are not: a second frontend that needs the verbs would either depend on the first frontend — siblings may not — or declare them again, which is the fork this section exists to forbid. The declaration therefore moves below both frontends, beside the installation operations the core already owns (diagnostics, backup, workspace, extension and activation management). It stays static data — identities, summaries, binders, live-effect classes (§4.8.1) — so reading it composes nothing, and the launcher can still parse it before any registry exists.
 
 ```text
 [REFERENCE]
-  The frontend declares its installation verbs ONCE, in its own source.
+  One frontend-neutral installation declaration, below both frontends
+      ├── command line: launcher parser built from it   (pre-composition)
+      ├── composition: Installation descriptors registered from it
+      └── terminal UI: projects those descriptors        (post-composition)
+
+  Handlers: the core's installation operations. A frontend owns only
+  rendering and how it collects consent; neither frontend owns behavior.
+```
+
+**Placement.** The declaration lives in the core tier beside the installation operations, not in the ports tier: it names effect classes and groups the ports tier has no reason to know, and the core already owns every operation it describes. Only the `Locus` shape that carries the effect class (§4.8.1) is a ports-tier type. A later move is a topology decision under [l2-crate-topology.md](l2-crate-topology.md), not a change to this contract.
+
+**The terminal UI's installation set is a subset of the command line's** (`[ADDED v1.2.0]`). Every installation verb the terminal UI offers is also offered by the command line, under the same name and flags; the converse need not hold, and each verb the terminal UI leaves out is declared with its reason (§4.8). A verb reachable only from the terminal UI would have no path when the terminal UI is exactly what cannot start — which is the condition an installation verb exists to answer.
+
+**Installation verbs are still catalog entries, and they are declared exactly once.** SP-11 forbids expressing a boundary by silence, so an installation verb must appear in the catalog for the other surfaces to *declare* that they deliberately do not offer it — `[MODIFIED v1.2.0]` a desktop shell that simply lacks `config` is indistinguishable from one that has not implemented it yet, and the terminal UI's own declared exclusions (`l2-tui` §4.7) are checkable only against entries that exist. But a verb declared both in a launcher grammar and again as a descriptor is two statements of one fact, which is the fork this spec exists to close. The resolution is a single direction of derivation:
+
+```text
+[REFERENCE]  `[MODIFIED v1.2.0]` — the declaration is frontend-neutral (see below)
+  The installation verbs are declared ONCE.
       ├── the launcher's parser is built from that declaration (pre-composition)
       └── the same declaration registers Installation descriptors into the
-          catalog at composition (post-composition, for honesty and exclusions)
+          catalog at composition (post-composition: for the surfaces that
+          project them, and for the exclusions the others declare)
 
   Not: a hand-written parser beside a hand-written descriptor list.
 ```
@@ -230,11 +255,50 @@ Parity stops being a property that is checked and becomes one that is **structur
 | `Semantic` | Belongs to the core; reachable from every surface and remotely invocable | board, memory, workspace operations |
 | `ClientLocal` | Belongs to a surface; the same identity may be implemented per surface | pane focus, panel toggle |
 | `HostOnly` | Never remotely invocable; a host-owned facility | the desktop's shell settings slice |
-| `Installation` | `[ADDED v1.1.0]` Acts on the product's own installation, not on the user's work; runs to completion without a session | workspace init, configuration, extension management, diagnostics |
+| `Installation` | `[ADDED v1.1.0]` Acts on the product's own installation, not on the user's work; runs to completion without a session `[MODIFIED v1.2.0]` and, on a composed surface, outside every session and turn; carries a live-effect class (§4.8.1) | workspace init, configuration, extension management, diagnostics |
 
-`[ADDED v1.1.0]` The fourth locus exists because the first three had no member for a real and populous class, and its absence was pushing that class into `Semantic` — where it does not belong and does visible damage. An installation verb has no meaning inside a live session: *configure the product* is not an action within a piece of work, and a session-scoped surface that offers it is offering a verb whose effect the user cannot situate. The two halves are distinguished by a question with an objective answer: **does this act on the user's work, or on the product that hosts it?** Verbs that appear in both sets under one name are two different actions — selecting a session to start in is not switching session inside a running one — and they stay separate rather than being unified on the strength of a shared word.
+`[ADDED v1.1.0]` The fourth locus exists because the first three had no member for a real and populous class, and its absence was pushing that class into `Semantic` — where it does not belong and does visible damage. `[MODIFIED v1.2.0]` An installation verb is not an action *within* a piece of work: *configure the product* has no place in an agent's turn, its result does not belong in a conversation, and modelling it as `Semantic` would hand it to every agent and every remote client. That is a reason to keep it **out of the work**, not out of a surface: a composed surface may offer it as long as it runs beside the work rather than inside it (§4.8.1). The two halves are distinguished by a question with an objective answer: **does this act on the user's work, or on the product that hosts it?** Verbs that appear in both sets under one name are two different actions — selecting a session to start in is not switching session inside a running one — and they stay separate rather than being unified on the strength of a shared word. On a surface that projects both loci, such a pair is an ambiguity in that surface's catalog and fails its conformance corpus; the installation verb keeps its command-line name, and the surface's own action takes another.
 
 The desktop's settings commands are the standing worked example: they are host-owned marshalling rather than core logic, so they legitimately stay outside generic dispatch — and are therefore **declared** `HostOnly` with that reason rather than quietly left out. A capability boundary stated as an exclusion is a scope decision; the same boundary expressed by silence is indistinguishable from a missing feature and will eventually be "fixed" by someone.
+
+#### 4.8.1 Installation verbs on a composed surface
+
+`[ADDED v1.2.0]` A launcher answers an installation verb in a process where nothing else is running. A composed surface answers it beside a live composition — agents mid-turn, stores held open, extensions active. The same verb is safe in the first place and can corrupt the second, so every installation verb declares **what it does to the running composition**, and the class is part of the locus rather than a free-standing field: an installation verb cannot be declared without it.
+
+`[REFERENCE]` — shape, not implementation:
+
+```rust
+pub enum Locus {
+    Semantic,
+    ClientLocal,
+    HostOnly { reason: &'static str },
+    Installation { effect: LiveEffect },
+}
+
+pub enum LiveEffect {
+    Inspect,                       // reads installation state; changes nothing
+    Install,                       // changes installation state the live composition does not hold
+    Recompose { apply: Apply },    // changes what the live composition is built from
+}
+
+pub enum Apply { InPlace, Relaunch }
+```
+
+| Class | Examples | On a composed surface |
+| --- | --- | --- |
+| `Inspect` | diagnostics without repair, status, version, listing backups, workspaces, extensions, roles, archetypes, activation state | Runs at any time, including while agents are mid-turn. Reads only through read-only access: it never opens a second writer beside the composition that owns a store. |
+| `Install` | taking a backup, initializing another directory, adding or scanning an extension without activating it, importing a skill, creating a workspace, archetype or agent definition, deleting a workspace that is not running, enabling background activation | Runs after the friction its consequence requires (`l1-action-gating`); the surface then refreshes its catalog from the registry's own announcement (§4.9). A success the composition could not pick up — installed but not reloadable — is its own reported outcome, never a plain success. |
+| `Recompose` | restore, activating, deactivating or removing an extension, enabling or disabling an agent definition, setting the archetype, deleting the running workspace, admitting or revoking the developer office, diagnostics with repair | Requires consent bound to the exact resolved invocation (`l1-consent-binding`). Refused — as a typed outcome naming what is running — while any work it would alter is in flight: an agent turn, a scheduled job, an automation run. The refusal offers the office's drain-and-checkpoint path (`l2-office-control`) and never queues the verb silently behind the work. Applied in place where the change is hot-reloadable (`l2-config-hotreload`), otherwise as a relaunch of the same binary that returns the user to the same floor and view. If applying fails, the previous composition keeps running; restore takes a backup of the current state before it replaces anything. |
+
+**The class is decided for the resolved invocation, and may only rise.** A verb declares its base class; a binder, or the value bound to it, may raise it and never lower it. Diagnostics is `Inspect`, diagnostics with its repair flag is `Recompose`; deleting a workspace is `Install`, deleting the one the composition is running is `Recompose`. The surface acts on the class of the resolved invocation, which is also exactly what consent binds to.
+
+**An effect the surface's process cannot carry out is an outcome, not an attempt.** Where a verb needs a privilege the composed surface's process does not hold — registering system-wide background activation is the standing case — the invocation resolves to a typed outcome naming the command-line invocation that can carry it out from an adequately privileged shell. The surface never tries to obtain the privilege itself.
+
+**Installation verbs are `HumanOnly`** (REA-1). An agent may tell the person which installation verb would help — that is REA-5's instruction to the person — but no agent initiates one, because an installation verb changes the substrate the agent itself runs on. Declaring an individual `Inspect` verb agent-reachable later is a one-field change on its descriptor, made deliberately, not a default.
+
+**Installation verbs are never remotely invocable.** On a surface attached to a hub as a client view, an installation verb acts on the installation of the machine running that surface, is labelled as such, and does not travel to the hub. Reaching another machine's installation is that machine's command line's job.
+
+**Session prompts are not the consent path.** A command-line verb that asks its question only when attached to a terminal is not reached through that branch from another surface; the surface collects consent with its own control and passes the acknowledgement the verb's non-interactive form already requires. The question asked and the acknowledgement passed name the same resolved invocation.
 
 ### 4.9 Lifecycle
 
@@ -300,6 +364,7 @@ Ordering is constrained by SP-9 — the primitive precedes the second consumer �
 6. **Single entry point** — the terminal UI becomes a verb of the one binary rather than a second one.
 7. **Desktop shell onto generic dispatch**; the per-capability command list is deleted and tombstoned; host-owned settings stay, now declared.
 8. **Disclosed corrections**, each separately: the swallowed store error, the ignored output-format flag, the unescaped structured output, and the empty secret list.
+9. `[ADDED v1.2.0]` **Installation on a composed surface**, in this order: the installation declaration moves out of the command-line frontend into the core tier, behavior-preserving for the command line (its parser and help are byte-identical before and after); `Locus::Installation` gains its live-effect class, every existing installation verb classified in the same change; the shared projection predicate takes a per-surface locus set; then the terminal UI takes `Installation` (`l2-tui` §4.7) and registers the new corpus assertions as it lands.
 
 ## 6. Drawbacks & Alternatives
 
@@ -309,6 +374,10 @@ Ordering is constrained by SP-9 — the primitive precedes the second consumer �
 - **Alternative — grow the capability trait into the full contract.** Rejected. It is a compile-time surface and forecloses contributed invocables exactly as the command enum does, while also requiring every surface to be recompiled for every capability.
 - **Alternative — let each surface keep its own mapping and add a linting check.** Rejected by §4.2 of the parent: a structural check cannot see two correct-shaped answers that differ, which is the entire defect class.
 - **Alternative — generate all surfaces from one declaration.** Rejected as over-reach, on the parent spec's own reasoning: it buys parity by surrendering the platform-idiomatic presentation each surface exists to provide. The catalog takes the part that pays — shared vocabulary — and leaves presentation to the surface.
+- `[ADDED v1.2.0]` **Alternative — keep installation verbs on the command line only.** The v1.1.0 position. Rejected because it made the person leave the surface they live in to diagnose or repair the thing that surface depends on, while the safety it bought — never running an installation verb beside live work — is obtained more precisely by the live-effect class, which refuses exactly the verbs that would disturb the work and lets the rest run.
+- `[ADDED v1.2.0]` **Alternative — let the terminal UI declare its own maintenance commands.** Rejected: two declarations of one verb set is the fork §4.7.1 forbids, and the copies would drift in name, flags and safety before anyone noticed. The terminal UI renders the same declaration instead.
+- `[ADDED v1.2.0]` **Alternative — run installation verbs as ordinary agent work.** Rejected: it would put product reconfiguration into a conversation record, into agent context, and within reach of agents and remote clients — every one of which the `Installation` locus exists to exclude.
+- `[ADDED v1.2.0]` **The live-effect class is a judgement made per verb.** Misclassifying a verb as `Install` when it disturbs the running composition re-opens the hazard this revision closes. The corpus pins each verb's class to an observable effect (`l2-surface-conformance`), so a misclassification fails a test rather than a user's session.
 
 ## Canonical References
 
@@ -326,6 +395,7 @@ Ordering is constrained by SP-9 — the primitive precedes the second consumer �
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-08 | The terminal UI takes `Installation` and the command line stays its guaranteed path. §4.7: the terminal UI's projection becomes `Semantic` + `ClientLocal` + `Installation`; the desktop shell declares it does not take `Installation`; the locus filter becomes a per-surface parameter of one shared projection function rather than one constant every surface shares. §4.7.1: the installation declaration leaves the command-line frontend for the core tier, as static data with three consumers (launcher parser before composition, catalog registration, terminal UI projection); the terminal UI's installation set is a subset of the command line's. §4.8: the locus is about keeping these verbs out of the *work*, not out of a surface; a same-name pair of different loci on one surface is a catalog ambiguity. New §4.8.1: every installation verb carries a live-effect class in its locus — `Inspect` (any time, read-only access, never a second writer), `Install` (gated, then catalog refresh, partial success reported as such), `Recompose` (consent bound to the resolved invocation; refused while work it would alter runs — turn, scheduled job or automation run — offering drain-and-checkpoint; applied in place or by relaunch to the same floor and view; failure keeps the previous composition; restore backs up first); the class is decided for the resolved invocation and may only rise, by flag or by bound value; a privilege the surface's process lacks yields an outcome naming the command-line invocation; installation verbs are `HumanOnly`, never remotely invocable, and consent is collected by the surface, not through a terminal-only prompt branch. Grounded in a study of how finished terminal agents expose diagnostics, extension management and update inside their own sessions. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Descriptor gains `reach: AgentReachable \| HumanOnly` (REA-1: an undeclared capability is agent-reachable by default, and the catalog feeds agent-facing instructions) — authority-plane verbs are HumanOnly, refused for agent callers (SEC-10); pending realization. §4.10: a contributed invocable that overran or panicked resolved as `Rejected`, which §4.6 reserves for a body that never ran (IB-2) — now `Unavailable`, attributed to the contribution. |
 | 1.1.0 | 2026-09-06 | Amendment after a study of how comparable products actually organize a command surface. Six changes, each closing a gap between this spec and its own L1 parents. **§4.2** — the descriptor is the projectable face and the handler is held separately, so the executable/projectable split is structural rather than a rule every serialization site must remember (SP-12); contributed descriptor text is validated and detached into a normalized owned copy at registration, refused rather than repaired (EP-14). **§4.3** — registration returns the exact effect that reverses it, which is EP-13's *ownership is automatic, never remembered* made real; the previous shape had no disposer at all. **§4.4** — the identity grammar is enforced at construction (EP-11 said *validated at load*; nothing enforced it), and the EP-4 collision rule is now actually declared: qualified ids cannot collide, the core wins the bare form, the loser is **shadowed rather than displaced** and stays reachable by qualified identity, and the shadowing is reported rather than silent. **§4.5** — resolution is split from outcome: `Unknown` is not an `Outcome`, because the three surfaces act on it in three incompatible ways (fall through, usage error, refresh a stale catalog) and v1.0.0's folding of it into `Unavailable` forced one of them to behave incorrectly (SP-13). **§4.7.1** — the command line is projected in two halves: `Semantic` verbs generated from descriptors, `Installation` verbs declared in the frontend's own closed grammar, because an installation verb must be answerable when the composition it configures is exactly what has not come up (LH-1/LH-5); §4.8 gains the `Installation` locus this requires. **§4.9/§4.13** — the registry announces its own mutation with individually contained observers, since a projection built at startup goes stale the moment an extension activates; and a resolved dispatch is journaled as a paired entry/settlement record, with an invocable able to decline journaling its raw input, which removes a secret-bearing argument class that redaction cannot reach. |
 | 1.0.0 | 2026-09-05 | Initial spec. Realizes the SP-11 action catalog as a **runtime invocable registry** in the core, dispatched once as `Invocation → Outcome`, with every surface rendering a **projection** rather than a restatement — making INV-3 parity structural instead of asserted. Registration uses **one published door** for core and contributed invocables (EP-12), qualified identities over a reserved core namespace (EP-11), declared collision resolution (EP-4), lazy binding (EP-9), and reversible registration (EP-13), which together make a plugin-contributed verb reachable from surfaces that predate the plugin. Argument schemas derive from ordered typed binders as their single source (IB-1); rejections are typed first-class outcomes with four located modes (IB-3/IB-4), making the empty-versus-unavailable confusion unrepresentable. `Outcome` is structured data, so one dispatch serves text, structured output, terminal widgets, and IPC without re-derivation; the existing push-channel seam carries streams. `locus` declares host-only and client-local actions as exclusions rather than omissions (SP-8/SP-11), and `stability` carries INV-9 in both directions — unshipped actions have no descriptor, retired ones keep a discoverable migration path. Redaction moves to the dispatch boundary, with the inert-empty-secret-list half recorded as a separate obligation rather than claimed as fixed. Records the three constraints that decided the design: dependency-free ports tier (serialization as an optional feature), compile-time command surfaces that cannot host runtime contributions, and all three frontends linking the core in-process with the desktop's IPC seam lying inside that frontend. Post-Update Review added §4.10 **contribution safety** — the three seam rules a `contribute` point must declare and this spec had left implicit: bounded, contained failure resolving to a rejection attributed to the contribution (EP-6); default-deny, grant-gated point reach, so an *Active* extension is not thereby entitled to contribute verbs (EP-7); and a **core-drawn attribution marker the contribution cannot compose away**, without which a contributed verb is indistinguishable from a core one and converts trust in the product into a capability an extension holds (EP-10) — and §4.11 reconciling the extension system's existing **command definition format**, which becomes one *producer* of invocables registering through the same door rather than a parallel resolution path that would reach only one surface. |

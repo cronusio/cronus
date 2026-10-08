@@ -1,6 +1,6 @@
 # Surface Conformance Corpus
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -118,6 +118,13 @@ Three assertion families:
 - **Schema** — each invocable's advertised argument schema on this surface matches its declared binders (IB-1).
 - **Outcome** — for each fixture invocation, the semantic outcome agrees across surfaces, including the rejection mode and location, and including the distinction between an empty result and an unavailable one.
 
+`[ADDED v1.1.0]` Installation verbs, now projected by both the command line and the terminal UI (`l2-invocable-registry` §4.7), add four obligations to the families above rather than a fourth family:
+
+- **Installation subset** (surface set) — the terminal UI's installation set is contained in the command line's, name for name and flag for flag; the only command-line installation verbs absent from it are the ones the terminal UI declares excluded, each with its reason.
+- **One name per surface** (surface set) — within one surface's projection, no two invocables of different loci share a group-and-verb name. An installation verb and a surface action that collide fail the corpus instead of being resolved by registration order.
+- **Live-effect class is observable** (outcome) — each installation verb's declared class is pinned to what it does to a running composition: an `Inspect` verb leaves the installation and every held store unchanged and opens no writer; an `Install` verb changes installation state only; a `Recompose` verb, invoked while fixture work it would alter is in flight (a turn, a scheduled job, an automation run), resolves to the typed refusal naming that work — never to a silent queue and never to a partial apply; and a verb whose class is raised by an argument (repair flag, the running workspace as target) is held to the raised class. A misclassified verb fails here, not in a user's session.
+- **Same outcome, two renderings** (outcome) — for each installation fixture, the command line's exit signal and the terminal UI's inline block carry the same semantic outcome, including a partial success such as *installed, not active*.
+
 Fixtures are written from the divergence rather than the feature: empty, single-element, zero-count, boundary-crossing, renamed, oversized, absent, unavailable, secret-bearing, and identity-colliding.
 
 > Expect the corpus to fail immediately and unflatteringly when it first runs against the existing surfaces. That output **is** the initial inventory; it is converted into findings before anything is fixed, or the repairs are rediscovered later as duplicates.
@@ -136,6 +143,8 @@ A surface that cannot register is not yet a surface. This is a gate on shipping,
 | Input mechanics | Key handling, argument tokenization, and pointer interaction are surface property |
 | Per-client view state | Focus, scroll position, and panel visibility belong to the viewer, not the model |
 | Host-owned settings facility | Declared `HostOnly`; shell configuration is marshalling, not core logic |
+| Installation outcome rendering and consent collection `[ADDED v1.1.0]` | The command line answers with an exit signal and asks its own question only on a terminal; the terminal UI answers with an inline block and asks with its own control. The outcome and the resolved invocation the consent names are shared and asserted; how each surface shows and asks is not |
+| The terminal UI's `tui` exclusion `[ADDED v1.1.0]` | It brings up the terminal UI; inside the terminal UI there is nothing to bring up |
 
 An unstated exception is read by the next author either as an oversight to be unified or as licence for the next divergence. Naming it removes both readings.
 
@@ -185,6 +194,7 @@ The first and third are correctness defects, not stylistic ones: the first misre
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-08 | The terminal UI now projects `Installation` (`l2-invocable-registry` §4.7). §4.4 gains four obligations inside the existing families: the terminal UI's installation set is a subset of the command line's with every gap declared; one group-and-verb name per surface projection across loci; each installation verb's live-effect class pinned to an observable effect, including the typed refusal of a `Recompose` verb while work it would alter is in flight and the raised class of an argument-raised invocation; the same semantic outcome behind the command line's exit signal and the terminal UI's inline block, partial success included. §4.6 names installation rendering and consent collection, and the terminal UI's `tui` exclusion, as legitimate per-surface differences. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): SP-12 and SP-13 compliance rows added (pending realization): descriptor-only projections and an `Unknown` fixture per surface. The surface-set assertion predated locus filtering and reachability — it now counts the loci a surface does not take as declared exclusions and omits HumanOnly invocables from agent-facing projections (REA-1). |
 | 1.0.1 | 2026-09-06 | Patch. The unavailability-as-emptiness residual's correction column said 'a rejection carries its mode', which named the wrong mechanism: a rejection is strictly binder-scoped and always carries a real location within a bound argument (IB-4), and an unreachable backend has none. Corrected to a **distinct `Outcome` variant naming why** — the shape the registry actually implements. Wording only; the residual, its owner, and its SP-10 staging are unchanged. |
 | 1.0.0 | 2026-09-05 | Initial spec. Realizes SP-3…SP-8 and SP-10 as a **finding inventory**, two one-way **ledgers**, and a **conformance corpus** shaped as a shared fixture library plus a harness each surface runs in its own test target — the shape forced by the desktop shell's detached build workspace, and the shape SP-7 asks for independently. Seeds the inventory with eight audited findings (§4.2), including the live check-that-cannot-fail: parity asserted against a hand-copied verb list, green while the surfaces differ by eight verbs. Defines repayment as all four SP-4 conditions with no partial credit; pins deletions in an append-only tombstone ledger against a shrink-only debt ledger, so a reversal of either is legible. The corpus drives each surface's **real** projection across three assertion families — surface set (declared exclusions only, INV-9), advertised schema against declared binders (IB-1), and semantic outcome including rejection mode and the empty-versus-unavailable distinction — with fixtures written from the divergence rather than the feature. Records four residuals at their owning invocables (unavailability reported as emptiness, ignored output format, unescaped hand-built structured output, inert empty secret list), two of them correctness defects, all preserved through convergence and corrected separately per SP-10. Names the legitimate per-surface differences (§4.6) so an unstated exception cannot be read as either oversight or licence. |

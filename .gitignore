@@ -36,6 +36,7 @@ temp/
 cache/
 *cache/
 .references/
+.playwright*/
 *.*~*
 
 # Build outputs
