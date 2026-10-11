@@ -64,6 +64,7 @@
 - <https://github.com/ShunsukeHayashi/gws-harness>
 - <https://github.com/QwenLM/Qwen-Agent>
 - <https://gitverse.ru/gigachain/gigachain>
+- <https://github.com/affaan-m/JARVIS>
 
 ## Spec-Driven Development
 
@@ -163,6 +164,8 @@
 - <https://github.com/agentrhq/webcmd>
 - <https://github.com/anthropics/claude-cookbooks>
 - <https://github.com/usestrix/strix>
+- <https://github.com/affaan-m/agentshield>
+- <https://github.com/affaan-m/claude-swarm>
 
 ## Audio
 
