@@ -202,6 +202,11 @@
 - <https://github.com/affaan-m/ECC>
 - <https://github.com/getagentseal/codeburn>
 
+### EGUI
+
+- <https://github.com/emilk/egui>
+- <https://github.com/storytold/photocraft>
+
 ## Misc
 
 - [Ralph loop агенты, оракул и право на мутацию: как не путать execution loop с evolution loop](https://habr.com/ru/articles/1017180)
