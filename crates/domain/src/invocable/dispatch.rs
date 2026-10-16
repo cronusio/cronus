@@ -39,10 +39,11 @@ use std::time::Duration;
 
 use cronus_contract::{
     ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, Rejection,
-    RejectionMode, Resolved,
+    RejectionMode, Resolved, StreamHandle,
 };
 
 use super::registry::{CORE_IDENTITY, InvocableRegistry};
+use super::stream::{StreamHub, Subscription};
 
 /// The executable behavior attached to one invocable. Kept separate from
 /// the invocable's descriptor (its catalog entry) so a surface can read the
@@ -234,6 +235,7 @@ pub struct Dispatcher {
     journal: Option<Mutex<JournalSink>>,
     instance_token: String,
     dispatch_seq: AtomicU64,
+    streams: Arc<StreamHub>,
 }
 
 impl Default for Dispatcher {
@@ -251,6 +253,7 @@ impl Dispatcher {
             journal: None,
             instance_token: mint_instance_token(),
             dispatch_seq: AtomicU64::new(0),
+            streams: Arc::new(StreamHub::new()),
         }
     }
 
@@ -265,6 +268,7 @@ impl Dispatcher {
             journal: None,
             instance_token: mint_instance_token(),
             dispatch_seq: AtomicU64::new(0),
+            streams: Arc::new(StreamHub::new()),
         }
     }
 
@@ -276,6 +280,35 @@ impl Dispatcher {
     pub fn attach(&mut self, id: InvocableId, handler: Handler) -> DispatchHandle {
         self.handlers.insert(id.clone(), handler);
         DispatchHandle { id }
+    }
+
+    /// The hub streamed results are published through. A handler that streams
+    /// captures a clone when it is attached and opens a channel on it per call;
+    /// see [`StreamHub`].
+    pub fn streams(&self) -> Arc<StreamHub> {
+        Arc::clone(&self.streams)
+    }
+
+    /// Subscribe to a streamed outcome's channel. Everything the subscription
+    /// yields is masked against this dispatcher's secrets, across chunk
+    /// boundaries.
+    pub fn subscribe(&self, handle: &StreamHandle) -> Option<Subscription> {
+        self.streams.subscribe(handle, &self.secrets)
+    }
+
+    /// An outcome that is not a stream, as it is; a stream, waited for and
+    /// reduced to its settled result. What a surface that cannot show chunks
+    /// calls on every dispatch.
+    pub fn settle(&self, outcome: Outcome) -> Outcome {
+        match outcome {
+            Outcome::Stream(handle) => match self.subscribe(&handle) {
+                Some(subscription) => subscription.collect(),
+                None => Outcome::Unavailable {
+                    reason: format!("nobody can read the stream {}", handle.channel),
+                },
+            },
+            other => other,
+        }
     }
 
     /// Whether executable behavior is attached for `id` — the question a
@@ -648,6 +681,64 @@ mod tests {
         let outcome = ran(dispatcher.dispatch(&registry, &invocation_with(args)));
 
         assert!(matches!(outcome, Outcome::Unavailable { .. }));
+    }
+
+    #[test]
+    fn a_streaming_handler_answers_with_a_handle_and_the_dispatcher_settles_it() {
+        use super::super::stream::StreamItem;
+
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        registry
+            .register(&Registrant::core(), card_add_descriptor())
+            .unwrap();
+        let hub = dispatcher.streams();
+        dispatcher.attach(
+            InvocableId::new("core:board.add").expect("well-formed invocable id"),
+            Arc::new(move |_args: &ArgValues| {
+                let (handle, sink) = hub.open();
+                std::thread::spawn(move || {
+                    sink.chunk(OutcomeValue::Text("par".to_string()));
+                    sink.chunk(OutcomeValue::Text("tial".to_string()));
+                    sink.end(Outcome::Value(OutcomeValue::Text("partial".to_string())));
+                });
+                Outcome::Stream(handle)
+            }),
+        );
+        dispatcher.set_secrets(vec!["tial".to_string()]);
+
+        let mut args = ArgValues::new();
+        args.insert("id", ArgValue::Text("card-1".to_string()));
+        let outcome = ran(dispatcher.dispatch(&registry, &invocation_with(args.clone())));
+        let Outcome::Stream(handle) = outcome else {
+            panic!("a streaming handler answers with a stream, got {outcome:?}");
+        };
+        let mut subscription = dispatcher.subscribe(&handle).expect("subscribes");
+        let mut said = String::new();
+        let end = loop {
+            match subscription.next_item().expect("an item") {
+                StreamItem::Chunk(OutcomeValue::Text(t)) => said.push_str(&t),
+                StreamItem::Chunk(other) => panic!("{other:?}"),
+                StreamItem::End(end) => break end,
+            }
+        };
+        assert_eq!(said, "par***", "a secret split across chunks is masked");
+        assert_eq!(
+            end,
+            Outcome::Value(OutcomeValue::Text("par***".to_string()))
+        );
+
+        // A surface that cannot show chunks settles the same call to its end.
+        let again = ran(dispatcher.dispatch(&registry, &invocation_with(args)));
+        assert_eq!(
+            dispatcher.settle(again),
+            Outcome::Value(OutcomeValue::Text("par***".to_string()))
+        );
+        assert_eq!(
+            dispatcher.settle(Outcome::Value(OutcomeValue::Empty)),
+            Outcome::Value(OutcomeValue::Empty),
+            "an ordinary outcome is left alone"
+        );
     }
 
     #[test]

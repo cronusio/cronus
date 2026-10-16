@@ -53,6 +53,9 @@ pub enum Key {
     Left,
     /// Arrow right.
     Right,
+    /// A function key, `F(1)` … `F(10)` (the bar at the bottom of the
+    /// screen names them).
+    F(u8),
 }
 
 /// Abstraction over the host terminal: lifecycle, size, and event polling.
@@ -186,6 +189,7 @@ impl TerminalBackend for CrosstermBackend {
                     KeyCode::Down => Some(Key::Down),
                     KeyCode::Left => Some(Key::Left),
                     KeyCode::Right => Some(Key::Right),
+                    KeyCode::F(n @ 1..=10) => Some(Key::F(n)),
                     // Unmapped keys are not part of the TUI's vocabulary.
                     _ => None,
                 };

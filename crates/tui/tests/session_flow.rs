@@ -79,6 +79,7 @@ fn real_app() -> App {
     let (mut registry, mut dispatcher) =
         cronus_core::invocable_bootstrap::bootstrap(cronus_core::Engine::new());
     pane_actions::register(&mut registry, &mut dispatcher);
+    cronus_tui::chat_actions::register(&mut registry, &mut dispatcher);
     let invocables: Vec<&Invocable> = registry.all().collect();
     let catalog: Vec<CommandSpec> = command::build_catalog(&invocables);
     App::new(ViewModel::default(), registry, dispatcher, catalog)
@@ -458,5 +459,153 @@ fn esc_quits_through_the_real_pane_action_when_not_in_the_command_bar() {
         "Esc outside the command bar must quit through the real, \
          registered `pane.quit` action — not a local `should_quit = true` \
          that never went through the shared dispatcher"
+    );
+}
+
+/// The Sessions screen end to end against real journals: written into an
+/// isolated workspace, read through the real bootstrapped registry by the
+/// production snapshot source, selected with F4, and shown as a conversation.
+#[test]
+fn the_sessions_screen_shows_a_real_journal_through_the_production_source() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("sessions");
+    // SAFETY: serialized by `PORTABLE_DIR_ENV_LOCK`.
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+    let root = cronus_core::paths::resolve_workspace_root();
+    assert!(
+        root.starts_with(&base),
+        "the workspace root resolved to {root:?}, outside the isolated directory {base:?}"
+    );
+    let sessions = cronus_core::session::journal::sessions_dir(&root);
+    std::fs::create_dir_all(&sessions).expect("creatable");
+    std::fs::write(
+        sessions.join("s-1.jsonl"),
+        concat!(
+            "{\"type\":\"session\",\"version\":3,\"createdAt\":1700000000}\n",
+            "{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"what blocks the card?\"}}\n",
+            "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"content\":\"the gate is red\"}}\n",
+        ),
+    )
+    .expect("writable");
+
+    let mut app = real_app();
+    let mut source = cronus_tui::CapabilitySource::new(cronus_core::Engine::new());
+    let mut tick = |app: &mut App, key: Option<Key>| {
+        let events: Vec<TermEvent> = key.into_iter().map(TermEvent::Key).collect();
+        app.tick(&events, &mut source, &mut NullRenderer)
+            .expect("ticking never fails");
+    };
+    tick(&mut app, None); // first poll brings the sessions list in
+    tick(&mut app, Some(Key::F(4)));
+    let transcript = app.view().transcript.clone();
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert_eq!(app.view().screen, cronus_tui::Screen::Sessions);
+    let Some((_, cronus_tui::Projection::Available(conversation))) = transcript else {
+        panic!("the selected session's conversation is read: {transcript:?}");
+    };
+    assert_eq!(conversation.id, "s-1");
+    assert_eq!(
+        conversation.messages,
+        vec![
+            ("user".to_string(), "what blocks the card?".to_string()),
+            ("assistant".to_string(), "the gate is red".to_string()),
+        ]
+    );
+}
+
+/// A conversation end to end: the Chat screen sends a message through the
+/// real bootstrapped `session say`, a mock model server answers, the reply is
+/// journaled, and the screen reads the conversation back from the journal.
+#[test]
+fn the_chat_screen_talks_to_a_model_and_shows_the_journaled_conversation() {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let url = format!(
+        "http://127.0.0.1:{}",
+        listener.local_addr().expect("addr").port()
+    );
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut acc = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !acc.windows(4).any(|w| w == b"\r\n\r\n") {
+            match stream.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => acc.extend_from_slice(&buf[..n]),
+            }
+        }
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+            .expect("preamble");
+        for token in ["the gate ", "is red"] {
+            write!(
+                stream,
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{token}\"}}}}]}}\n\n"
+            )
+            .expect("token");
+        }
+        stream.write_all(b"data: [DONE]\n\n").expect("done");
+    });
+
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("chat");
+    // SAFETY: serialized by `PORTABLE_DIR_ENV_LOCK`.
+    unsafe {
+        std::env::set_var("CRONUS_PORTABLE_DIR", &base);
+        std::env::set_var("CRONUS_CHAT_ENDPOINT", &url);
+    }
+    assert!(
+        cronus_core::paths::resolve_workspace_root().starts_with(&base),
+        "the workspace root must resolve inside the isolated directory"
+    );
+
+    let mut app = real_app();
+    let tick = |app: &mut App, keys: Vec<Key>| {
+        let events: Vec<TermEvent> = keys.into_iter().map(TermEvent::Key).collect();
+        app.tick(&events, &mut NullSource, &mut NullRenderer)
+            .expect("ticking never fails");
+    };
+    let typed = |line: &str| -> Vec<Key> {
+        line.chars()
+            .map(Key::Char)
+            .chain(std::iter::once(Key::Enter))
+            .collect()
+    };
+    tick(&mut app, vec![Key::F(3)]);
+    tick(&mut app, typed("/chat model any-model"));
+    tick(&mut app, typed("what blocks the card?"));
+    for _ in 0..400 {
+        if app.view().chat.pending.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        tick(&mut app, Vec::new());
+    }
+    let chat = app.view().chat.clone();
+
+    unsafe {
+        std::env::remove_var("CRONUS_PORTABLE_DIR");
+        std::env::remove_var("CRONUS_CHAT_ENDPOINT");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+    server.join().expect("server thread");
+
+    assert_eq!(chat.pending, None, "the reply arrived");
+    let Some(cronus_tui::Projection::Available(conversation)) = chat.transcript else {
+        panic!(
+            "the conversation is read back from the journal: {:?}",
+            chat.session
+        );
+    };
+    assert_eq!(
+        conversation.messages,
+        vec![
+            ("user".to_string(), "what blocks the card?".to_string()),
+            ("assistant".to_string(), "the gate is red".to_string()),
+        ]
     );
 }

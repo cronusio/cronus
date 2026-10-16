@@ -1325,3 +1325,104 @@ fn board_list_archived_reads_the_archive_store_that_live_list_no_longer_shows() 
 
     let _ = std::fs::remove_dir_all(&state);
 }
+
+// ── session say: a conversation turn from the command line ───────────────────
+
+/// A one-shot loopback model that streams `tokens` and finishes.
+fn spawn_mock_model(tokens: &'static [&'static str]) -> (String, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut acc = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !acc.windows(4).any(|w| w == b"\r\n\r\n") {
+            match stream.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => acc.extend_from_slice(&buf[..n]),
+            }
+        }
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n");
+        for token in tokens {
+            let _ = write!(
+                stream,
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{token}\"}}}}]}}\n\n"
+            );
+        }
+        let _ = stream.write_all(b"data: [DONE]\n\n");
+    });
+    (url, handle)
+}
+
+#[test]
+fn session_say_prints_the_reply_as_it_arrives_and_the_conversation_can_be_read_back() {
+    let state = isolated_state("say");
+    let (url, server) = spawn_mock_model(&["the gate ", "is red"]);
+
+    let said = bin_in(&state)
+        .env("CRONUS_CHAT_ENDPOINT", &url)
+        .args([
+            "session",
+            "say",
+            "what blocks the card?",
+            "--model",
+            "m",
+            "--session",
+            "s-cli",
+        ])
+        .output()
+        .expect("failed to spawn binary");
+    server.join().expect("server thread");
+    let stdout = String::from_utf8_lossy(&said.stdout);
+    assert!(
+        said.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&said.stderr)
+    );
+    assert!(stdout.contains("the gate is red"), "{stdout}");
+    assert_eq!(
+        stdout.matches("the gate is red").count(),
+        1,
+        "the reply is printed once, not once streamed and once again: {stdout}"
+    );
+    assert!(
+        stdout.contains("s-cli"),
+        "the session is named so it can be continued: {stdout}"
+    );
+
+    let shown = bin_in(&state)
+        .args(["session", "show", "s-cli"])
+        .output()
+        .expect("failed to spawn binary");
+    let shown = String::from_utf8_lossy(&shown.stdout);
+    assert!(
+        shown.contains("what blocks the card?") && shown.contains("the gate is red"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn session_say_with_no_model_server_exits_1_and_says_where_the_turn_was_recorded() {
+    let state = isolated_state("say-down");
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let output = bin_in(&state)
+        .env("CRONUS_CHAT_ENDPOINT", format!("http://127.0.0.1:{port}"))
+        .args([
+            "session",
+            "say",
+            "anyone there?",
+            "--model",
+            "m",
+            "--session",
+            "s-down",
+        ])
+        .output()
+        .expect("failed to spawn binary");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("s-down"), "{stderr}");
+}

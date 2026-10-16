@@ -12,6 +12,7 @@
 
 mod dispatch;
 mod registry;
+mod stream;
 
 pub use dispatch::{
     CONTRIBUTION_TIME_BOUND, DispatchHandle, DispatchJournal, Dispatcher, Handler, JournalRecord,
@@ -21,3 +22,4 @@ pub use registry::{
     CONTRIBUTE_GRANT, CORE_IDENTITY, DescriptorFieldError, InvocableRegistry, Registrant,
     Registration, RegistrationError, RegistrationHandle, RegistryObserver, Shadow, attribution,
 };
+pub use stream::{Polled, StreamHub, StreamItem, StreamSink, Subscription};

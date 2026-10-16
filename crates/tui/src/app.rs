@@ -17,21 +17,25 @@
 //! before this migration buys nothing here.
 
 use std::io::{self, Stdout};
+use std::sync::{Arc, mpsc};
+
+use cronus_core::invocable::StreamItem;
 use std::time::Duration;
 
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend as RatatuiCrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::widgets::{Paragraph, Widget};
 
+use crate::chat_actions::ChatAction;
 use crate::command::{self, CommandOutcome, CommandSpec, SlashCommand};
 use crate::dispatch;
 use crate::installation;
 use crate::pane_actions::{self, PaneAction};
 use crate::terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
 use crate::view::{
-    self, BoardView, Focus, OfficeView, Projection, ResultBlock, SessionsView, StatusView,
+    self, Addressee, BoardColumn, BoardCursor, BoardView, ChatView, Focus, OfficeView, Projection,
+    ResultBlock, Screen, SessionList, SessionRow, SessionsView, StatusView, TranscriptView,
 };
 use cronus_contract::{
     ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, OutcomeValue,
@@ -65,6 +69,8 @@ pub struct CoreSnapshot {
     pub office: Projection<OfficeView>,
     /// Sessions/log projection (bounded tail of recent activity).
     pub sessions: Projection<SessionsView>,
+    /// The sessions list the Sessions screen shows.
+    pub session_list: Projection<SessionList>,
 }
 
 /// View-only state the panels render from.
@@ -89,6 +95,27 @@ pub struct ViewModel {
     /// installation verb's answer — shown over the lower part of the view
     /// until the next keystroke in the command bar.
     pub result_block: Option<ResultBlock>,
+    /// Who the line being typed is addressed to (shown in the input block).
+    pub addressee: Addressee,
+    /// Which screen fills the body.
+    pub screen: Screen,
+    /// The Kanban screen's selection.
+    pub board_cursor: BoardCursor,
+    /// The Sessions screen's selection (an index into the list).
+    pub session_cursor: usize,
+    /// The conversation of the selected session, with the key it was read
+    /// under (id and entry count, so it is re-read when the journal grows).
+    pub transcript: Option<(String, Projection<TranscriptView>)>,
+    /// The Chat screen: its conversation, model and unanswered message.
+    pub chat: ChatView,
+}
+
+/// What a reply being written reports back to the loop.
+enum TurnEvent {
+    /// A piece of the reply, as it arrives.
+    Chunk(String),
+    /// The turn settled.
+    Done(Outcome),
 }
 
 /// The seam the loop reads core state through.
@@ -141,9 +168,12 @@ pub struct App {
     pending_dispatch: Option<SlashCommand>,
     /// The shared invocable catalog — resolves a slash command's candidate
     /// identity and its declared binders before dispatch.
-    registry: InvocableRegistry,
+    registry: Arc<InvocableRegistry>,
     /// Runs a resolved invocation for real, masking secrets at the boundary.
-    dispatcher: Dispatcher,
+    dispatcher: Arc<Dispatcher>,
+    /// The reply being written on a background thread, when there is one: a
+    /// model turn takes seconds, and the screen must stay alive meanwhile.
+    turn: Option<mpsc::Receiver<TurnEvent>>,
     /// The slash-command catalog, built once at construction from the core's
     /// invocable registry (`command::build_catalog`) — never a hand-maintained
     /// list. Held on `App` rather than re-derived per keystroke, since it
@@ -167,8 +197,9 @@ impl App {
             view: initial,
             should_quit: false,
             pending_dispatch: None,
-            registry,
-            dispatcher,
+            registry: Arc::new(registry),
+            dispatcher: Arc::new(dispatcher),
+            turn: None,
             catalog,
         }
     }
@@ -228,12 +259,17 @@ impl App {
                 .args
                 .first()
                 .and_then(|sub_verb| PaneAction::from_slash(&command.verb, sub_verb));
-            match pane_action {
-                Some(action) => {
+            let chat_action = command
+                .args
+                .first()
+                .and_then(|sub_verb| ChatAction::from_slash(&command.verb, sub_verb));
+            match (pane_action, chat_action) {
+                (_, Some(action)) => self.apply_chat_action(action, &command),
+                (Some(action), None) => {
                     self.dispatch_pane_action(action);
                     self.view.command_feedback = None;
                 }
-                None => {
+                (None, None) => {
                     // An installation verb is not addressed to any agent and
                     // runs beside the work; its answer is a block, not the
                     // bar's one line. Anything else is an ordinary command.
@@ -255,6 +291,11 @@ impl App {
             needs_redraw = true;
         }
 
+        // 1c) A reply finished on its background thread.
+        if self.poll_turn() {
+            needs_redraw = true;
+        }
+
         // 2) Snapshot poll — may be `None` (slow call in flight); the loop has
         //    already handled input above, so it stays responsive regardless.
         //    Passes this loop's own registry/dispatcher through so a real
@@ -264,6 +305,9 @@ impl App {
             && snapshot != self.view.snapshot
         {
             self.view.snapshot = snapshot;
+            if self.view.screen == Screen::Sessions {
+                self.sync_transcript();
+            }
             needs_redraw = true;
         }
 
@@ -293,8 +337,30 @@ impl App {
         match key {
             Key::Tab => self.dispatch_pane_action(PaneAction::FocusNext),
             Key::BackTab => self.dispatch_pane_action(PaneAction::FocusPrev),
+            Key::F(n) => match pane_actions::fkey(n) {
+                Some((_, action)) => self.dispatch_pane_action(action),
+                None => false,
+            },
             Key::Char('/') if self.view.focus != Focus::CommandBar => {
                 self.dispatch_pane_action(PaneAction::FocusCommandBar)
+            }
+            Key::Left | Key::Right | Key::Up | Key::Down | Key::Enter
+                if self.view.screen == Screen::Kanban && self.view.focus != Focus::CommandBar =>
+            {
+                self.kanban_key(key)
+            }
+            Key::Up | Key::Down
+                if self.view.screen == Screen::Sessions && self.view.focus != Focus::CommandBar =>
+            {
+                self.sessions_key(key)
+            }
+            // Esc leaves a full-width screen for the overview before it can
+            // quit the session.
+            Key::Esc
+                if self.view.screen != Screen::Overview && self.view.focus != Focus::CommandBar =>
+            {
+                self.view.screen = Screen::Overview;
+                true
             }
             _ if self.view.focus == Focus::CommandBar => self.handle_command_key(key),
             Key::Esc => self.dispatch_pane_action(PaneAction::Quit),
@@ -320,10 +386,12 @@ impl App {
             Dispatched::Ran(_outcome) => match action {
                 PaneAction::FocusNext => {
                     self.view.focus = self.view.focus.next();
+                    self.leave_full_screen();
                     true
                 }
                 PaneAction::FocusPrev => {
                     self.view.focus = self.view.focus.prev();
+                    self.leave_full_screen();
                     true
                 }
                 PaneAction::FocusCommandBar => {
@@ -333,6 +401,32 @@ impl App {
                 PaneAction::Quit => {
                     self.should_quit = true;
                     false
+                }
+                PaneAction::FocusBoard => {
+                    self.view.focus = Focus::Board;
+                    self.view.screen = Screen::Kanban;
+                    true
+                }
+                PaneAction::FocusOffice => {
+                    self.view.focus = Focus::Office;
+                    self.view.screen = Screen::Overview;
+                    true
+                }
+                PaneAction::FocusSessions => {
+                    self.view.focus = Focus::Sessions;
+                    self.view.screen = Screen::Sessions;
+                    self.sync_transcript();
+                    true
+                }
+                PaneAction::Help => {
+                    self.show_help();
+                    true
+                }
+                PaneAction::FocusChat => {
+                    self.view.focus = Focus::CommandBar;
+                    self.view.screen = Screen::Chat;
+                    self.refresh_addressee();
+                    true
                 }
             },
         }
@@ -345,24 +439,357 @@ impl App {
             Key::Char(c) => {
                 self.view.command_input.push(c);
                 self.clear_result();
+                self.refresh_addressee();
                 true
             }
             Key::Backspace => {
                 self.view.command_input.pop();
                 self.clear_result();
+                self.refresh_addressee();
                 true
             }
             Key::Enter => {
                 self.submit_command();
                 true
             }
+            // Esc clears what is typed; with nothing typed on the Chat screen it
+            // stops a reply being written, and failing that leaves the screen.
+            Key::Esc if self.view.command_input.is_empty() && self.view.screen == Screen::Chat => {
+                if self.view.chat.pending.is_some() {
+                    self.stop_turn();
+                } else {
+                    self.view.screen = Screen::Overview;
+                    self.view.focus = Focus::Board;
+                }
+                true
+            }
             Key::Esc => {
                 self.view.command_input.clear();
                 self.clear_result();
+                self.refresh_addressee();
                 true
             }
             _ => false,
         }
+    }
+
+    /// Moving focus by cycling lands on a panel of the overview, so a
+    /// full-width screen gives way to it (focus on the command bar keeps the
+    /// screen: a command is typed about what is on screen).
+    fn leave_full_screen(&mut self) {
+        if self.view.focus != Focus::CommandBar {
+            self.view.screen = Screen::Overview;
+        }
+    }
+
+    /// Keys on the Kanban screen: arrows move the selection, Enter shows the
+    /// card under it through the ordinary `/board show` command.
+    fn kanban_key(&mut self, key: Key) -> bool {
+        let Projection::Available(board) = &self.view.snapshot.board else {
+            return false;
+        };
+        let at = self.view.board_cursor.clamped(board);
+        let in_column = |column: usize| board.cards_in(BoardColumn::ALL[column]).count();
+        let next = match key {
+            Key::Left => BoardCursor {
+                column: at.column.saturating_sub(1),
+                row: at.row,
+            },
+            Key::Right => BoardCursor {
+                column: (at.column + 1).min(BoardColumn::ALL.len() - 1),
+                row: at.row,
+            },
+            Key::Up => BoardCursor {
+                row: at.row.saturating_sub(1),
+                ..at
+            },
+            Key::Down => BoardCursor {
+                row: (at.row + 1).min(in_column(at.column).saturating_sub(1)),
+                ..at
+            },
+            Key::Enter => {
+                let Some(card) = at.card(board) else {
+                    return false;
+                };
+                self.pending_dispatch = Some(SlashCommand {
+                    verb: "board".to_string(),
+                    args: vec!["show".to_string(), card.id.clone()],
+                });
+                return true;
+            }
+            _ => return false,
+        };
+        let next = next.clamped(board);
+        let moved = next != self.view.board_cursor;
+        self.view.board_cursor = next;
+        moved
+    }
+
+    /// Keys on the Sessions screen: up and down move the selection and read
+    /// the newly selected session's conversation.
+    fn sessions_key(&mut self, key: Key) -> bool {
+        let Projection::Available(list) = &self.view.snapshot.session_list else {
+            return false;
+        };
+        let last = list.rows.len().saturating_sub(1);
+        let at = self.view.session_cursor.min(last);
+        let next = match key {
+            Key::Up => at.saturating_sub(1),
+            Key::Down => (at + 1).min(last),
+            _ => return false,
+        };
+        let moved = next != self.view.session_cursor;
+        self.view.session_cursor = next;
+        self.sync_transcript();
+        moved
+    }
+
+    /// Make the transcript match the selected session: read it when the
+    /// selection or the journal's length differs from what was read, drop it
+    /// when there is nothing selected.
+    fn sync_transcript(&mut self) {
+        let Projection::Available(list) = &self.view.snapshot.session_list else {
+            self.view.transcript = None;
+            return;
+        };
+        let Some(row) = list.rows.get(
+            self.view
+                .session_cursor
+                .min(list.rows.len().saturating_sub(1)),
+        ) else {
+            self.view.transcript = None;
+            return;
+        };
+        let key = format!("{}:{}", row.id, row.entries);
+        if self
+            .view
+            .transcript
+            .as_ref()
+            .is_some_and(|(read, _)| *read == key)
+        {
+            return;
+        }
+        let mut args = ArgValues::new();
+        args.insert("id", ArgValue::Text(row.id.clone()));
+        let projection = dispatch_projection(
+            &self.registry,
+            &self.dispatcher,
+            "core:session.show",
+            args,
+            parse_transcript,
+        );
+        self.view.transcript = Some((key, projection));
+    }
+
+    /// The line in the bar as a slash command. Everywhere but the Chat screen
+    /// the slash is implicit; on it the line is typed whole, and a plain one
+    /// is a message.
+    fn typed_line(&self) -> String {
+        if self.view.screen == Screen::Chat && self.view.command_input.starts_with('/') {
+            self.view.command_input.clone()
+        } else {
+            format!("/{}", self.view.command_input)
+        }
+    }
+
+    /// Apply a Chat screen command: choose the model, or leave the
+    /// conversation for a new one.
+    fn apply_chat_action(&mut self, action: ChatAction, command: &SlashCommand) {
+        match action {
+            ChatAction::Model => match command.args.get(1) {
+                Some(name) => {
+                    self.view.chat.model = Some(name.clone());
+                    self.view.command_feedback = Some(format!("chat model: {name}"));
+                }
+                None => {
+                    self.view.command_feedback = Some("usage: /chat model <name>".to_string());
+                }
+            },
+            ChatAction::New => {
+                if self.view.chat.pending.is_some() {
+                    self.view.command_feedback =
+                        Some("a reply is still being written — Esc stops it first".to_string());
+                } else {
+                    self.view.chat.session = None;
+                    self.view.chat.transcript = None;
+                    self.view.command_feedback = Some("new conversation".to_string());
+                }
+            }
+        }
+    }
+
+    /// Send `text` to the model as the next message of the conversation. The
+    /// turn runs through the shared `session say` verb on a background
+    /// thread; the screen shows the message as pending until it finishes.
+    fn send_message(&mut self, text: String) {
+        if self.view.chat.pending.is_some() {
+            self.view.command_feedback =
+                Some("a reply is still being written — Esc stops it".to_string());
+            return;
+        }
+        let Some(model) = self.view.chat.model.clone() else {
+            self.view.command_feedback = Some("no model chosen: /chat model <name>".to_string());
+            return;
+        };
+        let session = self
+            .view
+            .chat
+            .session
+            .clone()
+            .unwrap_or_else(cronus_domain::session::journal::new_session_id);
+        let mut args = ArgValues::new();
+        args.insert("text", ArgValue::Text(text.clone()));
+        args.insert("model", ArgValue::Text(model));
+        args.insert("session", ArgValue::Text(session.clone()));
+        let invocation = Invocation {
+            id: InvocableId::new("core:session.say")
+                .expect("a literal invocable id must be well-formed"),
+            args,
+            caller: Surface::Tui,
+        };
+        let (registry, dispatcher) = (Arc::clone(&self.registry), Arc::clone(&self.dispatcher));
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let outcome = match dispatcher.dispatch(&registry, &invocation) {
+                // A turn answers with a stream: forward each piece as it
+                // arrives, then the settled result.
+                Dispatched::Ran(Outcome::Stream(handle)) => match dispatcher.subscribe(&handle) {
+                    Some(mut subscription) => loop {
+                        match subscription.next_item() {
+                            Some(StreamItem::Chunk(OutcomeValue::Text(piece))) => {
+                                if sender.send(TurnEvent::Chunk(piece)).is_err() {
+                                    return;
+                                }
+                            }
+                            Some(StreamItem::Chunk(_)) => {}
+                            Some(StreamItem::End(outcome)) => break outcome,
+                            None => {
+                                break Outcome::Unavailable {
+                                    reason: "the reply was lost".to_string(),
+                                };
+                            }
+                        }
+                    },
+                    None => Outcome::Unavailable {
+                        reason: "the reply cannot be read".to_string(),
+                    },
+                },
+                Dispatched::Ran(outcome) => outcome,
+                Dispatched::Unknown => Outcome::Unavailable {
+                    reason: "core:session.say is not registered".to_string(),
+                },
+            };
+            let _ = sender.send(TurnEvent::Done(outcome));
+        });
+        self.turn = Some(receiver);
+        self.view.chat.session = Some(session);
+        self.view.chat.pending = Some(text);
+        self.view.chat.partial.clear();
+    }
+
+    /// Collect a finished reply, if there is one: clear the pending message,
+    /// say what went wrong when something did, and re-read the conversation
+    /// from its journal. Returns whether anything changed.
+    fn poll_turn(&mut self) -> bool {
+        let Some(receiver) = &self.turn else {
+            return false;
+        };
+        let mut changed = false;
+        let outcome = loop {
+            match receiver.try_recv() {
+                Ok(TurnEvent::Chunk(piece)) => {
+                    self.view.chat.partial.push_str(&piece);
+                    changed = true;
+                }
+                Ok(TurnEvent::Done(outcome)) => break outcome,
+                Err(mpsc::TryRecvError::Empty) => return changed,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    break Outcome::Unavailable {
+                        reason: "the reply was lost: its thread ended without an answer"
+                            .to_string(),
+                    };
+                }
+            }
+        };
+        self.turn = None;
+        self.view.chat.pending = None;
+        self.view.chat.partial.clear();
+        // A recorded failure is told here; the journal holds it too.
+        self.view.command_feedback = match outcome {
+            Outcome::Value(_) => None,
+            Outcome::Unavailable { reason } => Some(reason),
+            other => dispatch::render_outcome(other),
+        };
+        self.refresh_chat_transcript();
+        true
+    }
+
+    /// Read the conversation back from its session's journal.
+    fn refresh_chat_transcript(&mut self) {
+        let Some(session) = self.view.chat.session.clone() else {
+            self.view.chat.transcript = None;
+            return;
+        };
+        let mut args = ArgValues::new();
+        args.insert("id", ArgValue::Text(session));
+        self.view.chat.transcript = Some(dispatch_projection(
+            &self.registry,
+            &self.dispatcher,
+            "core:session.show",
+            args,
+            parse_transcript,
+        ));
+    }
+
+    /// Stop the reply being written: the turn is cut short and recorded as
+    /// such, with whatever had arrived.
+    fn stop_turn(&mut self) {
+        let Some(session) = self.view.chat.session.clone() else {
+            return;
+        };
+        let invocation = Invocation {
+            id: InvocableId::new("core:session.stop")
+                .expect("a literal invocable id must be well-formed"),
+            args: {
+                let mut args = ArgValues::new();
+                args.insert("id", ArgValue::Text(session));
+                args
+            },
+            caller: Surface::Tui,
+        };
+        if let Dispatched::Ran(Outcome::Unavailable { reason }) =
+            self.dispatcher.dispatch(&self.registry, &invocation)
+        {
+            self.view.command_feedback = Some(reason);
+        }
+    }
+
+    /// Put the command listing on screen as a result block.
+    fn show_help(&mut self) {
+        self.clear_result();
+        self.view.result_block = Some(ResultBlock {
+            title: "/help".to_string(),
+            lines: command::help_lines(&self.catalog),
+        });
+    }
+
+    /// Recompute who the line being typed is addressed to: an installation
+    /// line is addressed to no agent, and the input block says so while it
+    /// is being typed.
+    fn refresh_addressee(&mut self) {
+        let chat = self.view.screen == Screen::Chat;
+        let input = &self.view.command_input;
+        if chat && !input.is_empty() && !input.starts_with('/') {
+            self.view.addressee = Addressee::Model;
+            return;
+        }
+        let line = self.typed_line();
+        self.view.addressee = match command::parse(&line) {
+            Ok(parsed) if installation::is_installation_command(&self.registry, &parsed) => {
+                Addressee::Installation
+            }
+            _ => Addressee::Command,
+        };
     }
 
     /// Drop whatever the last command left on screen — its one-line feedback
@@ -377,18 +804,22 @@ impl App {
     /// registry/dispatcher and performs the real call + masking).
     fn submit_command(&mut self) {
         self.clear_result();
-        let line = format!("/{}", self.view.command_input);
+        let chat = self.view.screen == Screen::Chat;
+        let typed = self.view.command_input.clone();
+        if chat && !typed.trim().is_empty() && !typed.starts_with('/') {
+            self.view.command_input.clear();
+            self.view.addressee = Addressee::Command;
+            self.send_message(typed.trim().to_string());
+            return;
+        }
+        let line = self.typed_line();
         match command::classify(&line, &self.catalog) {
-            CommandOutcome::Help => {
-                self.view.result_block = Some(ResultBlock {
-                    title: "/help".to_string(),
-                    lines: command::help_lines(&self.catalog),
-                });
-            }
+            CommandOutcome::Help => self.show_help(),
             CommandOutcome::Run(command) => self.pending_dispatch = Some(command),
             CommandOutcome::Error(message) => self.view.command_feedback = Some(message),
         }
         self.view.command_input.clear();
+        self.view.addressee = Addressee::Command;
     }
 }
 
@@ -400,12 +831,22 @@ impl App {
 /// delivered through this same poll seam without changing the loop.
 pub struct CapabilitySource<C: Capabilities> {
     core: C,
+    /// The sessions list and when it was read: journals are parsed in full
+    /// to be summarized, so the list is re-read about once a second, not on
+    /// every tick.
+    sessions: Option<(std::time::Instant, Projection<SessionList>)>,
 }
+
+/// How long a read of the sessions list is reused.
+const SESSIONS_REFRESH: Duration = Duration::from_secs(1);
 
 impl<C: Capabilities> CapabilitySource<C> {
     /// Wrap a core handle as a snapshot source.
     pub fn new(core: C) -> Self {
-        Self { core }
+        Self {
+            core,
+            sessions: None,
+        }
     }
 }
 
@@ -415,6 +856,14 @@ impl<C: Capabilities> SnapshotSource for CapabilitySource<C> {
         registry: &InvocableRegistry,
         dispatcher: &Dispatcher,
     ) -> Option<CoreSnapshot> {
+        let session_list = match &self.sessions {
+            Some((read_at, list)) if read_at.elapsed() < SESSIONS_REFRESH => list.clone(),
+            _ => {
+                let list = dispatch_session_list(registry, dispatcher);
+                self.sessions = Some((std::time::Instant::now(), list.clone()));
+                list
+            }
+        };
         Some(CoreSnapshot {
             status: Projection::Available(StatusView {
                 version: self.core.version().to_string(),
@@ -422,12 +871,107 @@ impl<C: Capabilities> SnapshotSource for CapabilitySource<C> {
             }),
             board: dispatch_board(registry, dispatcher),
             office: dispatch_office(registry, dispatcher),
-            // No durable activity log exists in the domain tier yet to read
-            // from — the neutral, genuinely-empty starting point, never a
-            // fabricated `Unavailable` with no real call behind it.
-            sessions: Projection::Available(SessionsView::default()),
+            sessions: sessions_panel(&session_list),
+            session_list,
         })
     }
+}
+
+/// Dispatch `core:session.list` and project its rows.
+fn dispatch_session_list(
+    registry: &InvocableRegistry,
+    dispatcher: &Dispatcher,
+) -> Projection<SessionList> {
+    dispatch_projection(
+        registry,
+        dispatcher,
+        "core:session.list",
+        ArgValues::new(),
+        |value| {
+            let OutcomeValue::List(items) = value else {
+                return None;
+            };
+            let mut rows = Vec::with_capacity(items.len());
+            for item in items {
+                let OutcomeValue::Record(fields) = item else {
+                    return None;
+                };
+                let count = |name: &str| match fields.iter().find(|(k, _)| k == name) {
+                    Some((_, OutcomeValue::Integer(n))) => usize::try_from(*n).ok(),
+                    _ => None,
+                };
+                rows.push(SessionRow {
+                    id: record_text(fields, "id")?.to_string(),
+                    name: record_text(fields, "name").map(str::to_string),
+                    turns: count("turns")?,
+                    entries: count("entries")?,
+                    problem: record_text(fields, "problem").map(str::to_string),
+                });
+            }
+            Some(SessionList { rows })
+        },
+    )
+}
+
+/// The overview's Sessions panel: one line per session, from the same list
+/// the Sessions screen shows — unavailable when the list is.
+fn sessions_panel(list: &Projection<SessionList>) -> Projection<SessionsView> {
+    match list {
+        Projection::Available(list) => {
+            let mut view = SessionsView::default();
+            // Oldest first, so the newest session is the last line.
+            for row in list.rows.iter().rev() {
+                view.push(format!(
+                    "{} · {} · {} turns",
+                    row.id,
+                    row.name.as_deref().unwrap_or("(unnamed)"),
+                    row.turns
+                ));
+            }
+            Projection::Available(view)
+        }
+        Projection::Unavailable { reason } => Projection::Unavailable {
+            reason: reason.clone(),
+        },
+    }
+}
+
+/// Parse `core:session.show`'s record into a transcript.
+fn parse_transcript(value: &OutcomeValue) -> Option<TranscriptView> {
+    let OutcomeValue::Record(fields) = value else {
+        return None;
+    };
+    let omitted = match fields.iter().find(|(k, _)| k == "omitted") {
+        Some((_, OutcomeValue::Integer(n))) => usize::try_from(*n).ok()?,
+        _ => 0,
+    };
+    let Some((_, OutcomeValue::List(items))) = fields.iter().find(|(k, _)| k == "messages") else {
+        return None;
+    };
+    let mut messages = Vec::with_capacity(items.len());
+    for item in items {
+        let OutcomeValue::Record(message) = item else {
+            return None;
+        };
+        // A reply that did not complete says how in its header, and one that
+        // produced nothing shows why instead of a blank.
+        let role = record_text(message, "role")?;
+        let text = record_text(message, "text")?;
+        let label = match record_text(message, "stop") {
+            Some(stop) if stop != "stop" => format!("{role} · {stop}"),
+            _ => role.to_string(),
+        };
+        let text = match (text.is_empty(), record_text(message, "error")) {
+            (true, Some(error)) => format!("({error})"),
+            _ => text.to_string(),
+        };
+        messages.push((label, text));
+    }
+    Some(TranscriptView {
+        id: record_text(fields, "id")?.to_string(),
+        messages,
+        omitted,
+    })
 }
 
 /// Dispatch `core:board.list` through the shared registry/dispatcher and
@@ -459,12 +1003,15 @@ fn dispatch_board(registry: &InvocableRegistry, dispatcher: &Dispatcher) -> Proj
                 match board_column(record_text(fields, "state")?) {
                     Some(column) => cards.push(view::BoardCard {
                         id: id.to_string(),
-                        // `core:board.list`'s current outcome shape carries no
-                        // `task_ref` field — a disclosed limitation of that
-                        // invocable's response, not something this panel
-                        // derives locally; the same gap the command line's
-                        // own output has.
-                        title: String::new(),
+                        title: record_text(fields, "task_ref")
+                            .unwrap_or_default()
+                            .to_string(),
+                        priority: record_text(fields, "priority")
+                            .unwrap_or_default()
+                            .to_string(),
+                        assignee: record_text(fields, "assignee")
+                            .unwrap_or_default()
+                            .to_string(),
                         column,
                     }),
                     None => unmapped.push(id.to_string()),
@@ -504,8 +1051,8 @@ fn dispatch_board(registry: &InvocableRegistry, dispatcher: &Dispatcher) -> Proj
                 .cards
                 .extend(ids.into_iter().map(|id| view::BoardCard {
                     id,
-                    title: String::new(),
                     column: view::BoardColumn::Archive,
+                    ..Default::default()
                 }));
             Projection::Available(board)
         }
@@ -659,42 +1206,77 @@ pub fn render_view(area: Rect, buf: &mut Buffer, view: &ViewModel) {
     let areas = view::layout(area);
     let snapshot = &view.snapshot;
 
-    view::render_board(
-        areas.board,
-        buf,
-        &snapshot.board,
-        view.focus == Focus::Board,
-    );
-    view::render_office(
-        areas.office,
-        buf,
-        &snapshot.office,
-        view.focus == Focus::Office,
-    );
-    view::render_status(
-        areas.status,
-        buf,
-        &snapshot.status,
-        view.focus == Focus::Status,
-    );
-    view::render_sessions(
-        areas.sessions,
-        buf,
-        &snapshot.sessions,
-        view.focus == Focus::Sessions,
-    );
+    view::render_tabs(areas.tabs, buf, view.focus);
 
-    if let Some(block) = &view.result_block {
-        view::render_result_block(area, buf, areas.command_bar, block);
+    match view.screen {
+        Screen::Overview => {
+            view::render_board(
+                areas.board,
+                buf,
+                &snapshot.board,
+                view.focus == Focus::Board,
+            );
+            view::render_office(
+                areas.office,
+                buf,
+                &snapshot.office,
+                view.focus == Focus::Office,
+            );
+            view::render_status(
+                areas.status,
+                buf,
+                &snapshot.status,
+                view.focus == Focus::Status,
+            );
+            view::render_sessions(
+                areas.sessions,
+                buf,
+                &snapshot.sessions,
+                view.focus == Focus::Sessions,
+            );
+        }
+        Screen::Chat => {
+            view::render_chat_screen(areas.body, buf, &view.chat, view.focus == Focus::CommandBar)
+        }
+        Screen::Sessions => view::render_sessions_screen(
+            areas.body,
+            buf,
+            &snapshot.session_list,
+            view.session_cursor,
+            view.transcript.as_ref().map(|(_, transcript)| transcript),
+            view.focus == Focus::Sessions,
+        ),
+        Screen::Kanban => view::render_kanban(
+            areas.body,
+            buf,
+            &snapshot.board,
+            view.board_cursor,
+            view.focus == Focus::Board,
+        ),
     }
 
-    let bar_text = match &view.command_feedback {
-        Some(feedback) if view.command_input.is_empty() => format!("/  {feedback}"),
-        _ => format!("/{}", view.command_input),
-    };
-    Paragraph::new(bar_text)
-        .style(view::focus_border_style(view.focus == Focus::CommandBar))
-        .render(areas.command_bar, buf);
+    if let Some(block) = &view.result_block {
+        // Anchored above the ticker, below the tab bar.
+        let below_tabs = Rect::new(
+            area.x,
+            areas.tabs.bottom(),
+            area.width,
+            area.height.saturating_sub(areas.tabs.height),
+        );
+        view::render_result_block(below_tabs, buf, areas.ticker, block);
+    }
+
+    view::render_ticker(areas.ticker, buf, view.command_feedback.as_deref());
+    view::render_input(
+        areas.input,
+        buf,
+        &view.command_input,
+        view.addressee,
+        view.screen != Screen::Chat,
+        view.focus == Focus::CommandBar,
+    );
+    view::render_fkeys(areas.fkeys, buf, pane_actions::fkey_for_focus(view.focus));
+    view::render_status_line(areas.status_line, buf, &snapshot.status);
 }
 
 /// Run the TUI against the real terminal and the live engine.
@@ -710,6 +1292,7 @@ pub fn run() -> io::Result<()> {
     // catalog is built from the result — so `/pane` is a real discoverable
     // group, not a parallel mechanism the catalog never learns about.
     pane_actions::register(&mut registry, &mut dispatcher);
+    crate::chat_actions::register(&mut registry, &mut dispatcher);
     let invocables: Vec<&Invocable> = registry.all().collect();
     let catalog = command::build_catalog(&invocables);
 
@@ -746,6 +1329,12 @@ where
     let mut app = App::new(
         ViewModel {
             size: (cols, rows),
+            chat: ChatView {
+                model: std::env::var("CRONUS_CHAT_MODEL")
+                    .ok()
+                    .filter(|m| !m.is_empty()),
+                ..Default::default()
+            },
             ..Default::default()
         },
         registry,
@@ -1068,6 +1657,879 @@ mod tests {
         app.tick(&[TermEvent::Key(Key::BackTab)], &mut source2, &mut renderer)
             .unwrap();
         assert_eq!(app.view().focus, Focus::Board, "Shift+Tab steps focus back");
+    }
+
+    /// The function-key bar runs the same registered actions the keyboard
+    /// shortcuts do: a bound slot moves focus or quits, an unbound one does
+    /// nothing at all.
+    #[test]
+    fn function_keys_run_their_registered_pane_actions_and_unbound_ones_do_nothing() {
+        let tick = |app: &mut App, key: Key| {
+            app.tick(
+                &[TermEvent::Key(key)],
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap()
+        };
+        let (registry, dispatcher) = registry_with_pane_actions();
+        let mut app = App::new(ViewModel::default(), registry, dispatcher, Vec::new());
+
+        tick(&mut app, Key::F(6));
+        assert_eq!(app.view().focus, Focus::Office);
+        tick(&mut app, Key::F(4));
+        assert_eq!(app.view().focus, Focus::Sessions);
+        tick(&mut app, Key::F(7));
+        assert_eq!(app.view().focus, Focus::Board);
+
+        let before = app.view().clone();
+        let result = tick(&mut app, Key::F(2));
+        assert!(!result.redrawn && !result.quit, "F2 has no action yet");
+        assert_eq!(app.view(), &before);
+
+        assert!(tick(&mut app, Key::F(10)).quit, "F10 quits");
+    }
+
+    /// The Kanban screen is reached by F7, steered by the arrow keys over the
+    /// board projection, and left by Esc (before Esc can quit) or by moving
+    /// focus to another panel.
+    #[test]
+    fn the_kanban_screen_is_entered_navigated_shown_and_left() {
+        let (mut registry, mut dispatcher) = registry_with_pane_actions();
+        register_board_list(
+            &mut registry,
+            &mut dispatcher,
+            vec![
+                ("card-1", "todo"),
+                ("card-2", "running"),
+                ("card-3", "running"),
+            ],
+            Ok(Vec::new()),
+        );
+        let board = dispatch_board(&registry, &dispatcher);
+        let mut app = App::new(
+            ViewModel {
+                snapshot: CoreSnapshot {
+                    board,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        let press = |app: &mut App, key: Key| {
+            app.tick(
+                &[TermEvent::Key(key)],
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap()
+        };
+
+        press(&mut app, Key::F(7));
+        assert_eq!(app.view().screen, Screen::Kanban);
+        assert_eq!(app.view().focus, Focus::Board);
+
+        // Running is the fourth column; Todo the second.
+        for _ in 0..3 {
+            press(&mut app, Key::Right);
+        }
+        assert_eq!(app.view().board_cursor, BoardCursor { column: 3, row: 0 });
+        press(&mut app, Key::Down);
+        press(&mut app, Key::Down);
+        assert_eq!(app.view().board_cursor.row, 1, "stops at the last card");
+        press(&mut app, Key::Left);
+        assert_eq!(
+            app.view().board_cursor,
+            BoardCursor { column: 2, row: 0 },
+            "an empty column holds the row at 0"
+        );
+
+        press(&mut app, Key::Right);
+        press(&mut app, Key::Enter);
+        let shown = app.view().command_feedback.clone();
+        assert!(
+            shown.as_deref().is_some_and(|text| text.contains("card-2")),
+            "Enter shows the selected card through /board show: {shown:?}"
+        );
+
+        let result = press(&mut app, Key::Esc);
+        assert!(!result.quit, "Esc leaves the board before it quits");
+        assert_eq!(app.view().screen, Screen::Overview);
+        assert!(press(&mut app, Key::Esc).quit, "and the next Esc quits");
+
+        press(&mut app, Key::F(7));
+        press(&mut app, Key::Tab);
+        assert_eq!(
+            app.view().screen,
+            Screen::Overview,
+            "cycling focus leaves it"
+        );
+        press(&mut app, Key::F(7));
+        press(&mut app, Key::F(6));
+        assert_eq!(app.view().screen, Screen::Overview);
+        assert_eq!(app.view().focus, Focus::Office);
+    }
+
+    /// A command is typed about what is on screen: focusing the command bar
+    /// keeps the board, and the arrow keys then belong to the line.
+    #[test]
+    fn focusing_the_command_bar_keeps_the_kanban_screen() {
+        let (registry, dispatcher) = registry_with_pane_actions();
+        let mut app = App::new(
+            ViewModel {
+                screen: Screen::Kanban,
+                focus: Focus::Board,
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        let press = |app: &mut App, key: Key| {
+            app.tick(
+                &[TermEvent::Key(key)],
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap()
+        };
+        press(&mut app, Key::Char('/'));
+        assert_eq!(app.view().focus, Focus::CommandBar);
+        assert_eq!(app.view().screen, Screen::Kanban);
+        let before = app.view().board_cursor;
+        press(&mut app, Key::Right);
+        assert_eq!(app.view().board_cursor, before);
+    }
+
+    #[test]
+    fn the_kanban_screen_replaces_the_four_panels_in_the_frame() {
+        let mut view = populated_view();
+        view.screen = Screen::Kanban;
+        let area = Rect::new(0, 0, 120, 30);
+        let text = buffer_text(&render_to_buffer(&view, area), area);
+        assert!(text.contains("Kanban ·"));
+        assert!(!text.contains("Sessions─"), "the overview panels are gone");
+        assert!(text.contains("1Help"), "the frame around it stays");
+    }
+
+    /// A fixture journal: id, entry count, and `(role, text)` messages.
+    type FixtureJournal = (&'static str, i64, Vec<(&'static str, &'static str)>);
+
+    /// Registers a fixture `core:session.list` / `core:session.show` pair
+    /// over `(id, entries, messages)` journals, and counts the reads of each
+    /// transcript.
+    fn register_sessions(
+        registry: &mut InvocableRegistry,
+        dispatcher: &mut Dispatcher,
+        journals: Vec<FixtureJournal>,
+    ) -> Arc<std::sync::atomic::AtomicUsize> {
+        let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let register = |registry: &mut InvocableRegistry, tail: &str, binders: Vec<Binder>| {
+            let id = InvocableId::new(format!("core:{tail}")).expect("well-formed test id");
+            registry
+                .register(
+                    &Registrant::core(),
+                    Invocable {
+                        id: id.clone(),
+                        name: "Fixture",
+                        summary: "Test-only session fixture.",
+                        group: "session",
+                        locus: Locus::Semantic,
+                        binders,
+                        stability: Stability::Shipped,
+                        journal_raw_input: true,
+                    },
+                )
+                .expect("fixture registers cleanly");
+            id
+        };
+        let text = |s: &str| OutcomeValue::Text(s.to_string());
+
+        let list_id = register(registry, "session.list", Vec::new());
+        let rows = journals.clone();
+        dispatcher.attach(
+            list_id,
+            Arc::new(move |_args| {
+                Outcome::Value(OutcomeValue::List(
+                    rows.iter()
+                        .map(|(id, entries, _)| {
+                            OutcomeValue::Record(vec![
+                                ("id".to_string(), OutcomeValue::Text((*id).to_string())),
+                                ("name".to_string(), OutcomeValue::Empty),
+                                ("entries".to_string(), OutcomeValue::Integer(*entries)),
+                                ("turns".to_string(), OutcomeValue::Integer(1)),
+                                ("problem".to_string(), OutcomeValue::Empty),
+                            ])
+                        })
+                        .collect(),
+                ))
+            }),
+        );
+        let show_id = register(
+            registry,
+            "session.show",
+            vec![Binder {
+                name: "id",
+                kind: BinderKind::Text,
+                optional: false,
+            }],
+        );
+        let counter = Arc::clone(&reads);
+        dispatcher.attach(
+            show_id,
+            Arc::new(move |args| {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let wanted = match args.get("id") {
+                    Some(ArgValue::Text(id)) => id.as_str(),
+                    _ => "",
+                };
+                match journals.iter().find(|(id, _, _)| *id == wanted) {
+                    Some((id, _, messages)) => Outcome::Value(OutcomeValue::Record(vec![
+                        ("id".to_string(), text(id)),
+                        ("omitted".to_string(), OutcomeValue::Integer(0)),
+                        (
+                            "messages".to_string(),
+                            OutcomeValue::List(
+                                messages
+                                    .iter()
+                                    .map(|(role, body)| {
+                                        OutcomeValue::Record(vec![
+                                            ("role".to_string(), text(role)),
+                                            ("text".to_string(), text(body)),
+                                        ])
+                                    })
+                                    .collect(),
+                            ),
+                        ),
+                    ])),
+                    None => Outcome::Unavailable {
+                        reason: format!("session not found: {wanted}"),
+                    },
+                }
+            }),
+        );
+        reads
+    }
+
+    /// F4 opens the Sessions screen; the selected session's conversation is
+    /// read once and again only when the selection or the journal changes;
+    /// Esc leaves.
+    #[test]
+    fn the_sessions_screen_follows_the_selection_and_rereads_only_what_changed() {
+        let (mut registry, mut dispatcher) = registry_with_pane_actions();
+        let reads = register_sessions(
+            &mut registry,
+            &mut dispatcher,
+            vec![
+                ("s-new", 4, vec![("user", "hi"), ("assistant", "hello")]),
+                ("s-old", 2, vec![("user", "earlier")]),
+            ],
+        );
+        let list = dispatch_session_list(&registry, &dispatcher);
+        assert!(matches!(&list, Projection::Available(l) if l.rows.len() == 2));
+        let mut app = App::new(
+            ViewModel {
+                snapshot: CoreSnapshot {
+                    session_list: list,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        let press = |app: &mut App, key: Key| {
+            app.tick(
+                &[TermEvent::Key(key)],
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap()
+        };
+        let reads_so_far = || reads.load(std::sync::atomic::Ordering::SeqCst);
+        let shown_id = |app: &App| app.view().transcript.as_ref().map(|(key, _)| key.clone());
+
+        press(&mut app, Key::F(4));
+        assert_eq!(app.view().screen, Screen::Sessions);
+        assert_eq!(shown_id(&app).as_deref(), Some("s-new:4"));
+        assert_eq!(reads_so_far(), 1);
+
+        press(&mut app, Key::Up);
+        assert_eq!(reads_so_far(), 1, "no movement, no re-read");
+
+        press(&mut app, Key::Down);
+        assert_eq!(shown_id(&app).as_deref(), Some("s-old:2"));
+        assert_eq!(reads_so_far(), 2);
+        press(&mut app, Key::Down);
+        assert_eq!(app.view().session_cursor, 1, "stops at the last session");
+
+        let result = press(&mut app, Key::Esc);
+        assert!(!result.quit);
+        assert_eq!(app.view().screen, Screen::Overview);
+    }
+
+    #[test]
+    fn an_unreadable_journal_shows_up_as_an_unavailable_transcript_not_a_blank_one() {
+        let (mut registry, mut dispatcher) = registry_with_pane_actions();
+        // The list names a session the show call cannot find.
+        register_sessions(&mut registry, &mut dispatcher, vec![("s-1", 1, Vec::new())]);
+        let mut list = dispatch_session_list(&registry, &dispatcher);
+        if let Projection::Available(l) = &mut list {
+            l.rows[0].id = "s-ghost".to_string();
+        }
+        let mut app = App::new(
+            ViewModel {
+                snapshot: CoreSnapshot {
+                    session_list: list,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        app.tick(
+            &[TermEvent::Key(Key::F(4))],
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            app.view().transcript,
+            Some((_, Projection::Unavailable { ref reason })) if reason.contains("s-ghost")
+        ));
+    }
+
+    #[test]
+    fn the_overview_sessions_panel_lists_the_same_sessions_and_inherits_unavailability() {
+        let list = Projection::Available(SessionList {
+            rows: vec![
+                SessionRow {
+                    id: "s-new".to_string(),
+                    turns: 3,
+                    ..Default::default()
+                },
+                SessionRow {
+                    id: "s-old".to_string(),
+                    name: Some("first".to_string()),
+                    turns: 1,
+                    ..Default::default()
+                },
+            ],
+        });
+        let Projection::Available(panel) = sessions_panel(&list) else {
+            panic!("an available list gives an available panel");
+        };
+        assert_eq!(
+            panel.entries(),
+            ["s-old · first · 1 turns", "s-new · (unnamed) · 3 turns"],
+            "oldest first, so the newest is the last line"
+        );
+        let down = Projection::Unavailable {
+            reason: "cannot read sessions".to_string(),
+        };
+        assert_eq!(
+            sessions_panel(&down),
+            Projection::Unavailable {
+                reason: "cannot read sessions".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_reply_that_did_not_complete_says_how_in_its_header_and_why_in_its_body() {
+        let text = |s: &str| OutcomeValue::Text(s.to_string());
+        let message = |role: &str, body: &str, stop: OutcomeValue, error: OutcomeValue| {
+            OutcomeValue::Record(vec![
+                ("role".to_string(), text(role)),
+                ("text".to_string(), text(body)),
+                ("stop".to_string(), stop),
+                ("error".to_string(), error),
+            ])
+        };
+        let value = OutcomeValue::Record(vec![
+            ("id".to_string(), text("s-1")),
+            ("omitted".to_string(), OutcomeValue::Integer(0)),
+            (
+                "messages".to_string(),
+                OutcomeValue::List(vec![
+                    message("user", "hi", OutcomeValue::Empty, OutcomeValue::Empty),
+                    message("assistant", "fine", text("stop"), OutcomeValue::Empty),
+                    message("assistant", "", text("error"), text("Timeout")),
+                ]),
+            ),
+        ]);
+        let transcript = parse_transcript(&value).expect("a well-formed transcript");
+        assert_eq!(
+            transcript.messages,
+            vec![
+                ("user".to_string(), "hi".to_string()),
+                ("assistant".to_string(), "fine".to_string()),
+                ("assistant · error".to_string(), "(Timeout)".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn dispatch_session_list_reports_unavailable_when_the_core_call_is_not_registered() {
+        let registry = InvocableRegistry::new();
+        let dispatcher = Dispatcher::new();
+        assert!(matches!(
+            dispatch_session_list(&registry, &dispatcher),
+            Projection::Unavailable { .. }
+        ));
+    }
+
+    /// How the fixture `session.say` behaves.
+    #[derive(Clone, Copy)]
+    enum Say {
+        /// Answers at once.
+        Answers,
+        /// Fails at once.
+        Fails,
+        /// Holds until `session.stop` is dispatched, then reports it cut short.
+        UntilStopped,
+        /// Streams "par", waits for `session.stop` as its release, then streams
+        /// "tial" and settles.
+        Streams,
+    }
+
+    /// Registers fixture `core:session.say`, `.show` and `.stop` over one
+    /// shared flag, so the Chat screen is driven against the real dispatch
+    /// path without a model. `show` returns the messages `say` was given.
+    fn register_chat_core(
+        registry: &mut InvocableRegistry,
+        dispatcher: &mut Dispatcher,
+        behavior: Say,
+    ) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stopped = Arc::new(AtomicBool::new(false));
+        let said: Arc<std::sync::Mutex<Vec<(String, String)>>> = Arc::default();
+        let hub = dispatcher.streams();
+        let register = |registry: &mut InvocableRegistry, tail: &str, binders: Vec<Binder>| {
+            let id = InvocableId::new(format!("core:{tail}")).expect("well-formed test id");
+            registry
+                .register(
+                    &Registrant::core(),
+                    Invocable {
+                        id: id.clone(),
+                        name: "Fixture",
+                        summary: "Test-only chat fixture.",
+                        group: "session",
+                        locus: Locus::Semantic,
+                        binders,
+                        stability: Stability::Shipped,
+                        journal_raw_input: true,
+                    },
+                )
+                .expect("fixture registers cleanly");
+            id
+        };
+        let text_binder = |name: &'static str, kind: BinderKind, optional: bool| Binder {
+            name,
+            kind,
+            optional,
+        };
+        let text_of = |args: &ArgValues, name: &str| match args.get(name) {
+            Some(ArgValue::Text(value)) => value.clone(),
+            _ => String::new(),
+        };
+
+        let say = register(
+            registry,
+            "session.say",
+            vec![
+                text_binder("text", BinderKind::Text, false),
+                text_binder("model", BinderKind::NamedText, false),
+                text_binder("session", BinderKind::NamedText, true),
+            ],
+        );
+        let (flag, log) = (Arc::clone(&stopped), Arc::clone(&said));
+        dispatcher.attach(
+            say,
+            Arc::new(move |args| {
+                let (text, model) = (text_of(args, "text"), text_of(args, "model"));
+                let mut log = log.lock().expect("lock");
+                log.push(("user".to_string(), format!("{text} [{model}]")));
+                match behavior {
+                    Say::Answers => {
+                        log.push(("assistant".to_string(), "an answer".to_string()));
+                        Outcome::Value(OutcomeValue::Record(vec![(
+                            "session".to_string(),
+                            OutcomeValue::Text(text_of(args, "session")),
+                        )]))
+                    }
+                    Say::Fails => Outcome::Unavailable {
+                        reason: "cannot reach the model server".to_string(),
+                    },
+                    Say::Streams => {
+                        log.push(("assistant".to_string(), "partial".to_string()));
+                        drop(log);
+                        let (handle, sink) = hub.open();
+                        let release = Arc::clone(&flag);
+                        let session = text_of(args, "session");
+                        std::thread::spawn(move || {
+                            sink.chunk(OutcomeValue::Text("par".to_string()));
+                            for _ in 0..400 {
+                                if release.load(Ordering::SeqCst) {
+                                    break;
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(5));
+                            }
+                            sink.chunk(OutcomeValue::Text("tial".to_string()));
+                            sink.end(Outcome::Value(OutcomeValue::Record(vec![
+                                ("session".to_string(), OutcomeValue::Text(session)),
+                                (
+                                    "reply".to_string(),
+                                    OutcomeValue::Text("partial".to_string()),
+                                ),
+                            ])));
+                        });
+                        Outcome::Stream(handle)
+                    }
+                    Say::UntilStopped => {
+                        drop(log);
+                        for _ in 0..400 {
+                            if flag.load(Ordering::SeqCst) {
+                                return Outcome::Unavailable {
+                                    reason: "cancelled".to_string(),
+                                };
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Outcome::Unavailable {
+                            reason: "the fixture was never stopped".to_string(),
+                        }
+                    }
+                }
+            }),
+        );
+
+        let stop = register(
+            registry,
+            "session.stop",
+            vec![text_binder("id", BinderKind::Text, false)],
+        );
+        let flag = Arc::clone(&stopped);
+        dispatcher.attach(
+            stop,
+            Arc::new(move |_args| {
+                flag.store(true, Ordering::SeqCst);
+                Outcome::Value(OutcomeValue::Empty)
+            }),
+        );
+
+        let show = register(
+            registry,
+            "session.show",
+            vec![text_binder("id", BinderKind::Text, false)],
+        );
+        let log = Arc::clone(&said);
+        dispatcher.attach(
+            show,
+            Arc::new(move |args| {
+                let messages = log
+                    .lock()
+                    .expect("lock")
+                    .iter()
+                    .map(|(role, body)| {
+                        OutcomeValue::Record(vec![
+                            ("role".to_string(), OutcomeValue::Text(role.clone())),
+                            ("text".to_string(), OutcomeValue::Text(body.clone())),
+                        ])
+                    })
+                    .collect();
+                Outcome::Value(OutcomeValue::Record(vec![
+                    ("id".to_string(), OutcomeValue::Text(text_of(args, "id"))),
+                    ("omitted".to_string(), OutcomeValue::Integer(0)),
+                    ("messages".to_string(), OutcomeValue::List(messages)),
+                ]))
+            }),
+        );
+    }
+
+    /// An app on the Chat screen over the fixture core and the real chat and
+    /// pane actions.
+    fn chat_app(behavior: Say) -> App {
+        let (mut registry, mut dispatcher) = registry_with_pane_actions();
+        crate::chat_actions::register(&mut registry, &mut dispatcher);
+        register_chat_core(&mut registry, &mut dispatcher, behavior);
+        let invocables: Vec<&Invocable> = registry.all().collect();
+        let catalog = command::build_catalog(&invocables);
+        App::new(ViewModel::default(), registry, dispatcher, catalog)
+    }
+
+    fn type_and_enter(app: &mut App, line: &str) {
+        let mut events: Vec<TermEvent> =
+            line.chars().map(|c| TermEvent::Key(Key::Char(c))).collect();
+        events.push(TermEvent::Key(Key::Enter));
+        app.tick(
+            &events,
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap();
+    }
+
+    fn key(app: &mut App, key: Key) {
+        app.tick(
+            &[TermEvent::Key(key)],
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap();
+    }
+
+    /// Tick until the reply being written has been collected.
+    fn wait_for_the_reply(app: &mut App) {
+        for _ in 0..400 {
+            if app.view().chat.pending.is_none() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            key(app, Key::F(2)); // a bound-to-nothing key: just a tick
+        }
+        panic!("the reply never arrived");
+    }
+
+    #[test]
+    fn a_message_needs_a_model_and_a_plain_line_is_addressed_to_it() {
+        let mut app = chat_app(Say::Answers);
+        key(&mut app, Key::F(3));
+        assert_eq!(app.view().screen, Screen::Chat);
+        assert_eq!(app.view().focus, Focus::CommandBar);
+
+        for c in "hello".chars() {
+            key(&mut app, Key::Char(c));
+        }
+        assert_eq!(app.view().addressee, Addressee::Model);
+        key(&mut app, Key::Enter);
+        assert_eq!(
+            app.view().command_feedback.as_deref(),
+            Some("no model chosen: /chat model <name>")
+        );
+        assert_eq!(app.view().chat.pending, None, "nothing was sent");
+
+        type_and_enter(&mut app, "/chat model llama3");
+        assert_eq!(app.view().chat.model.as_deref(), Some("llama3"));
+        for c in "/sta".chars() {
+            key(&mut app, Key::Char(c));
+        }
+        assert_ne!(
+            app.view().addressee,
+            Addressee::Model,
+            "a line starting with a slash is a command"
+        );
+    }
+
+    #[test]
+    fn a_sent_message_is_pending_until_the_reply_is_collected_and_then_read_back() {
+        let mut app = chat_app(Say::Answers);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model llama3");
+        type_and_enter(&mut app, "what blocks the card?");
+        assert_eq!(
+            app.view().chat.pending.as_deref(),
+            Some("what blocks the card?"),
+            "shown as sent, not yet answered"
+        );
+        assert!(app.view().chat.session.is_some());
+
+        wait_for_the_reply(&mut app);
+        assert_eq!(
+            app.view().command_feedback,
+            None,
+            "a good reply needs no comment"
+        );
+        let Some(Projection::Available(conversation)) = &app.view().chat.transcript else {
+            panic!("the conversation was read back: {:?}", app.view().chat);
+        };
+        assert_eq!(
+            conversation.messages,
+            vec![
+                (
+                    "user".to_string(),
+                    "what blocks the card? [llama3]".to_string()
+                ),
+                ("assistant".to_string(), "an answer".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_second_message_while_a_reply_is_being_written_is_held_back() {
+        let mut app = chat_app(Say::UntilStopped);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "first");
+        type_and_enter(&mut app, "second");
+        assert_eq!(app.view().chat.pending.as_deref(), Some("first"));
+        assert!(
+            app.view()
+                .command_feedback
+                .as_deref()
+                .is_some_and(|f| f.contains("still being written"))
+        );
+        key(&mut app, Key::Esc);
+        wait_for_the_reply(&mut app);
+    }
+
+    #[test]
+    fn a_reply_shows_as_it_streams_in_and_settles_into_the_journaled_conversation() {
+        let mut app = chat_app(Say::Streams);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "tell me");
+
+        // The first piece arrives while the reply is still being written.
+        for _ in 0..400 {
+            if app.view().chat.partial == "par" {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            key(&mut app, Key::F(2));
+        }
+        assert_eq!(app.view().chat.partial, "par");
+        assert!(app.view().chat.pending.is_some(), "still being written");
+
+        // Let the fixture finish: its release is a stop, then it settles.
+        let release = Invocation {
+            id: InvocableId::new("core:session.stop").expect("well-formed"),
+            args: {
+                let mut args = ArgValues::new();
+                args.insert(
+                    "id",
+                    ArgValue::Text(app.view().chat.session.clone().unwrap()),
+                );
+                args
+            },
+            caller: Surface::Tui,
+        };
+        app.dispatcher.dispatch(&app.registry, &release);
+        wait_for_the_reply(&mut app);
+        assert_eq!(app.view().chat.partial, "", "nothing is pending any more");
+        assert_eq!(app.view().command_feedback, None);
+        let Some(Projection::Available(conversation)) = &app.view().chat.transcript else {
+            panic!("the conversation was read back");
+        };
+        assert_eq!(
+            conversation.messages.last().map(|m| m.1.as_str()),
+            Some("partial")
+        );
+    }
+
+    #[test]
+    fn escape_stops_a_reply_being_written_and_the_cut_short_turn_is_told() {
+        let mut app = chat_app(Say::UntilStopped);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "tell me everything");
+        assert!(app.view().chat.pending.is_some());
+
+        key(&mut app, Key::Esc); // empty line, reply pending: stop it
+        wait_for_the_reply(&mut app);
+        assert_eq!(app.view().command_feedback.as_deref(), Some("cancelled"));
+        assert_eq!(
+            app.view().screen,
+            Screen::Chat,
+            "stopping does not leave the screen"
+        );
+    }
+
+    #[test]
+    fn a_failed_turn_is_told_in_the_ticker_and_clears_the_pending_message() {
+        let mut app = chat_app(Say::Fails);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "anyone there?");
+        wait_for_the_reply(&mut app);
+        assert_eq!(
+            app.view().command_feedback.as_deref(),
+            Some("cannot reach the model server")
+        );
+    }
+
+    #[test]
+    fn escape_on_an_idle_chat_leaves_it_and_a_new_conversation_forgets_the_old() {
+        let mut app = chat_app(Say::Answers);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "hi");
+        wait_for_the_reply(&mut app);
+        let first = app.view().chat.session.clone();
+        assert!(first.is_some());
+
+        type_and_enter(&mut app, "/chat new");
+        assert_eq!(app.view().chat.session, None);
+        assert_eq!(app.view().chat.transcript, None);
+        assert_eq!(
+            app.view().chat.model.as_deref(),
+            Some("m"),
+            "the model is kept"
+        );
+
+        key(&mut app, Key::Esc);
+        assert_eq!(app.view().screen, Screen::Overview);
+    }
+
+    #[test]
+    fn f1_shows_the_command_listing_as_a_block() {
+        let (registry, dispatcher) = registry_with_pane_actions();
+        let invocables: Vec<&Invocable> = registry.all().collect();
+        let catalog = command::build_catalog(&invocables);
+        let mut app = App::new(ViewModel::default(), registry, dispatcher, catalog);
+        app.tick(
+            &[TermEvent::Key(Key::F(1))],
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap();
+        let block = app.view().result_block.as_ref().expect("help block");
+        assert_eq!(block.title, "/help");
+        assert!(block.lines.iter().any(|l| l.starts_with("/pane")));
+    }
+
+    /// While an installation line is being typed the input block says the
+    /// line is addressed to no agent; deleting it back restores the label.
+    #[test]
+    fn the_addressee_follows_what_is_being_typed() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        cronus_core::installation::register(&mut registry, &mut dispatcher);
+        let mut app = App::new(
+            ViewModel {
+                focus: Focus::CommandBar,
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            Vec::new(),
+        );
+        let mut type_keys = |keys: &[Key]| {
+            let events: Vec<TermEvent> = keys.iter().copied().map(TermEvent::Key).collect();
+            app.tick(
+                &events,
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap();
+            app.view().addressee
+        };
+        let word = |s: &str| s.chars().map(Key::Char).collect::<Vec<_>>();
+
+        assert_eq!(
+            type_keys(&word("doc")),
+            Addressee::Command,
+            "not a verb yet"
+        );
+        assert_eq!(type_keys(&word("tor")), Addressee::Installation);
+        assert_eq!(type_keys(&[Key::Backspace]), Addressee::Command);
+        assert_eq!(type_keys(&[Key::Char('r'), Key::Esc]), Addressee::Command);
     }
 
     /// The command bar is reachable in one keystroke from any panel: `/`
@@ -1510,8 +2972,8 @@ mod tests {
                 board: Projection::Available(BoardView {
                     cards: vec![view::BoardCard {
                         id: "k1".to_string(),
-                        title: String::new(),
                         column: view::BoardColumn::Running,
+                        ..Default::default()
                     }],
                     ..Default::default()
                 }),
@@ -1522,12 +2984,19 @@ mod tests {
                     }],
                 }),
                 sessions: Projection::Available(sessions),
+                session_list: Projection::default(),
             },
             size: (80, 24),
             focus: Focus::Board,
             command_input: String::new(),
             command_feedback: None,
             result_block: None,
+            addressee: Addressee::Command,
+            screen: Screen::Overview,
+            board_cursor: BoardCursor::default(),
+            session_cursor: 0,
+            transcript: None,
+            chat: ChatView::default(),
         }
     }
 
@@ -1583,12 +3052,12 @@ mod tests {
         assert!(text.contains("phase: ready"));
         assert_ne!(plain, drawn, "the block changes the frame");
 
-        // The block's last border row is the row directly above the bar.
-        let bar_row = area.bottom() - 1;
-        let above = Rect::new(0, bar_row - 1, area.width, 1);
+        // The block's last border row is the row directly above the ticker.
+        let ticker = view::layout(area).ticker;
+        let above = Rect::new(0, ticker.y - 1, area.width, 1);
         assert!(
             buffer_text(&drawn, above).contains('└'),
-            "the block ends on the row above the command bar"
+            "the block ends on the row above the ticker"
         );
 
         with_block.result_block = None;
@@ -1621,6 +3090,77 @@ mod tests {
     // against a real registry/dispatcher, the same way every other dispatch
     // path in this crate is — never through a stand-in that only pretends
     // to be the real mechanism.
+
+    /// The board projection carries what the core's `board.list` now sends
+    /// with each card — its task, priority and assignee — and an absent
+    /// priority or assignee is blank, not a placeholder.
+    #[test]
+    fn dispatch_board_maps_the_task_priority_and_assignee_of_each_card() {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        let id = InvocableId::new("core:board.list").expect("well-formed test id");
+        registry
+            .register(
+                &Registrant::core(),
+                Invocable {
+                    id: id.clone(),
+                    name: "List",
+                    summary: "Test-only board.list fixture.",
+                    group: "board",
+                    locus: Locus::Semantic,
+                    binders: vec![Binder {
+                        name: "archived",
+                        kind: BinderKind::Flag,
+                        optional: true,
+                    }],
+                    stability: Stability::Shipped,
+                    journal_raw_input: true,
+                },
+            )
+            .expect("fixture registers cleanly");
+        dispatcher.attach(
+            id,
+            Arc::new(|args| {
+                if matches!(args.get("archived"), Some(ArgValue::Flag)) {
+                    return Outcome::Value(OutcomeValue::List(Vec::new()));
+                }
+                let text = |s: &str| OutcomeValue::Text(s.to_string());
+                Outcome::Value(OutcomeValue::List(vec![
+                    OutcomeValue::Record(vec![
+                        ("id".to_string(), text("card-1")),
+                        ("state".to_string(), text("running")),
+                        ("task_ref".to_string(), text("budget guard")),
+                        ("priority".to_string(), text("P1")),
+                        ("assignee".to_string(), text("rhea")),
+                    ]),
+                    OutcomeValue::Record(vec![
+                        ("id".to_string(), text("card-2")),
+                        ("state".to_string(), text("todo")),
+                        ("task_ref".to_string(), text("saved views")),
+                        ("priority".to_string(), OutcomeValue::Empty),
+                        ("assignee".to_string(), OutcomeValue::Empty),
+                    ]),
+                ]))
+            }),
+        );
+
+        let Projection::Available(board) = dispatch_board(&registry, &dispatcher) else {
+            panic!("the board is available");
+        };
+        let by_id = |id: &str| board.cards.iter().find(|c| c.id == id).expect("card");
+        let running = by_id("card-1");
+        assert_eq!(
+            (
+                running.title.as_str(),
+                running.priority.as_str(),
+                running.assignee.as_str()
+            ),
+            ("budget guard", "P1", "rhea")
+        );
+        let todo = by_id("card-2");
+        assert_eq!(todo.title, "saved views");
+        assert_eq!((todo.priority.as_str(), todo.assignee.as_str()), ("", ""));
+    }
 
     #[test]
     fn dispatch_board_reports_unavailable_when_core_board_list_is_not_registered() {

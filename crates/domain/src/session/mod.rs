@@ -1,11 +1,14 @@
 //! Agent session loop — TurnContext, IterationBudget, InterruptFence,
 //! text-loop detection, durable prompt admission, and session runner registry.
 
+pub mod chat;
 pub mod entry;
 pub mod hooks;
 pub mod interrupt;
+pub mod journal;
 pub mod migration;
 pub mod turn;
+pub mod writer;
 
 pub use entry::SessionEntry;
 pub use hooks::{HookOutcome, StopHook};

@@ -9,6 +9,7 @@
 //! - [`app`] — the event-driven render loop and the view-model it drives.
 
 pub mod app;
+pub mod chat_actions;
 pub mod command;
 #[cfg(test)]
 mod conformance_registration;
@@ -22,6 +23,7 @@ pub use app::{
     App, CapabilitySource, CoreSnapshot, RatatuiRenderer, Renderer, SnapshotSource, TickResult,
     ViewModel, render_view, run, run_with,
 };
+pub use chat_actions::ChatAction;
 pub use command::{
     CommandOutcome, CommandSpec, ParseError, SlashCommand, build_catalog, classify, parse,
 };
@@ -29,7 +31,8 @@ pub use dispatch::{bind_args, dispatch_command, render_outcome};
 pub use pane_actions::PaneAction;
 pub use terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
 pub use view::{
-    AgentActivity, BoardCard, BoardColumn, BoardView, Focus, OfficeView, PanelAreas, ResultBlock,
-    SessionsView, layout, render_board, render_office, render_result_block, render_sessions,
-    render_status,
+    AgentActivity, BoardCard, BoardColumn, BoardCursor, BoardView, ChatView, Focus, OfficeView,
+    PanelAreas, Projection, ResultBlock, Screen, SessionList, SessionRow, SessionsView,
+    TranscriptView, layout, render_board, render_chat_screen, render_kanban, render_office,
+    render_result_block, render_sessions, render_sessions_screen, render_status,
 };

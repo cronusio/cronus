@@ -13,9 +13,8 @@
 //! a verb whose subject is absent answers [`Outcome::Unavailable`] naming
 //! what is missing — never an empty value, because "there is nothing" and
 //! "this could not be read" are different facts — and the workspace registry
-//! is opened the way the command line has always opened it, which creates an
-//! empty registry file when none exists yet; no other store is created or
-//! written by any function in this module.
+//! is opened for reading only, so inspecting it neither creates the file when
+//! it is absent nor opens a writer beside a composition that owns it.
 
 use std::path::{Path, PathBuf};
 
@@ -89,6 +88,13 @@ pub fn open_workspace_manager() -> Result<WorkspaceManager, String> {
         let _ = std::fs::create_dir_all(parent);
     }
     WorkspaceManager::open(&path).map_err(|e| e.to_string())
+}
+
+/// Open the workspace registry for reading only. `None` when there is no
+/// registry yet — which is the answer, not a reason to create one: an
+/// inspection never brings a file into being and never opens a writer.
+pub fn open_workspace_registry_for_reading() -> Result<Option<WorkspaceManager>, String> {
+    WorkspaceManager::open_read_only(workspaces_db_path()).map_err(|e| e.to_string())
 }
 
 /// The single-file marker recording which archetype the office is staffed
@@ -248,8 +254,9 @@ pub fn backup_list(backups_dir: &Path) -> Outcome {
 
 /// `workspace list`: every registered workspace, marking the active one.
 pub fn workspace_list() -> Outcome {
-    let manager = match open_workspace_manager() {
-        Ok(manager) => manager,
+    let manager = match open_workspace_registry_for_reading() {
+        Ok(Some(manager)) => manager,
+        Ok(None) => return value(OutcomeValue::List(Vec::new())),
         Err(reason) => return unavailable(reason),
     };
     match manager.list() {
@@ -288,8 +295,15 @@ pub fn workspace_check(id: &str) -> Outcome {
             });
         }
     };
-    let manager = match open_workspace_manager() {
-        Ok(manager) => manager,
+    let manager = match open_workspace_registry_for_reading() {
+        Ok(Some(manager)) => manager,
+        Ok(None) => {
+            return value(record([
+                ("exists", OutcomeValue::Boolean(false)),
+                ("active", OutcomeValue::Boolean(false)),
+                ("path_ok", OutcomeValue::Boolean(false)),
+            ]));
+        }
         Err(reason) => return unavailable(reason),
     };
     match manager.check(&workspace_id) {

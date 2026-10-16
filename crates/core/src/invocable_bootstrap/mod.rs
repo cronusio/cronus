@@ -32,6 +32,7 @@ mod loop_group;
 mod memory;
 mod role;
 mod schedule;
+mod session;
 mod status;
 mod workflow;
 
@@ -63,6 +64,7 @@ pub fn bootstrap(engine: Engine) -> (InvocableRegistry, Dispatcher) {
     learn::register(&mut registry, &mut dispatcher);
     board::register(&mut registry, &mut dispatcher);
     schedule::register(&mut registry, &mut dispatcher);
+    session::register(&mut registry, &mut dispatcher);
     budget::register(&mut registry, &mut dispatcher);
     loop_group::register(&mut registry, &mut dispatcher);
     workflow::register(&mut registry, &mut dispatcher);

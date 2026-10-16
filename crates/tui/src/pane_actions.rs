@@ -29,6 +29,8 @@ use std::sync::Arc;
 use cronus_contract::{Invocable, InvocableId, Locus, Outcome, OutcomeValue, Stability};
 use cronus_core::invocable::{Dispatcher, InvocableRegistry, Registrant};
 
+use crate::view::Focus;
+
 /// One action that exists only on this surface. See the module doc for why
 /// this enum, rather than a table in `app.rs`, is the source of truth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,17 +43,32 @@ pub enum PaneAction {
     FocusCommandBar,
     /// Exit the terminal session.
     Quit,
+    /// Move keyboard focus to the Kanban board panel.
+    FocusBoard,
+    /// Move keyboard focus to the Office panel.
+    FocusOffice,
+    /// Move keyboard focus to the Sessions panel.
+    FocusSessions,
+    /// Show the command listing.
+    Help,
+    /// Open the Chat screen with the command bar ready for a message.
+    FocusChat,
 }
 
 impl PaneAction {
     /// Every action this surface declares — iterated by [`register`], and
     /// available for a test to enumerate what "reachable through the
     /// registry" is supposed to mean.
-    pub const ALL: [PaneAction; 4] = [
+    pub const ALL: [PaneAction; 9] = [
         PaneAction::FocusNext,
         PaneAction::FocusPrev,
         PaneAction::FocusCommandBar,
         PaneAction::Quit,
+        PaneAction::FocusBoard,
+        PaneAction::FocusOffice,
+        PaneAction::FocusSessions,
+        PaneAction::Help,
+        PaneAction::FocusChat,
     ];
 
     pub(crate) fn verb(self) -> &'static str {
@@ -60,6 +77,11 @@ impl PaneAction {
             PaneAction::FocusPrev => "focus-prev",
             PaneAction::FocusCommandBar => "focus-command",
             PaneAction::Quit => "quit",
+            PaneAction::FocusBoard => "focus-board",
+            PaneAction::FocusOffice => "focus-office",
+            PaneAction::FocusSessions => "focus-sessions",
+            PaneAction::Help => "help",
+            PaneAction::FocusChat => "focus-chat",
         }
     }
 
@@ -69,6 +91,11 @@ impl PaneAction {
             PaneAction::FocusPrev => "Focus previous",
             PaneAction::FocusCommandBar => "Focus command bar",
             PaneAction::Quit => "Quit",
+            PaneAction::FocusBoard => "Focus board",
+            PaneAction::FocusOffice => "Focus office",
+            PaneAction::FocusSessions => "Focus sessions",
+            PaneAction::Help => "Help",
+            PaneAction::FocusChat => "Focus chat",
         }
     }
 
@@ -78,6 +105,11 @@ impl PaneAction {
             PaneAction::FocusPrev => "Move keyboard focus to the previous panel.",
             PaneAction::FocusCommandBar => "Move keyboard focus straight to the command bar.",
             PaneAction::Quit => "Exit the terminal session.",
+            PaneAction::FocusBoard => "Move keyboard focus to the Kanban board panel.",
+            PaneAction::FocusOffice => "Move keyboard focus to the Office panel.",
+            PaneAction::FocusSessions => "Move keyboard focus to the Sessions panel.",
+            PaneAction::Help => "Show the command listing.",
+            PaneAction::FocusChat => "Open the Chat screen.",
         }
     }
 
@@ -99,6 +131,35 @@ impl PaneAction {
         }
         Self::ALL.into_iter().find(|action| action.verb() == verb)
     }
+}
+
+/// What the function-key bar offers on key `n` (1–10): the label it shows
+/// and the action the key runs. A key with no entry is drawn as a bare number
+/// and does nothing — a slot is never labelled with something this surface
+/// cannot do.
+pub fn fkey(n: u8) -> Option<(&'static str, PaneAction)> {
+    match n {
+        1 => Some(("Help", PaneAction::Help)),
+        3 => Some(("Chat", PaneAction::FocusChat)),
+        4 => Some(("Sess", PaneAction::FocusSessions)),
+        6 => Some(("Office", PaneAction::FocusOffice)),
+        7 => Some(("Board", PaneAction::FocusBoard)),
+        10 => Some(("Quit", PaneAction::Quit)),
+        _ => None,
+    }
+}
+
+/// The function key whose action leads to `focus`, if the bar has one — the
+/// slot drawn as active while that panel holds focus.
+pub fn fkey_for_focus(focus: Focus) -> Option<u8> {
+    (1..=10u8).find(|n| {
+        matches!(
+            (fkey(*n), focus),
+            (Some((_, PaneAction::FocusBoard)), Focus::Board)
+                | (Some((_, PaneAction::FocusOffice)), Focus::Office)
+                | (Some((_, PaneAction::FocusSessions)), Focus::Sessions)
+        )
+    })
 }
 
 /// Register every [`PaneAction`] as a `ClientLocal` invocable, group
@@ -202,5 +263,34 @@ mod tests {
     fn from_slash_rejects_a_different_group_or_an_unknown_verb() {
         assert_eq!(PaneAction::from_slash("board", "focus-next"), None);
         assert_eq!(PaneAction::from_slash("pane", "bogus"), None);
+    }
+
+    #[test]
+    fn the_function_key_bar_only_names_declared_actions_and_each_focus_key_leads_back() {
+        for n in 1..=10u8 {
+            if let Some((label, action)) = fkey(n) {
+                assert!(!label.is_empty());
+                assert!(
+                    PaneAction::ALL.contains(&action),
+                    "F{n} runs an undeclared action"
+                );
+            }
+        }
+        for focus in [Focus::Board, Focus::Office, Focus::Sessions] {
+            let n = fkey_for_focus(focus).expect("a panel with a key");
+            let (_, action) = fkey(n).expect("the key is bound");
+            let reached = match action {
+                PaneAction::FocusBoard => Focus::Board,
+                PaneAction::FocusOffice => Focus::Office,
+                PaneAction::FocusSessions => Focus::Sessions,
+                other => panic!("F{n} should focus a panel, runs {other:?}"),
+            };
+            assert_eq!(reached, focus);
+        }
+        assert_eq!(
+            fkey_for_focus(Focus::Status),
+            None,
+            "the status panel has no key"
+        );
     }
 }

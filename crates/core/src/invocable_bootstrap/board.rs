@@ -69,12 +69,26 @@ fn register_list(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) 
                 cards
                     .into_iter()
                     .map(|c| {
+                        // What a card is, who has it and how urgent it is
+                        // ride along with its identity and state, so a
+                        // surface listing the board need not call `show`
+                        // once per card to put a name on each one.
+                        let optional = |value: Option<String>| match value {
+                            Some(text) => OutcomeValue::Text(text),
+                            None => OutcomeValue::Empty,
+                        };
                         OutcomeValue::Record(vec![
                             ("id".to_string(), OutcomeValue::Text(c.id)),
                             (
                                 "state".to_string(),
                                 OutcomeValue::Text(c.state.as_str().to_string()),
                             ),
+                            ("task_ref".to_string(), OutcomeValue::Text(c.task_ref)),
+                            (
+                                "priority".to_string(),
+                                optional(c.priority.map(|p| p.as_str().to_string())),
+                            ),
+                            ("assignee".to_string(), optional(c.assignee)),
                         ])
                     })
                     .collect(),

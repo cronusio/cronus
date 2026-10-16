@@ -1,6 +1,6 @@
 # TUI Frontend
 
-**Version:** 1.6.0
+**Version:** 1.11.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -181,6 +181,66 @@ Every other installation verb is offered. Asking for an excluded verb is answere
 
 **When this frontend cannot start.** The failure report names the command-line verb that answers the problem — `cronus doctor` above all (LH-7). This frontend is a second door to these verbs, never the only one.
 
+### 4.8 Screen chrome
+
+`[ADDED v1.7.0]` Every frame is the same stack of rows, top to bottom: a **tab bar**, the **view**, a **ticker**, a three-row **input block**, a **function-key bar** and a **status line**. The view is the only part that changes between screens; the rest is the frame a person learns once. This is the structure of the terminal design's bottom area, carried to whole terminal rows — the design's pixel gaps between the layers have no counterpart in a character grid, and the ticker row is the one place that separates the view from the input.
+
+| Layer | Shows | Source |
+| --- | --- | --- |
+| Tab bar | The product mark and the four panels, the focused one in reverse video | View state |
+| Ticker | The last command's one line of feedback | The dispatch outcome |
+| Input block | A top rule naming **who the line is addressed to**, the prompt (`❯ /…`, the slash implicit), a bottom rule with the keys that matter | View state; the addressee is recomputed on every edit by resolving the line against the registry |
+| Function-key bar | Ten equal slots; a slot is labelled only if its key runs an action this frontend has | The pane-action table |
+| Status line | What the core reports and its version, or why it is unavailable | The core status projection |
+
+**The addressee label.** Typing a line that resolves to an installation verb changes the label from *Command* to *Installation* while it is typed (§4.7), and deleting the line back restores it. The label is derived from resolution, not from the first word, so it is true for the spellings §4.7 accepts.
+
+**Function keys are pane actions.** A function key is resolved to a registered `ClientLocal` action and dispatched like any other key (§4.5): F1 shows the command listing, F4/F6/F7 focus the Sessions, Office and Board panels, F10 quits. A slot with no action is drawn as a bare dim number and does nothing — the bar never labels a key this frontend cannot honour, for the reason the catalog never lists a verb it cannot run. The number of the slot whose panel holds focus is drawn bright. The remaining slots of the design (Menu, Chat, Inbox, +Task, Pause) are not drawn until the screens and actions behind them exist.
+
+**Known residuals.** The status line carries what the core's status projection carries and nothing else: the design's model, spend and gate indicators wait for projections the core does not expose yet, and a clock waits for a local-time source. The view is still the four-panel grid; the design's screens (Chat, Inbox, Floor, Menu …) are built one at a time, each behind the projection it needs.
+
+### 4.9 The Kanban screen
+
+`[ADDED v1.8.0]` The first full-width screen the frame (§4.8) carries. F7 replaces the four-panel overview in the body with the board: one column per board state, each headed by its name and card count, its cards listed beneath, the whole inside a frame whose bottom edge names the keys. The overview's panels are the other value the body can take; the tab bar, ticker, input block, function-key bar and status line stay.
+
+| Key | On the Kanban screen |
+| --- | --- |
+| ← → | Move the selection to the neighbouring column |
+| ↑ ↓ | Move it within the column; it stops at the first and last card |
+| ⏎ | Show the selected card, by running `/board show <id>` through the ordinary command path — so the answer, the masking and the journaling are exactly those of the typed command |
+| Esc | Leave for the overview; only from the overview does Esc quit |
+| Tab, F4, F6 | Move focus to another panel, which also leaves for the overview |
+| `/` | Focus the command bar and **keep** the screen — a command is typed about what is on screen — after which the arrow keys belong to the line |
+
+**What a card shows is what the board projection carries.** Today that is its id, its task (the title line), its priority and its assignee — the core's `board.list` sends all three with each card, a priority or assignee a card does not have arriving as *absent* and drawn as nothing, never as a placeholder. The design's session progress, gate marks and detail pane are not drawn, because the projection does not carry them (§4.8's residual). Cards in a state the board has no column for are named in a note rather than dropped, as in the overview. A projection that could not be obtained says so inside the frame; an empty board is a board of empty columns — the two are never drawn alike. The column set is the one the core models (six live states and the archive); the design's *Review* column waits for the state to exist.
+
+The selection is clamped against the projection every time it is used, so a card that leaves the board never leaves the selection pointing at nothing, and a column taller than the screen scrolls to keep the selected card visible and counts the cards below it.
+
+### 4.10 The Sessions screen
+
+`[ADDED v1.9.0]` The second full-width screen. F4 puts the workspace's sessions in the body: the list on the left, the selected session's conversation on the right, newest message at the bottom. Both are read from the session journals through the core's `session list` and `session show` (`l2-agent-session` §4.15), never from files this frontend opens itself.
+
+| Key | On the Sessions screen |
+| --- | --- |
+| ↑ ↓ | Select the previous or next session; the conversation on the right follows |
+| Esc | Leave for the overview |
+| Tab, F6, F7 | Move focus to another panel, which also leaves for the overview |
+| `/` | Focus the command bar and keep the screen |
+
+**Reading is on demand and bounded.** The list is re-read about once a second, not on every tick, because summarizing a journal parses it. A conversation is read when its session is selected and read again only when that session's journal has grown (the key is the id and the entry count) — not on every frame and not on every key. The overview's Sessions panel shows the same list as one line per session, replacing the activity log it showed while nothing could supply one.
+
+**What each state looks like.** A workspace with no sessions says so in the list pane ("No sessions yet."); a store that cannot be read says *unavailable* with the reason — the two are never drawn alike. A session whose journal is damaged, headerless or from a newer format is listed with its problem on a third row, and when its conversation cannot be read the right pane says why instead of staying blank. What the design shows beyond this — live versus history grouping, the agent and the card a session works on, turn progress, cost, following a running session — needs the session runner to record it, and no runner writes journals yet; a real workspace therefore lists no sessions today.
+
+### 4.11 The Chat screen
+
+`[ADDED v1.10.0]` The third full-width screen, and the first that talks to a model. F3 puts the conversation in the body and the command bar ready for a message; the conversation fills the frame, newest at the bottom, read back from the session's journal (§4.10) — never kept as this frontend's own copy.
+
+**One line, two meanings.** Elsewhere the bar's slash is implicit; here the line is typed whole. A line that starts with `/` is a command, resolved as on every screen. Any other line is a **message to the model**, and the input block's addressee label says *Model* while one is being typed. The model has no default: `/chat model <name>` chooses it (and `CRONUS_CHAT_MODEL`, read at start, pre-chooses one); without one, sending says what to do instead of guessing. `/chat new` leaves the conversation — the next message starts a new session — and keeps the model. Both are registered `ClientLocal` actions, like the pane actions, so they are discoverable and bound by the registry.
+
+**A reply is written off the render thread.** Sending dispatches the shared `session say` verb on a background thread and returns at once: the message shows as sent, a marker shows the reply being written, and the screen, the ticker and every other key stay alive. The verb answers with a stream, and the thread forwards each piece to the loop as it arrives: the reply appears token by token under the assistant header, with a cursor where the rest will land, and the marker gives way to the text as soon as the first piece comes. When the stream ends, the conversation is re-read from the journal, which is what the screen then shows — the journal, not the pieces, is the record. A second message while one is pending is held back with a note, never queued silently. `Esc` with nothing typed stops a pending reply (`session stop`, §4.15 of the session specification): what had arrived is kept, the turn is recorded as cut short, and the ticker says so. With nothing typed and nothing pending, `Esc` leaves the screen. Any failure — an unreachable server, a failed stream — is told in the ticker with where the turn was recorded; the journal holds it too.
+
+**Not built, and stated so.** There are no tools, no attachments, no regeneration and no rewind; the model setting is per run, not persisted.
+
 ## 5. Drawbacks & Alternatives
 
 - **Terminal rendering limits:** complex office visualizations are richer in the graphical app (INV-6 allows the subset).
@@ -203,6 +263,12 @@ Every other installation verb is offered. Asking for an excluded verb is answere
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.11.0 | 2026-10-16 | The Chat screen shows a reply as it is written: the background thread subscribes to the stream the shared `session say` answers with and forwards each piece, the screen renders what has arrived with a cursor in place of the waiting marker, and the finished conversation is re-read from the journal. The "not token by token" limitation is removed. |
+| 1.10.0 | 2026-10-16 | New §4.11 The Chat screen: F3 shows the conversation read back from the session journal, with the command bar taking whole lines — a `/` line is a command, any other a message to the model (addressee *Model*); `/chat model <name>` and `/chat new` as registered client-local actions; a reply is written on a background thread through the shared `session say`, shown as pending, collected into a journal re-read, stoppable with Esc (`session stop`). The function-key bar gains F3 Chat. Not built: token-by-token streaming, tools, attachments, a persisted model setting. |
+| 1.9.0 | 2026-10-16 | New §4.10 The Sessions screen: F4 shows the sessions list and the selected session's conversation, read through `session list` / `session show`; arrow keys select; the list is re-read about once a second and a conversation only when its journal grows; empty, unavailable and damaged states drawn distinctly. The overview's Sessions panel shows the same list. The design's live/history grouping, agent and card, progress and cost wait for a runner that records them. |
+| 1.8.1 | 2026-10-16 | Patch. `board.list` now carries each card's task, priority and assignee (absent ones as *absent*, not invented), and the Kanban screen draws them: priority and title on one row, the id with the assignee against the right edge on the next. |
+| 1.8.0 | 2026-10-16 | New §4.9 The Kanban screen: F7 puts the board in the body as seven columns with counts, arrow-key selection, ⏎ showing the card through `/board show`, Esc returning to the overview (and only then quitting), focus changes leaving it, the command bar keeping it. A card shows only what the projection carries (id, title when present); priority, assignee, progress, gates, the detail pane and the *Review* column wait for the core to project them. |
+| 1.7.0 | 2026-10-16 | New §4.8 Screen chrome: the frame every screen shares — tab bar, ticker, three-row input block with an addressee label (*Installation* while an installation line is typed), function-key bar, status line. Function keys are registered pane actions (F1 help, F4/F6/F7 panel focus, F10 quit); unbound slots are bare numbers and do nothing. The command bar moves from the last row to the input block; feedback moves to the ticker. Residuals stated: no model/spend/gate/clock indicators until the core projects them; the screens beyond the four-panel grid are built one at a time. |
 | 1.6.0 | 2026-10-08 | The installation projection is built, to the extent §4.7 now states. `Inspect` verbs run through the shared dispatcher and show their answer in a result block (new, §4.7); `Install` and `Recompose` verbs are refused before dispatch with their resolved class and the command-line invocation, until consent naming the exact invocation and detection of in-flight work exist here. Declared exclusions grow from `tui` to `tui`, `completion` (the script needs the command line's grammar; excluded rather than offered as text, which contradicted the subset rule's reason) and `version` (a flag on the command line, not a verb); asking for one is answered with its reason. The discovery listing sets installation verbs under their own heading. Known residual stated: dispatch runs inside the tick, not off the render thread. The usage-simulation scenario ships, scoped to what is carried out. |
 | 1.5.0 | 2026-10-08 | This frontend projects the `Installation` locus: §2 states that the command line stays the guaranteed path; INV-3 and §4.3 restate parity as two shared sets (`Semantic`, and `Installation` as a subset of the command line's), leaving `ClientLocal` as the one declared difference; INV-4 confines installation verbs on a spoke to the local machine. New §4.7: installation verbs under the command line's names and flags, listed under their own heading; a line resolving to one is addressed to no agent, enters no agent context and is shown as an installation block; behavior by live-effect class (`Inspect` immediate, `Install` gated then catalog refresh with partial success shown as such, `Recompose` consent-bound, refused while any work it would alter runs — turn, scheduled job or automation run — with the office pause offered, applied in place or by relaunch onto the same floor and view); the class acted on is that of the resolved invocation; a privilege this process lacks yields an outcome naming the command-line invocation instead of an attempt to elevate; consent collected by this frontend rather than through a terminal-only prompt branch; one declared exclusion (`tui`); `completion` offered as text to copy or save; no name collisions with installation verbs (`/workspace switch` keeps its installation meaning); the failure report names the command-line verb when this frontend cannot start. Drawbacks: the second rendering and the relaunch cost, with the usage-simulation scenario owed by RULES C30. |
 | 1.4.0 | 2026-10-03 | Adds §4.6 Seams a driver relies on: the four properties of this crate that let a development driver replace the terminal backend and renderer and run the real loop turn by turn (`l2-surface-driver` §4.6) — injectable backend and renderer (present), a pure render function (present), **one composition function** shared by the product entry and any other host (today the wiring is inline in the entry), and **one native-event fold** shared by the production and any driven backend (today it lives inside the production backend). The last two are refactors with no user-visible change and no behavior change; the existing tests stay green unchanged. The driven host is a dev-only example target, never part of the shipped binary. Post-Update Review PASS. |

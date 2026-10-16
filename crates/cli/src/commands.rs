@@ -534,7 +534,7 @@ pub(crate) mod backup_cmd {
 pub(crate) mod workspace {
     use std::path::{Path, PathBuf};
 
-    use cronus_core::installation::inspect::open_workspace_manager as open_manager;
+    use cronus_core::installation::inspect::{self, open_workspace_manager as open_manager};
     use cronus_core::workspace::{WorkspaceId, WorkspaceTemplate};
 
     use crate::output::{Context, json_escape};
@@ -599,8 +599,18 @@ pub(crate) mod workspace {
     }
 
     pub(crate) fn list(ctx: &Context) -> i32 {
-        let mgr = match open_manager() {
-            Ok(m) => m,
+        // Listing reads: with no registry yet there is nothing to list, and
+        // nothing is created to say so.
+        let mgr = match inspect::open_workspace_registry_for_reading() {
+            Ok(Some(m)) => m,
+            Ok(None) => {
+                if ctx.is_json() {
+                    println!("[]");
+                } else {
+                    println!("No results.");
+                }
+                return 0;
+            }
             Err(e) => {
                 eprintln!("error: {e}");
                 return 1;
@@ -719,6 +729,17 @@ pub(crate) mod workspace {
         }
     }
 
+    fn print_status(exists: bool, active: bool, path_exists: bool, ctx: &Context) -> i32 {
+        if ctx.is_json() {
+            println!("{{\"exists\":{exists},\"active\":{active},\"path_exists\":{path_exists}}}");
+        } else {
+            println!("exists:     {exists}");
+            println!("active:     {active}");
+            println!("path_ok:    {path_exists}");
+        }
+        0
+    }
+
     pub(crate) fn check(id: String, ctx: &Context) -> i32 {
         let ws_id = match parse_id(&id) {
             Ok(i) => i,
@@ -727,27 +748,20 @@ pub(crate) mod workspace {
                 return 1;
             }
         };
-        let mgr = match open_manager() {
-            Ok(m) => m,
+        let mgr = match inspect::open_workspace_registry_for_reading() {
+            Ok(Some(m)) => m,
+            Ok(None) => {
+                // No registry: no workspace of that id exists, and nothing is
+                // created to say so.
+                return print_status(false, false, false, ctx);
+            }
             Err(e) => {
                 eprintln!("error: {e}");
                 return 1;
             }
         };
         match mgr.check(&ws_id) {
-            Ok(status) => {
-                if ctx.is_json() {
-                    println!(
-                        "{{\"exists\":{},\"active\":{},\"path_exists\":{}}}",
-                        status.exists, status.is_active, status.path_exists
-                    );
-                } else {
-                    println!("exists:     {}", status.exists);
-                    println!("active:     {}", status.is_active);
-                    println!("path_ok:    {}", status.path_exists);
-                }
-                0
-            }
+            Ok(status) => print_status(status.exists, status.is_active, status.path_exists, ctx),
             Err(e) => {
                 eprintln!("error: {e}");
                 1

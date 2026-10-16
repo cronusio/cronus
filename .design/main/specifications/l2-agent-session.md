@@ -1,6 +1,6 @@
 # Agent Session Loop
 
-**Version:** 1.0.7
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-routing.md
@@ -883,6 +883,43 @@ v1 → v2: add id/parentId tree structure to all entries
 v2 → v3: rename role "hookMessage" → "custom" in message entries
 ```
 
+#### Reading journals: the listing and the transcript
+
+`[ADDED v1.1.0]` Two read-only views of the journals under `<ws>/sessions/` are specified, so any surface can show sessions without owning the file format. Each journal is one file, `<id>.jsonl`; its **header** is the first line (`type: "session"`, `version`, optional `createdAt` in seconds), every later line one entry.
+
+| View | Carries |
+| --- | --- |
+| Listing | per session: id (the file stem), name (the last `session_info`), creation time (header), last-written time (file), entry count (lines after the header), turns (assistant messages), and a **problem** when there is one |
+| Transcript | the listing's fields plus the conversational messages in order — role and text, content blocks joined — capped at the most recent two hundred, the number left out stated |
+
+Three kinds of nothing stay distinct. A workspace with **no `sessions/` directory has no sessions** — an empty listing. A directory that **cannot be read** is a failure, reported as unavailable with the reason, never an empty listing. A journal that is **damaged** (lines that are not entries), has **no header**, or was written by a **newer format** than the reader knows is still listed, with the problem named; a newer journal's entries are not interpreted and its transcript is refused. Session ids are file stems (letters, digits, `-`, `_`, `.`; never empty, never leading with a dot) so an id can never name a path outside the directory. Older journals are read as they are; migrating them forward remains the runner's load step.
+
+#### Writing journals
+
+`[ADDED v1.2.0]` The write side is as small as the read side. A journal **comes into being with its first reply**: starting a session touches nothing on disk, entries wait in memory, and when the first assistant entry arrives the file is written whole — header (`type: "session"`, the current format `version`, `createdAt`) first, then the waiting entries, then that reply — to a file that must not exist. A session that was started and never answered leaves no empty file in the list, and two writers racing to start one session cannot both win: the second finds the file already there and is refused, because starting a session that exists would silently replace a conversation. Every later call **appends exactly one line**: an entry with a stable `id` (eight hex digits, unique within the file), a `parentId` naming the entry before it (null for the first), a `type`, and its body — a `message` carries `message: {role, content}`, a `session_info` carries `name`. Each line is written whole and made durable before the call returns, and nothing is ever rewritten, so a crash can lose at most the line in flight; that line is then a damaged one the reader names, not a corrupted neighbour.
+
+An existing journal is **reopened** to continue it, picking up the entry count and the last entry as the next entry's parent. Reopening refuses a journal with no readable header or one written by a newer format — appending to what this build cannot interpret would mix two formats in one file — and, when the last line was torn by a crash, starts the next entry on a fresh line instead of gluing it on. The writer records what it is handed; **when** a message is recorded, and which agent, card and progress the header should name, belong to the session runner.
+
+**A turn always ends in an assistant entry.** A reply that failed, or was cut short, is recorded as the assistant entry it would have been: its `message` carries a `stopReason` — `stop` (completed), `error` (failed; an `error` field says how) or `aborted` (cut short) — and whatever text had been produced. So the log says what happened instead of ending mid-air. A turn the process never got to answer (it died between the question and the reply) is **closed, never truncated**: reopening the journal appends the missing `aborted` reply, with the error *interrupted before a reply was recorded*, and removes nothing, because an interrupted turn may hold real work. The reader exposes each message's stop reason and error.
+
+#### The chat turn
+
+`[ADDED v1.3.0]` The smallest runner: one turn of conversation with a model, recorded in the session. A turn takes the user's message, asks a model for a reply and records both; it has **no tools, no background work and no memory beyond the journal**. The model sees the conversation so far because it is read back from the journal, as one prompt — each message labelled by its speaker, then the new message and the cue for the reply; replies that were cut short and produced nothing are left out because they carry nothing.
+
+| What happens | What is recorded |
+| --- | --- |
+| The stream completes | the user entry, then the assistant entry, `stopReason: stop` |
+| The stream fails or times out | the user entry, then an assistant entry with whatever text arrived first, `stopReason: error` and the failure named |
+| The caller cancels | the same, `stopReason: aborted` |
+| The stream ends without completing | an `error` reply saying so — a stream that just stops is never taken for an answer |
+| The model asks for a tool | an `error` reply saying tools are not available in this turn — the request is neither run nor silently dropped |
+
+A session that exists is continued (an unanswered earlier turn is closed first); one that does not is started. The model is reached through the inference port only; which backend, which model and whether to call one at all are the caller's decisions.
+
+**The verb.** `session say <text> --model <name> [--session <id>]` runs one turn against a local model server — loopback only, at the Ollama convention's address unless `CRONUS_CHAT_ENDPOINT` names another loopback address. The model has no default: naming it is required, since the product holds no model setting yet. Without `--session` a new session is started. `[ADDED v1.5.0]` **The reply streams.** The verb answers at once with a stream: the turn runs on a thread of its own and each token is published as it arrives, so a surface that can show chunks shows the reply being written, and one that cannot collects the stream and takes the end. The end is the settled record (the session, the reply, the token counts) — or, when the turn could not complete, `Unavailable` naming the session the failed turn was recorded in. The turn is registered for `session stop` before the verb returns, so a stop sent immediately after the call is never missed. The dispatch journal does **not** keep the text argument — what a person says to a model may itself be a secret; the session's own journal keeps the conversation. An unreachable server is reported as such with the session the failed turn was recorded in, and the failed turn *is* recorded.
+
+`[ADDED v1.4.0]` **Stopping a turn.** `session stop <id>` cuts short the turn running in that session: the call registers the turn's cancellation when it starts and removes it when the turn ends however it ends, and `stop` sets it. The turn then ends as an `aborted` reply carrying what had arrived. Only a turn running **in the same process** can be stopped — the registration is in memory, so another process's `session stop` answers that no turn is running; stopping across processes would need the turn to be addressable from outside, which nothing asks for yet.
+
 ## 5. Drawbacks & Alternatives
 
 - **Independent subagent budgets:** total iterations may exceed the parent's cap. Justified — a subagent solving a delegation should not penalize the parent's own remaining turns; the total stays bounded by spawn depth and per-spawn parent iterations, and spend by the budget engine's per-call hard stop.
@@ -903,5 +940,10 @@ v2 → v3: rename role "hookMessage" → "custom" in message entries
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.5.0 | 2026-10-16 | Core Team | `session say` streams: it answers with a stream at once, publishes each token as it arrives, and ends with the settled record; the turn is registered for `session stop` before the verb returns. The journal is unchanged — the reply is still recorded whole, with its stop reason. |
+| 1.4.0 | 2026-10-16 | Core Team | `session stop <id>`: cuts short the turn running in a session in the same process; the turn is recorded as an `aborted` reply with what had arrived. In-memory registration, removed when the turn ends however it ends. |
+| 1.3.0 | 2026-10-16 | Core Team | The write side learns what the surveyed agents taught: a journal comes into being with its first reply (no empty sessions; a racing second writer is refused), a turn always ends in an assistant entry carrying a stop reason (a failed or aborted reply is recorded, not lost), and an unanswered turn is closed when the journal is reopened, never truncated. New subsection *The chat turn*: the smallest runner — one turn against a local model through the inference port, no tools, history read back from the journal, every outcome recorded — and the `session say` verb (model named explicitly, loopback only, text kept out of the dispatch journal). |
+| 1.2.0 | 2026-10-16 | Core Team | New §4.15 subsection *Writing journals*: create (header, refuses an existing session), append one durable line per entry with `id`/`parentId`, reopen (counts, chains, refuses headerless or newer journals, repairs a torn tail). Realized in the domain as the write counterpart of the reader; nothing calls it yet — the runner that decides when to record is the next piece. |
+| 1.1.0 | 2026-10-16 | Core Team | New §4.15 subsection *Reading journals*: the listing and transcript views over `<ws>/sessions/<id>.jsonl` — fields, the cap, and the three distinct nothings (no directory = no sessions; unreadable directory = unavailable; damaged, headerless or newer journal = listed with the problem named). Id grammar fixed so an id cannot name a path. Realized read-only in the core as `session list` / `session show`; no runner writes journals yet, so a real workspace lists none. |
 | 1.0.7 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited ORC-4 as the budget and ORC-6 as isolation (now ORC-7 and ORC-5), mapped the memory-review gate to ORC-8 and user-message sanitization to SEC-1 (secret isolation) — replaced by ORC-6 (the goal loop now takes its verdict from the independent judge, never the executor's own claim), RTG-2 and RTG-7. Budget: `refund()` let a run of refundable calls make a turn unbounded — refunds return the iteration, never the tokens (token ceiling as shipped); the follow-up outer loop had no bound — capped like goal re-entry and drawing on the same budget; cost moved from a fire-and-forget post-turn hook to a per-call event the budget engine's hard stop can see, failing closed. The interrupt fence was reset at every turn start, swallowing an interrupt raised between autonomous iterations. Context-engine defaults (75%, first/last N messages) contradicted l2-context-management — the interface now reads its trigger and token tail. Sanitization no longer strips non-ASCII text. A withdrawn tool stops being callable immediately; missing-tool self-healing stays within granted scope; oversized results are archived before summarizing/truncating and keep untrusted provenance. Daemon: loopback by default, TLS for a network bind, bearer token unreadable from the sandbox (it authorizes approval-mode changes, SEC-10); permission answers bound to the requesting connection (sequential ids were forgeable by any client) and anything but an explicit approval is a denial; `session/load`/`resume` scoped to the token's user and office; ring-buffer overrun answered with EVENT_GAP; env summary returns names only. Durable admission stranded `processing` rows at startup — they are re-queued after abandoning in-flight tool calls, with a failure cap. MCP contract: a malfunction refusal carries a retry-once note (ATE-2), profile changes notify the client, truncated output keeps an archived handle. Hook-supplied model switches pass router eligibility; injected messages carry their source. A dangling §4.15 reference replaced by the defined `terminate` flag. |
 | 1.0.6 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

@@ -171,6 +171,30 @@ impl WorkspaceManager {
         Ok(WorkspaceManager { conn })
     }
 
+    /// Open an existing registry for reading only: the file is opened with
+    /// read-only access, nothing is created, migrated or stamped, and a file
+    /// that does not exist is `None` rather than a new empty registry. A file
+    /// written by a newer build is refused, as it is for writing. Anything
+    /// that would change the registry fails at the database layer.
+    pub fn open_read_only<P: AsRef<Path>>(db_path: P) -> Result<Option<Self>, WorkspaceError> {
+        if !db_path.as_ref().exists() {
+            return Ok(None);
+        }
+        let conn =
+            Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let found = crate::versioning::schema_version(&conn)?;
+        if found > SCHEMA_VERSION {
+            return Err(WorkspaceError::Schema(
+                crate::versioning::SchemaError::NewerThanSupported {
+                    store: "workspace registry",
+                    found,
+                    supported: SCHEMA_VERSION,
+                },
+            ));
+        }
+        Ok(Some(WorkspaceManager { conn }))
+    }
+
     pub fn open_in_memory() -> Result<Self, WorkspaceError> {
         let conn = Connection::open_in_memory()?;
         setup(&conn)?;
@@ -344,6 +368,68 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspace> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_db(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "cronus-ws-ro-{label}-{}-{}.db",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    #[test]
+    fn reading_a_registry_that_does_not_exist_creates_nothing() {
+        let path = temp_db("absent");
+        assert!(WorkspaceManager::open_read_only(&path).unwrap().is_none());
+        assert!(!path.exists(), "a read must not bring a file into being");
+    }
+
+    #[test]
+    fn a_read_only_registry_reads_what_was_written_and_cannot_be_written() {
+        let path = temp_db("reads");
+        let id = WorkspaceId::new("kept-ws").unwrap();
+        {
+            let writer = WorkspaceManager::open(&path).unwrap();
+            writer
+                .create(&id, "Kept", Path::new("/k"), WorkspaceTemplate::Default)
+                .unwrap();
+            writer.set_active(&id).unwrap();
+        }
+        let reader = WorkspaceManager::open_read_only(&path)
+            .unwrap()
+            .expect("exists");
+        assert_eq!(reader.list().unwrap().len(), 1);
+        assert_eq!(reader.get_active().unwrap().as_ref(), Some(&id));
+        let other = WorkspaceId::new("other-ws").unwrap();
+        assert!(
+            reader
+                .create(&other, "Other", Path::new("/o"), WorkspaceTemplate::Default)
+                .is_err(),
+            "the connection itself refuses to write"
+        );
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn a_registry_from_a_newer_build_is_refused_for_reading_too() {
+        let path = temp_db("newer");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("PRAGMA user_version = 99").unwrap();
+        }
+        assert!(matches!(
+            WorkspaceManager::open_read_only(&path),
+            Err(WorkspaceError::Schema(
+                crate::versioning::SchemaError::NewerThanSupported { found: 99, .. }
+            ))
+        ));
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn valid_workspace_ids() {

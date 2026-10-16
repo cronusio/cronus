@@ -182,7 +182,12 @@ fn main() -> std::process::ExitCode {
             args,
             caller: cronus_contract::Surface::Cli,
         };
-        let rendered = render(dispatcher.dispatch(&registry, &invocation), &ctx);
+        let rendered = match dispatcher.dispatch(&registry, &invocation) {
+            Dispatched::Ran(Outcome::Stream(handle)) => {
+                render_stream(&dispatcher, &handle, &ctx, &mut std::io::stdout())
+            }
+            other => render(other, &ctx),
+        };
         rendered.print();
         return exit_code(rendered.exit_code);
     }
@@ -316,6 +321,64 @@ fn render(dispatched: Dispatched, ctx: &output::Context) -> Rendered {
             1,
         ),
         Outcome::Value(value) => render_value(value, ctx),
+    }
+}
+
+/// Render a streamed result. In text, the chunks are written to `out` the
+/// moment they arrive — a reply is read while it is still being written — and
+/// what is left to say after them (the settled record, minus the text that was
+/// just streamed) is returned like any other rendering. In JSON there is one
+/// document to produce, so the stream is waited for and rendered whole.
+fn render_stream(
+    dispatcher: &cronus_core::invocable::Dispatcher,
+    handle: &cronus_contract::StreamHandle,
+    ctx: &output::Context,
+    out: &mut dyn std::io::Write,
+) -> Rendered {
+    use cronus_core::invocable::StreamItem;
+
+    let Some(mut subscription) = dispatcher.subscribe(handle) else {
+        return Rendered::stderr_only(
+            format!("error: nobody can read the stream {}", handle.channel),
+            1,
+        );
+    };
+    if ctx.is_json() {
+        return render(Dispatched::Ran(subscription.collect()), ctx);
+    }
+    let mut streamed = String::new();
+    while let Some(item) = subscription.next_item() {
+        match item {
+            StreamItem::Chunk(OutcomeValue::Text(piece)) => {
+                // A closed pipe ends the writing, not the turn.
+                let _ = write!(out, "{piece}").and_then(|()| out.flush());
+                streamed.push_str(&piece);
+            }
+            StreamItem::Chunk(_) => {}
+            StreamItem::End(end) => {
+                if !streamed.is_empty() {
+                    let _ = writeln!(out);
+                }
+                return render(Dispatched::Ran(without_streamed_text(end, &streamed)), ctx);
+            }
+        }
+    }
+    Rendered::stderr_only("error: the stream ended without a result".to_string(), 1)
+}
+
+/// A settled record with the field that repeats the streamed text taken out:
+/// what was just read as it arrived is not printed a second time.
+fn without_streamed_text(outcome: Outcome, streamed: &str) -> Outcome {
+    match outcome {
+        Outcome::Value(OutcomeValue::Record(fields)) if !streamed.is_empty() => {
+            Outcome::Value(OutcomeValue::Record(
+                fields
+                    .into_iter()
+                    .filter(|(_, value)| *value != OutcomeValue::Text(streamed.to_string()))
+                    .collect(),
+            ))
+        }
+        other => other,
     }
 }
 
@@ -1041,6 +1104,7 @@ mod render_tests {
             "learn",
             "board",
             "schedule",
+            "session",
             "budget",
             "loop",
             "workflow",
@@ -1052,5 +1116,104 @@ mod render_tests {
             groups, expected,
             "the shipped semantic surface this renderer serves must be exactly the known set"
         );
+    }
+    // ── streamed results ────────────────────────────────────────────────────
+
+    /// A dispatcher whose one handler streams `pieces` and ends with `end`.
+    fn streaming(
+        pieces: &'static [&'static str],
+        end: Outcome,
+    ) -> (
+        cronus_core::invocable::Dispatcher,
+        cronus_contract::StreamHandle,
+    ) {
+        let dispatcher = cronus_core::invocable::Dispatcher::new();
+        let (handle, sink) = dispatcher.streams().open();
+        for piece in pieces {
+            sink.chunk(OutcomeValue::Text((*piece).to_string()));
+        }
+        sink.end(end);
+        (dispatcher, handle)
+    }
+
+    fn reply_record() -> Outcome {
+        Outcome::Value(OutcomeValue::Record(vec![
+            ("session".to_string(), OutcomeValue::Text("s-1".to_string())),
+            (
+                "reply".to_string(),
+                OutcomeValue::Text("hello there".to_string()),
+            ),
+        ]))
+    }
+
+    #[test]
+    fn a_streamed_reply_is_written_as_it_arrives_and_not_printed_twice() {
+        let (dispatcher, handle) = streaming(&["hello ", "there"], reply_record());
+        let mut out = Vec::new();
+        let rendered = render_stream(&dispatcher, &handle, &text(), &mut out);
+
+        assert_eq!(String::from_utf8(out).expect("utf8"), "hello there\n");
+        assert_eq!(rendered.exit_code, 0);
+        let said = rendered.stdout.join("\n");
+        assert!(
+            said.contains("s-1"),
+            "the rest of the record is still said: {said}"
+        );
+        assert!(
+            !said.contains("hello there"),
+            "the streamed text is not repeated: {said}"
+        );
+    }
+
+    #[test]
+    fn json_waits_for_the_whole_stream_and_renders_one_document() {
+        let (dispatcher, handle) = streaming(&["hello ", "there"], reply_record());
+        let mut out = Vec::new();
+        let rendered = render_stream(&dispatcher, &handle, &json(), &mut out);
+
+        assert!(out.is_empty(), "nothing is written live in JSON");
+        let said = rendered.stdout.join("\n");
+        assert!(
+            said.contains("hello there") && said.contains("s-1"),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_stream_that_ends_unavailable_reports_it_on_stderr_with_a_failing_code() {
+        let (dispatcher, handle) = streaming(
+            &["par"],
+            Outcome::Unavailable {
+                reason: "the model fell over".to_string(),
+            },
+        );
+        let mut out = Vec::new();
+        let rendered = render_stream(&dispatcher, &handle, &text(), &mut out);
+        assert_eq!(String::from_utf8(out).expect("utf8"), "par\n");
+        assert_eq!(rendered.exit_code, 1);
+        assert!(rendered.stderr.join("\n").contains("the model fell over"));
+    }
+
+    #[test]
+    fn a_stream_nobody_can_read_is_an_error_not_a_hang() {
+        let dispatcher = cronus_core::invocable::Dispatcher::new();
+        let stranger = cronus_contract::StreamHandle {
+            channel: "never-opened".to_string(),
+        };
+        let rendered = render_stream(&dispatcher, &stranger, &text(), &mut Vec::new());
+        assert_eq!(rendered.exit_code, 1);
+    }
+
+    #[test]
+    fn only_the_field_that_repeats_the_streamed_text_is_taken_out() {
+        let kept = without_streamed_text(reply_record(), "something else");
+        assert_eq!(kept, reply_record(), "nothing matches, nothing removed");
+        let Outcome::Value(OutcomeValue::Record(fields)) =
+            without_streamed_text(reply_record(), "hello there")
+        else {
+            panic!("a record stays a record");
+        };
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "session");
     }
 }
