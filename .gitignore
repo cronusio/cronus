@@ -95,32 +95,16 @@ CODEX.md
 QWEN.md
 copilot-instructions.md
 
-## Workflows
-.*/commands/
-.*/prompts/
-.*/workflows/
-!.agents/workflows/
-!.github/workflows/
-.agents/workflows/magic*.md
+# Skills
+/.*/skills/
+!/.*/skills/release
 
-## Skills
-.*/skills/
-!.agents/skills/
-.agents/skills/magic*
+# SDD engine
+/.magic/
+/.*/skills/magic-*/
+/.*/*/magic*.md
 
-## Rules
-.*/rules/
-!.agents/rules/
-.agents/rules/magic*.md
-.agents/rules/MAGIC.md
-
-# Magic Spec
-.magic/
-
-## Generated graph artifacts
-.design/spec-graph.html
-.design/spec-graph.json
-.design/graph-before.json
-.design/graph-snapshot.json
-.design/.graph-cache/
-.design/wiki/
+# SDD generated artifacts, rebuilt on demand by the engine (the rest of .design/ is shared)
+/.design/*graph*.*
+/.design/*cache*/
+/.design/wiki/
