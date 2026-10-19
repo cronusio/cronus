@@ -21,6 +21,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
-    "fallow": "^3.33.1"
+    "fallow": "^3.34.1"
   }
 }
