@@ -22,8 +22,8 @@ edition = "2024"
 license = "MIT"
 description = ""
 repository = "https://github.com/cronusio/cronus"
-homepage = "https://github.com/cronusio/cronus"
-documentation = "https://cronusio.github.io/cronus"
+homepage = "https://cronusio.github.io/cronus"
+documentation = "https://cronusio.github.io/cronus/docs"
 readme = "README.md"
 
 [workspace.dependencies]
