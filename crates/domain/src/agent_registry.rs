@@ -164,6 +164,19 @@ impl AgentRegistry {
         }
     }
 
+    /// Enable or disable the definition called `name`. `false` when there is
+    /// no such definition: an agent that does not exist is not made to, and
+    /// is not "disabled" into existence.
+    pub fn set_disabled(&mut self, name: &str, disabled: bool) -> bool {
+        match self.agents.get_mut(name) {
+            Some(def) => {
+                def.disabled = disabled;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Active agent definitions, sorted by name: `agents` is a
     /// `HashMap`, whose iteration order is randomized per process — without
     /// this, `registry list` printed a different first row on every run,

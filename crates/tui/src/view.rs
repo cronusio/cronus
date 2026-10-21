@@ -1017,6 +1017,9 @@ fn render_transcript_pane(
     frame.render(area, buf);
 
     match transcript {
+        None if row.is_some() => {
+            Paragraph::new("Reading the conversation…").render(inner, buf);
+        }
         None => {
             Paragraph::new("Select a session to read its conversation.").render(inner, buf);
         }
@@ -1598,6 +1601,22 @@ mod tests {
             all.contains("unavailable: written by a newer format"),
             "{all}"
         );
+    }
+
+    #[test]
+    fn a_selected_session_whose_conversation_has_not_arrived_says_it_is_being_read() {
+        let list = Projection::Available(SessionList {
+            rows: vec![session("s-1", None, 2)],
+        });
+        let (buf, area) = sessions_frame(&list, 0, None, true);
+        let all = whole_screen(&buf, area);
+        assert!(all.contains("Reading the conversation"), "{all}");
+        assert!(!all.contains("Select a session"), "{all}");
+
+        let none = Projection::Available(SessionList { rows: Vec::new() });
+        let (buf, area) = sessions_frame(&none, 0, None, true);
+        let all = whole_screen(&buf, area);
+        assert!(!all.contains("Reading the conversation"), "{all}");
     }
 
     #[test]

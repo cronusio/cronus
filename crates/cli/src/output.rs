@@ -53,18 +53,9 @@ pub(crate) fn json_escape(s: &str) -> String {
 /// is kept for any kind not covered by a specific phrase, so nothing
 /// diagnosable is lost in exchange for staying English-only.
 pub(crate) fn describe_io_error(err: &std::io::Error, path: &std::path::Path) -> String {
-    use std::io::ErrorKind;
-    let what = match err.kind() {
-        ErrorKind::NotFound => "not found".to_string(),
-        ErrorKind::PermissionDenied => "permission denied".to_string(),
-        ErrorKind::AlreadyExists => "already exists".to_string(),
-        ErrorKind::InvalidInput | ErrorKind::InvalidData => "invalid path or name".to_string(),
-        _ => match err.raw_os_error() {
-            Some(code) => format!("I/O error (os error {code})"),
-            None => "I/O error".to_string(),
-        },
-    };
-    format!("{what}: {}", path.display())
+    // The wording is the core's, so every surface that reports an I/O failure
+    // says it the same way.
+    cronus_core::installation::carry_out::catalogs::describe_io_error(err, path)
 }
 
 #[cfg(test)]

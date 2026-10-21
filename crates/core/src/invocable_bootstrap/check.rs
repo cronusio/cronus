@@ -43,8 +43,8 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
         Arc::new(|args| {
             let card_id = text_arg(args, "card_id");
             let root = opt_text_arg(args, "path")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+                .map(|path| crate::paths::from_caller(std::path::Path::new(path)))
+                .unwrap_or_else(crate::paths::caller_dir);
             let lang = detect_language(&root);
             // The gate-runner seam itself — no tools invoked yet, matching
             // the exact pre-existing behavior.

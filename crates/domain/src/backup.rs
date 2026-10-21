@@ -19,6 +19,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// by default too but is the one entry a caller may opt back in (
 /// "optional").
 const ALWAYS_EXCLUDED: &[&str] = &[".env", "cache", "backups"];
+
+/// What a running process leaves in the state root that is not state: the
+/// engine's claim and the record that tells others where it listens (which
+/// holds the token that authenticates them), and the lock work holds while it
+/// runs. None of it can be restored to mean anything — a restored token would
+/// name an engine that is gone — the first is held exclusively on some
+/// platforms and cannot even be read while its engine runs, and the record's
+/// token must never leave the state root through a backup.
+fn is_runtime_artifact(name: &str) -> bool {
+    matches!(name, "engine.lock" | "engine.endpoint" | "work.lock")
+        // The record is replaced by renaming a complete file into place.
+        || name.starts_with("engine.endpoint.")
+}
 const LOGS_ENTRY: &str = "logs";
 
 /// What to leave out of a backup, beyond the always-excluded secret file
@@ -68,7 +81,8 @@ fn copy_tree_excluding(
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if is_top_level && excluded.contains(&name_str.as_ref()) {
+        if is_top_level && (excluded.contains(&name_str.as_ref()) || is_runtime_artifact(&name_str))
+        {
             continue;
         }
         let src = entry.path();
@@ -234,6 +248,38 @@ mod tests {
         write(&root.join(".env"), "API_KEY=super-secret-value");
         write(&root.join("cache/embeddings.bin"), "regenerable-bytes");
         write(&root.join("logs/daemon.log"), "log-line");
+    }
+
+    #[test]
+    fn a_running_engines_claim_record_and_work_lock_are_never_backed_up() {
+        let state_root = temp_dir("runtime-state");
+        let backups_dir = temp_dir("runtime-backups");
+        seed_state_tier(&state_root);
+        write(&state_root.join("engine.lock"), "");
+        write(
+            &state_root.join("engine.endpoint"),
+            "{\"token\":\"secret\"}",
+        );
+        write(&state_root.join("engine.endpoint.123.tmp"), "{}");
+        write(&state_root.join("work.lock"), "");
+
+        let backup_ref = create(&state_root, &backups_dir, None, BackupOptions::default()).unwrap();
+
+        for name in [
+            "engine.lock",
+            "engine.endpoint",
+            "engine.endpoint.123.tmp",
+            "work.lock",
+        ] {
+            assert!(
+                !backup_ref.path.join(name).exists(),
+                "{name} belongs to a running process, not to the state"
+            );
+        }
+        assert!(
+            backup_ref.path.join("config.json").exists(),
+            "state is still backed up"
+        );
     }
 
     #[test]

@@ -182,9 +182,25 @@ fn main() -> std::process::ExitCode {
             args,
             caller: cronus_contract::Surface::Cli,
         };
-        let rendered = match dispatcher.dispatch(&registry, &invocation) {
+        // A running engine over this state root is attached to, never duplicated;
+        // with none, the command runs on its own and claims nothing.
+        let composition = match cronus_core::endpoint::attach_or_stand_alone(
+            &cronus_core::paths::resolve_workspace_root(),
+            registry,
+            dispatcher,
+            cronus_contract::Surface::Cli,
+            cronus_core::endpoint::DEFAULT_PATIENCE,
+        ) {
+            Ok(composition) => composition,
+            Err(reason) => {
+                eprintln!("error: {reason}");
+                return std::process::ExitCode::from(3);
+            }
+        };
+        let (registry, dispatcher) = (&composition.registry, &composition.dispatcher);
+        let rendered = match dispatcher.dispatch(registry, &invocation) {
             Dispatched::Ran(Outcome::Stream(handle)) => {
-                render_stream(&dispatcher, &handle, &ctx, &mut std::io::stdout())
+                render_stream(dispatcher, &handle, &ctx, &mut std::io::stdout())
             }
             other => render(other, &ctx),
         };

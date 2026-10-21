@@ -1,6 +1,6 @@
 # Service Activation (OS Realization)
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-background-activation.md
@@ -59,7 +59,7 @@ The concept spec fixes *what* activation means and *who* may grant it. What rema
 | BA-8 Observed state | Every read queries the OS. Where the OS distinguishes *registered* from *effective*, both are read and the weaker one wins: on Windows the `StartupApproved` veto is read alongside the `Run` value; on macOS `SMAppService.status` distinguishes `requiresApproval` from `enabled`; on Linux `is-enabled` is read together with the linger property. An unreadable facility yields `Unknown`, never `Enabled`. |
 | BA-9 Supervision is the mode's | Restart policy is delegated to the supervisor and configured declaratively — `Restart=on-failure` (systemd), `KeepAlive` (launchd), the task's restart-on-failure settings (Windows). The engine's own crash-recovery ladder and liveness reconciliation are compiled and executed identically in all modes; nothing in the engine reads which supervisor started it. |
 | BA-10 Spokes refuse visibly | The adapter's `capabilities()` probe returns `Unsupported { reason }` on a host with no usable supervisor: mobile targets (both modes), and a Linux host without systemd for **system-scoped** — where login-scoped is still offered via the XDG autostart entry (§2, §4.4), so the refusal is per-mode, not whole-host. The settings surface renders the reason and offers "connect to a hub" in place of the unavailable toggle. The setting is never rendered as an inert control. |
-| BA-11 One engine per state root | Enforced by an exclusive lock on the state root taken at engine start, independent of activation mode. A frontend that fails to take the lock discovers the running engine's endpoint from the lock record and attaches to it (§4.7). A frontend that can neither lock nor attach fails visibly rather than starting a second engine. |
+| BA-11 One engine per state root | Enforced by an exclusive lock on the state root taken at engine start, independent of activation mode. A frontend that fails to take the lock discovers the running engine's endpoint from the lock record and attaches to it (§4.7). A frontend that can neither lock nor attach fails visibly rather than starting a second engine. `[ADDED v1.0.3]` Realized by `l2-engine-endpoint.md`. |
 
 ## 4. Detailed Design
 
@@ -174,7 +174,7 @@ A failure at step 3 or 4 leaves the host in `Inactive` — BA-1's default — ne
 
 ### 4.7 Attach, never duplicate
 
-BA-11 is enforced below activation, so it holds identically for a manually-launched engine and a supervised one.
+BA-11 is enforced below activation, so it holds identically for a manually-launched engine and a supervised one. `[ADDED v1.0.3]` `l2-engine-endpoint.md` realizes this section. Two things in the sketch below are settled there differently: the claim is an operating-system advisory lock and the record lives in a **separate file**, because a locked file is unreadable to other processes on some platforms; and a short-lived process attaches when an engine exists and otherwise runs on its own without taking the claim, so that a command lasting a second is never what a starting terminal UI finds itself attached to.
 
 ```text
 [REFERENCE] engine start
@@ -256,5 +256,6 @@ The command is human-invoked by construction; it is not, and must never become, 
 | Version | Date | Notes |
 | --- | --- | --- |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): BA-4's structural barrier was stated as a filesystem deny list, but `HKCU\\…\\Run` is a registry value and per-user scheduled tasks, macOS login items, XDG autostart, shell startup files and user crontabs are persistence paths a filesystem scope does not cover — the baseline denies them at the level they live at, a platform gap is reported as a stated gap (SEC-12), and a write to any of them is an AG-10 privileged sink. The BA-3 row named a `None` state the seam does not have — it is `Inactive`. |
+| 1.0.3 | 2026-10-21 | §4.7 and the BA-11 row point at `l2-engine-endpoint.md`, which realizes the attach rule, and record two refinements it makes to the sketch: the record is a separate file from the lock, and a short-lived process attaches or stands alone rather than electing itself engine. |
 | 1.0.1 | 2026-07-17 | Promoted RFC→Stable via Post-Update Review (`@role:spec-critic` + `@role:prompt-engineer`). Resolved all three open questions with design decisions (not deferrals): (1) **non-systemd Linux** — system-scoped reports `Unsupported` (BA-10), login-scoped falls back to the init-agnostic XDG autostart entry (`~/.config/autostart/*.desktop`), so the refusal is per-mode not whole-host (§2, §3 BA-10, §4.4); (2) **`tauri-plugin-autostart`** — rejected per the std-first dependency policy (covers only login-scoped, inverts the dependency direction by pulling Tauri/shell into a CLI-linked adapter); per-OS registration is implemented directly (§5); (3) **Windows S4U** — the design (S4U over Service, `RunLevel = Limited`) is settled; only the empirical At-startup launch-timing remains, reframed as a build-time validation gate with a documented `At log on` fallback (§4.2, §5 note 7), never a design blocker. Reconciled the §2 divergence: `l2-technology-stack` amended 1.2.0→1.2.1 ("Windows service" → "Windows S4U scheduled task"), so the two specs now agree; the callout is updated to record the resolution. Stable = design agreed; empirical S4U timing validated during implementation. |
 | 1.0.0 | 2026-07-10 | Initial spec. Fixes the per-OS realization of BA-1…BA-11 under one governing constraint — the background engine runs as the user, never as a superuser — which rejects the `LocalSystem` Windows Service and the root `LaunchDaemon` and selects: Windows `Run` value / S4U scheduled task, macOS `SMAppService` login item / `LaunchDaemon` with `UserName`, Linux systemd user unit / system unit or lingering user unit. Specifies the `ActivationRegistry` seam with `observe()` and no persisted mirror (BA-8), the three structural barriers enforcing BA-4 (no tool, no sandbox write path, no elevation), remove-then-register with read-back verification (BA-3/BA-7), and the state-root lock realizing attach-never-duplicate (BA-11). Open: Windows S4U spike, non-systemd Linux hosts, `tauri-plugin-autostart` dependency decision. |

@@ -97,6 +97,19 @@ pub fn open_workspace_registry_for_reading() -> Result<Option<WorkspaceManager>,
     WorkspaceManager::open_read_only(workspaces_db_path()).map_err(|e| e.to_string())
 }
 
+/// The workspace this installation treats as the running one: the registry's
+/// active workspace. With no registry there is none; a registry that cannot be
+/// read is an error the caller must treat as "unknown", never as "none".
+pub fn running_workspace() -> Result<Option<String>, String> {
+    match open_workspace_registry_for_reading()? {
+        Some(manager) => manager
+            .get_active()
+            .map(|active| active.map(|id| id.to_string()))
+            .map_err(|e| e.to_string()),
+        None => Ok(None),
+    }
+}
+
 /// The single-file marker recording which archetype the office is staffed
 /// against. Absent or empty means the archetype-free default.
 pub fn active_archetype_marker(state_root: &Path) -> PathBuf {

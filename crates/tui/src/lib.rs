@@ -18,10 +18,11 @@ pub mod installation;
 pub mod pane_actions;
 pub mod terminal;
 pub mod view;
+mod work;
 
 pub use app::{
-    App, CapabilitySource, CoreSnapshot, RatatuiRenderer, Renderer, SnapshotSource, TickResult,
-    ViewModel, render_view, run, run_with,
+    App, CapabilitySource, CoreSnapshot, Hosted, RatatuiRenderer, Renderer, SnapshotSource,
+    TickResult, ViewModel, compose_live, render_view, run, run_with,
 };
 pub use chat_actions::ChatAction;
 pub use command::{

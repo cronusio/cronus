@@ -10,7 +10,8 @@ use crate::loop_bootstrap::{
     FileExistsBackend, file_exists_spec, read_report, read_spec, write_report, write_spec,
 };
 
-use super::{core_id, opt_text_arg, text_arg};
+use super::{begin_work, core_id, opt_text_arg, text_arg};
+use crate::endpoint::ledger::WorkKind;
 
 pub(super) fn register(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
     register_run(registry, dispatcher);
@@ -59,7 +60,7 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
     dispatcher.attach(
         id,
         Arc::new(|args| {
-            let file = std::path::PathBuf::from(text_arg(args, "file"));
+            let file = crate::paths::from_caller(std::path::Path::new(text_arg(args, "file")));
             // `--max-iter` was a clap-level `value_parser!(u32)` before
             // this migration (a malformed value was a usage failure,
             // exit 2); as a `NamedText` it is hand-parsed here instead, so
@@ -81,6 +82,11 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
                 },
             };
 
+            let label = file.display().to_string();
+            let _work = match begin_work(WorkKind::WorkflowRun, label) {
+                Ok(work) => work,
+                Err(refused) => return refused,
+            };
             let spec = file_exists_spec(max_iter);
             let mut backend = FileExistsBackend { target_path: file };
             let report = run_execution(&spec, &mut backend, "");

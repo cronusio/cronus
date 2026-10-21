@@ -4,7 +4,52 @@
 //! cache/logs roots resolve to per-OS user directories. A portable mode groups
 //! every root under a single base directory.
 
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
+
+thread_local! {
+    /// The directory the caller of the invocation running on this thread was
+    /// standing in, when that is not this process's own.
+    static CALLER_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+/// Run `f` as an invocation that was made from `dir`, not from wherever this
+/// process happens to be standing. An engine runs invocations for spokes in
+/// other directories; a relative path or a "current directory" default in one
+/// of them means the *caller's*, and this is how the handler learns it.
+pub fn with_caller_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
+    struct Restore(Option<PathBuf>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            CALLER_DIR.with(|slot| *slot.borrow_mut() = previous);
+        }
+    }
+    let previous = CALLER_DIR.with(|slot| slot.borrow_mut().replace(dir.to_path_buf()));
+    let _restore = Restore(previous);
+    f()
+}
+
+/// The directory an invocation is made from: the caller's when it was handed
+/// over ([`with_caller_dir`]), otherwise this process's. Handlers use this and
+/// never `std::env::current_dir` directly, so an invocation behaves the same
+/// run here or in an engine.
+pub fn caller_dir() -> PathBuf {
+    CALLER_DIR
+        .with(|slot| slot.borrow().clone())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// `path` as the caller meant it: an absolute path as it is, a relative one
+/// from the caller's directory.
+pub fn from_caller(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        caller_dir().join(path)
+    }
+}
 
 /// The resolvable root locations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +174,7 @@ const WORKSPACE_MARKER: &str = "app.json";
 /// machine-global data stays exactly where it was and keeps working
 /// unchanged for anyone who never adopted a per-project `.cronus/`.
 pub fn resolve_workspace_root() -> PathBuf {
-    let cwd = std::env::current_dir().ok();
+    let cwd = Some(caller_dir());
     let fallback = Paths::os_native().resolve(Root::State);
     resolve_workspace_root_from(cwd.as_deref(), fallback)
 }

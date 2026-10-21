@@ -315,7 +315,62 @@ pub fn dispatch(group: &str, group_matches: &ArgMatches, ctx: &Context) -> i32 {
     dispatch_leaf(group, &verb, matches, ctx)
 }
 
+/// Whether this invocation recomposes the office: the verb's declared class,
+/// raised the way `resolved_effect` raises it (the repair flag; deleting the
+/// running workspace). A verb nobody declared is not one.
+fn recomposes(group: &str, verb: &str, matches: &ArgMatches) -> bool {
+    use cronus_contract::{ArgValue, ArgValues, LiveEffect};
+    use cronus_core::installation::{declared_invocables, inspect, resolved_effect};
+
+    let tail = if verb == group {
+        group.to_string()
+    } else {
+        format!("{group}.{verb}")
+    };
+    let declared = declared_invocables();
+    let Some(invocable) = declared.iter().find(|i| i.id.tail() == tail) else {
+        return false;
+    };
+    let mut args = ArgValues::new();
+    let mut running = None;
+    if tail == "doctor" && matches.get_flag("fix") {
+        args.insert("fix", ArgValue::Flag);
+    }
+    if tail == "workspace.delete"
+        && let Some(id) = matches.get_one::<String>("id")
+    {
+        args.insert("id", ArgValue::Text(id.clone()));
+        // A registry that cannot be read is "unknown", which counts as running:
+        // the mistake that can be made is to refuse too much, never too little.
+        running = match inspect::running_workspace() {
+            Ok(active) => active,
+            Err(_) => Some(id.clone()),
+        };
+    }
+    matches!(
+        resolved_effect(invocable, &args, running.as_deref()),
+        Some(LiveEffect::Recompose { .. })
+    )
+}
+
 fn dispatch_leaf(group: &str, verb: &str, matches: &ArgMatches, ctx: &Context) -> i32 {
+    // A change that recomposes the office is applied only while nothing is
+    // running and nothing can begin; the gate holds the work lock for as long as
+    // the change takes.
+    if recomposes(group, verb, matches) {
+        let root = cronus_core::paths::resolve_workspace_root();
+        return match cronus_core::installation::gate::begin(&root) {
+            Ok(_applying) => run_leaf(group, verb, matches, ctx),
+            Err(refused) => {
+                eprintln!("error: not applied — {refused}");
+                1
+            }
+        };
+    }
+    run_leaf(group, verb, matches, ctx)
+}
+
+fn run_leaf(group: &str, verb: &str, matches: &ArgMatches, ctx: &Context) -> i32 {
     match (group, verb) {
         ("init", _) => {
             let path = matches

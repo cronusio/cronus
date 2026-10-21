@@ -16,6 +16,7 @@
 
 use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use cronus_contract::Invocable;
 use cronus_core::invocable::{Dispatcher, InvocableRegistry};
@@ -53,8 +54,8 @@ struct NullSource;
 impl SnapshotSource for NullSource {
     fn poll_snapshot(
         &mut self,
-        _registry: &InvocableRegistry,
-        _dispatcher: &Dispatcher,
+        _registry: &Arc<InvocableRegistry>,
+        _dispatcher: &Arc<Dispatcher>,
     ) -> Option<cronus_tui::CoreSnapshot> {
         None
     }
@@ -124,6 +125,20 @@ fn submit(app: &mut App, line: &str) {
     events.push(TermEvent::Key(Key::Enter));
     app.tick(&events, &mut NullSource, &mut NullRenderer)
         .expect("ticking an in-memory app never fails");
+    settle(app);
+}
+
+/// Tick until the work the loop started beside itself has been applied.
+fn settle(app: &mut App) {
+    for _ in 0..2000 {
+        if !app.is_busy() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        app.tick(&[], &mut NullSource, &mut NullRenderer)
+            .expect("ticking an in-memory app never fails");
+    }
+    panic!("the work started beside the loop never finished");
 }
 
 /// Safety-valve bound for the Tab-cycling loop in [`submit_line`] — the
@@ -345,45 +360,482 @@ fn a_missing_workspace_is_reported_as_unavailable_not_as_an_empty_answer() {
     );
 }
 
-/// A verb that would change the installation is not carried out from this
-/// surface yet; it says so and names the command that does.
+/// A verb that recomposes by relaunch is asked about like any other change,
+/// naming what it overwrites and that the screen restarts; saying no restores
+/// nothing and restarts nothing.
 #[test]
-fn a_verb_that_changes_the_installation_is_refused_with_the_command_line_that_does_it() {
-    let mut app = real_app();
-    let block = submit_block(&mut app, "backup create --to elsewhere").expect("block");
+fn a_restore_is_asked_about_naming_what_it_overwrites_and_declining_changes_nothing() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("restore-decline");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
 
-    assert_eq!(block.title, "/backup create --to elsewhere");
+    let mut app = real_app();
+    submit(&mut app, "restore backup-1");
+    let asked = app.view().result_block.clone().expect("a question");
+    let waiting = app.is_awaiting_consent();
+    let result = app
+        .tick(
+            &[TermEvent::Key(Key::Char('n'))],
+            &mut NullSource,
+            &mut NullRenderer,
+        )
+        .expect("ticking an in-memory app never fails");
+    settle(&mut app);
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert!(waiting, "{:?}", asked.lines);
+    assert_eq!(asked.title, "confirm /restore backup-1");
     assert!(
-        block.lines[0].starts_with("not run from here"),
+        asked.lines[0].contains("applied by relaunch"),
         "{:?}",
-        block.lines
+        asked.lines
     );
     assert!(
-        block
+        asked
             .lines
             .iter()
-            .any(|line| line.contains("`cronus backup create --to elsewhere`")),
+            .any(|l| l.contains("over the state root")),
         "{:?}",
-        block.lines
+        asked.lines
+    );
+    assert!(
+        asked
+            .lines
+            .iter()
+            .any(|l| l == "will run: cronus restore backup-1"),
+        "{:?}",
+        asked.lines
+    );
+    assert!(!result.relaunch, "a declined change relaunches nothing");
+    assert_eq!(
+        app.view().command_feedback.as_deref(),
+        Some("left undone: /restore backup-1")
     );
 }
 
+/// Press one key and let whatever it started finish.
+fn press(app: &mut App, key: Key) {
+    app.tick(&[TermEvent::Key(key)], &mut NullSource, &mut NullRenderer)
+        .expect("ticking an in-memory app never fails");
+    settle(app);
+}
+
+/// A change this surface carries out is asked about first, naming the exact
+/// invocation, and happens only on a yes: a stray key neither agrees nor
+/// closes the question, no leaves it undone, and yes makes the backup where it
+/// was told to.
 #[test]
-fn diagnostics_inspects_but_diagnostics_with_repair_is_raised_and_refused() {
+fn a_backup_asked_for_inside_is_made_only_after_the_person_says_yes() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("backup-consent");
+    let dest = isolated_portable_dir("backup-consent-dest");
+    let _ = std::fs::remove_dir_all(&base);
+    let _ = std::fs::remove_dir_all(&dest);
+    std::fs::create_dir_all(&base).expect("creatable");
+    // SAFETY: serialized by `PORTABLE_DIR_ENV_LOCK`.
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+    // What the backup takes: the state root this composition resolves.
+    let root = cronus_core::paths::resolve_workspace_root();
+    assert!(root.starts_with(&base), "{root:?} is outside {base:?}");
+    std::fs::create_dir_all(&root).expect("creatable");
+    std::fs::write(root.join("data.txt"), "state").expect("writable");
+
     let mut app = real_app();
-    let repair = submit_block(&mut app, "doctor --fix").expect("block");
+    let line = format!("backup create --to {}", dest.display());
+    submit(&mut app, &line);
+
+    let asked = app.view().result_block.clone().expect("a question");
+    assert!(app.is_awaiting_consent());
+    assert_eq!(asked.title, format!("confirm /{line}"));
     assert!(
-        repair.lines[0].contains("recompose, applied by relaunch"),
-        "{:?}",
-        repair.lines
-    );
-    assert!(
-        repair
+        asked
             .lines
             .iter()
-            .any(|line| line.contains("`cronus doctor --fix`")),
+            .any(|l| l.starts_with("will run: cronus backup create --to ")),
         "{:?}",
-        repair.lines
+        asked.lines
+    );
+    assert!(!dest.exists(), "nothing is done before the answer");
+
+    press(&mut app, Key::Char('x'));
+    assert!(app.is_awaiting_consent(), "a stray key answers nothing");
+    assert_eq!(app.view().result_block, Some(asked.clone()));
+
+    press(&mut app, Key::Char('n'));
+    assert!(!app.is_awaiting_consent());
+    assert_eq!(app.view().result_block, None);
+    assert_eq!(
+        app.view().command_feedback.as_deref(),
+        Some(format!("left undone: /{line}").as_str())
+    );
+    assert!(!dest.exists(), "no leaves it undone");
+
+    submit(&mut app, &line);
+    assert!(app.is_awaiting_consent(), "the same line asks again");
+    press(&mut app, Key::Char('y'));
+    let answer = app.view().result_block.clone().expect("the answer");
+
+    let made = dest.join("data.txt").is_file();
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+    let _ = std::fs::remove_dir_all(&dest);
+
+    assert!(!app.is_awaiting_consent());
+    assert_eq!(answer.title, format!("/{line}"));
+    assert!(
+        answer.lines.iter().any(|l| l.starts_with("id: backup-")),
+        "{:?}",
+        answer.lines
+    );
+    assert!(made, "yes makes the backup where it was told to");
+}
+
+/// Ask for a change, say yes, and return the block that answers it.
+fn agree(app: &mut App, line: &str) -> cronus_tui::ResultBlock {
+    submit(app, line);
+    assert!(app.is_awaiting_consent(), "{line} asks first");
+    press(app, Key::Char('y'));
+    assert!(!app.is_awaiting_consent());
+    app.view().result_block.clone().expect("the answer")
+}
+
+/// A workspace's whole life from inside: created, switched to, and deleted,
+/// each only after a yes, each seen afterwards in the surface's own listing —
+/// and the one the office runs around is not deletable from here.
+#[test]
+fn a_workspace_can_be_created_switched_to_and_deleted_inside() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("workspace-life");
+    let place = isolated_portable_dir("workspace-life-place");
+    for dir in [&base, &place] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).expect("creatable");
+    }
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    let created = agree(
+        &mut app,
+        &format!("workspace create alpha --path {}", place.display()),
+    );
+    agree(
+        &mut app,
+        &format!("workspace create bravo --path {}", place.display()),
+    );
+    let switched = agree(&mut app, "workspace switch bravo");
+    let listed = submit_block(&mut app, "workspace list").expect("a listing");
+
+    // alpha is not the active one: deleting it is an ordinary change.
+    let deleted = agree(&mut app, "workspace delete alpha");
+    // bravo is: deleting it changes what is running, so it is refused.
+    let refused = submit_block(&mut app, "workspace delete bravo").expect("a block");
+    let asked_about_refused = app.is_awaiting_consent();
+    let after = submit_block(&mut app, "workspace list").expect("a listing");
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+    let _ = std::fs::remove_dir_all(&place);
+
+    assert!(
+        created.lines.iter().any(|l| l == "id: alpha"),
+        "{:?}",
+        created.lines
+    );
+    assert!(
+        switched.lines.iter().any(|l| l == "id: bravo"),
+        "{:?}",
+        switched.lines
+    );
+    assert!(
+        listed
+            .lines
+            .iter()
+            .any(|l| l.contains("bravo") && l.contains("active: true")),
+        "the switched-to workspace is marked active: {:?}",
+        listed.lines
+    );
+    assert!(
+        deleted.lines.iter().any(|l| l == "id: alpha"),
+        "{:?}",
+        deleted.lines
+    );
+    assert!(!asked_about_refused, "a refusal asks nothing");
+    assert!(
+        refused
+            .lines
+            .iter()
+            .any(|l| l.contains("changes what is running")),
+        "{:?}",
+        refused.lines
+    );
+    assert!(
+        refused
+            .lines
+            .iter()
+            .any(|l| l.contains("cronus workspace delete bravo")),
+        "{:?}",
+        refused.lines
+    );
+    assert!(
+        !after.lines.iter().any(|l| l.contains("alpha"))
+            && after.lines.iter().any(|l| l.contains("bravo")),
+        "{:?}",
+        after.lines
+    );
+}
+
+/// An extension and an agent definition added from inside show up in the
+/// surface's own listings of them afterwards.
+#[test]
+fn an_extension_and_an_agent_added_inside_are_listed_afterwards() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("catalog-adds");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    let manifest = base.join("demo.json");
+    std::fs::write(
+        &manifest,
+        r#"{"id":"demo/safe","name":"Safe Demo","version":"1.0.0"}"#,
+    )
+    .expect("writable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    let added = agree(&mut app, &format!("ext add {}", manifest.display()));
+    let extensions = submit_block(&mut app, "ext list").expect("a listing");
+    let created = agree(&mut app, "registry create reviewer reviews-diffs");
+    let agents = submit_block(&mut app, "registry list").expect("a listing");
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert!(
+        added.lines.iter().any(|l| l.contains("result: registered")),
+        "{:?}",
+        added.lines
+    );
+    assert!(
+        extensions.lines.iter().any(|l| l.contains("demo/safe")),
+        "{:?}",
+        extensions.lines
+    );
+    assert!(
+        created.lines.iter().any(|l| l == "name: reviewer"),
+        "{:?}",
+        created.lines
+    );
+    assert!(
+        agents.lines.iter().any(|l| l.contains("reviewer")),
+        "{:?}",
+        agents.lines
+    );
+}
+
+/// The grant of background autonomy puts its consequence in front of the
+/// person before anything is registered; declining registers nothing. (Saying
+/// yes is not exercised here: it would register with the real operating system.)
+#[test]
+fn background_activation_discloses_its_consequence_and_declining_registers_nothing() {
+    let mut app = real_app();
+    submit(&mut app, "activation enable --mode login");
+
+    let asked = app.view().result_block.clone().expect("a question");
+    assert!(app.is_awaiting_consent());
+    assert!(
+        asked.lines.iter().any(|l| l.contains("spend allowance")),
+        "{:?}",
+        asked.lines
+    );
+    assert!(
+        asked
+            .lines
+            .iter()
+            .any(|l| l.ends_with("--acknowledge-unattended-execution")),
+        "{:?}",
+        asked.lines
+    );
+
+    press(&mut app, Key::Char('n'));
+    assert!(!app.is_awaiting_consent());
+    assert_eq!(
+        app.view().command_feedback.as_deref(),
+        Some("left undone: /activation enable --mode login")
+    );
+}
+
+/// Esc is a no, and while a question is open the other keys do nothing but
+/// stay out of the way: Tab does not move focus away from it.
+#[test]
+fn escape_declines_and_other_keys_leave_the_question_open() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("backup-decline");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    submit(&mut app, "backup create");
+    assert!(app.is_awaiting_consent());
+    let focus = app.view().focus;
+    press(&mut app, Key::Tab);
+    assert!(app.is_awaiting_consent());
+    assert_eq!(app.view().focus, focus, "focus stays with the question");
+    let result = app
+        .tick(
+            &[TermEvent::Key(Key::Esc)],
+            &mut NullSource,
+            &mut NullRenderer,
+        )
+        .expect("ticking an in-memory app never fails");
+    settle(&mut app);
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert!(!result.quit, "Esc answered the question; it did not quit");
+    assert!(!app.is_awaiting_consent());
+    assert_eq!(
+        app.view().command_feedback.as_deref(),
+        Some("left undone: /backup create")
+    );
+}
+
+/// The same verb inspects without its repair flag and, with it, recomposes —
+/// which is asked about, naming the relaunch it ends in; saying no repairs
+/// nothing.
+#[test]
+fn diagnostics_with_repair_is_raised_and_asked_about_and_declining_repairs_nothing() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("doctor-repair");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    submit(&mut app, "doctor --fix");
+    let asked = app.view().result_block.clone().expect("a question");
+    let waiting = app.is_awaiting_consent();
+    press(&mut app, Key::Char('n'));
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert!(waiting, "{:?}", asked.lines);
+    assert!(
+        asked.lines[0].contains("recompose, applied by relaunch"),
+        "{:?}",
+        asked.lines
+    );
+    assert!(
+        asked
+            .lines
+            .iter()
+            .any(|l| l == "will run: cronus doctor --fix"),
+        "{:?}",
+        asked.lines
+    );
+    assert_eq!(
+        app.view().command_feedback.as_deref(),
+        Some("left undone: /doctor --fix")
+    );
+}
+
+/// A change that takes effect in place is asked about and, once agreed to,
+/// made at once and seen afterwards in the surface's own listing — an agent
+/// definition disabled is no longer offered, and enabled again it is.
+#[test]
+fn an_agent_definition_is_disabled_and_enabled_again_from_inside() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("registry-toggle");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    agree(&mut app, "registry create reviewer reviews-diffs");
+    let before = submit_block(&mut app, "registry list").expect("a listing");
+    let disabled = agree(&mut app, "registry disable reviewer");
+    let while_disabled = submit_block(&mut app, "registry list").expect("a listing");
+    let enabled = agree(&mut app, "registry enable reviewer");
+    let after = submit_block(&mut app, "registry list").expect("a listing");
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    let offers =
+        |block: &cronus_tui::ResultBlock| block.lines.iter().any(|l| l.contains("reviewer"));
+    assert!(offers(&before), "{:?}", before.lines);
+    assert!(
+        disabled.lines.iter().any(|l| l.contains("enabled: false")),
+        "{:?}",
+        disabled.lines
+    );
+    assert!(!offers(&while_disabled), "{:?}", while_disabled.lines);
+    assert!(
+        enabled.lines.iter().any(|l| l.contains("enabled: true")),
+        "{:?}",
+        enabled.lines
+    );
+    assert!(offers(&after), "{:?}", after.lines);
+}
+
+/// Work running beside the change refuses it before the person is asked,
+/// names what is running, and queues nothing; once the work has ended the
+/// same line is asked about.
+#[test]
+fn a_recomposing_change_is_refused_while_work_runs_and_asked_about_once_it_has_ended() {
+    let _env = lock_portable_dir_env();
+    let base = isolated_portable_dir("recompose-refused");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("creatable");
+    unsafe { std::env::set_var("CRONUS_PORTABLE_DIR", &base) };
+
+    let mut app = real_app();
+    let running = cronus_core::endpoint::begin_work(
+        &cronus_core::endpoint::machine_root(),
+        cronus_core::endpoint::ledger::WorkKind::AgentTurn,
+        "s-9",
+    )
+    .expect("work can begin");
+    let refused = submit_block(&mut app, "registry disable reviewer").expect("an answer");
+    let asked_while_running = app.is_awaiting_consent();
+    drop(running);
+    submit(&mut app, "registry disable reviewer");
+    let asked_afterwards = app.is_awaiting_consent();
+    press(&mut app, Key::Char('n'));
+
+    unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };
+    let _ = std::fs::remove_dir_all(&base);
+
+    assert!(
+        !asked_while_running,
+        "nobody is asked to agree to a refusal"
+    );
+    assert!(
+        refused.lines[0].starts_with("not applied —"),
+        "{:?}",
+        refused.lines
+    );
+    assert!(
+        refused.lines[0].contains("an agent turn (s-9)"),
+        "{:?}",
+        refused.lines
+    );
+    assert!(
+        refused
+            .lines
+            .iter()
+            .any(|l| l.contains("nothing was changed")),
+        "{:?}",
+        refused.lines
+    );
+    assert!(
+        asked_afterwards,
+        "the work ended, so the change can be asked about"
     );
 }
 
@@ -404,7 +856,7 @@ fn an_excluded_installation_verb_is_explained_rather_than_called_unknown() {
 #[test]
 fn the_next_keystroke_dismisses_the_result_block() {
     let mut app = real_app();
-    assert!(submit_block(&mut app, "backup create").is_some());
+    assert!(submit_block(&mut app, "ext remove demo/x").is_some());
     app.tick(
         &[TermEvent::Key(Key::Char('x'))],
         &mut NullSource,
@@ -495,8 +947,29 @@ fn the_sessions_screen_shows_a_real_journal_through_the_production_source() {
         app.tick(&events, &mut source, &mut NullRenderer)
             .expect("ticking never fails");
     };
-    tick(&mut app, None); // first poll brings the sessions list in
+    // The production source reads on a thread of its own: tick until the
+    // sessions list has arrived, then until the conversation has.
+    let arrived = |app: &App| {
+        matches!(
+            &app.view().snapshot.session_list,
+            cronus_tui::Projection::Available(list) if !list.rows.is_empty()
+        )
+    };
+    for _ in 0..2000 {
+        if arrived(&app) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        tick(&mut app, None);
+    }
     tick(&mut app, Some(Key::F(4)));
+    for _ in 0..2000 {
+        if !app.is_busy() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        tick(&mut app, None);
+    }
     let transcript = app.view().transcript.clone();
 
     unsafe { std::env::remove_var("CRONUS_PORTABLE_DIR") };

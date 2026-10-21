@@ -1277,33 +1277,44 @@ mod tests {
     #[test]
     fn probe_classifies_a_closed_port_as_definitively_unreachable() {
         // Bind to let the OS assign a free port, then drop the listener —
-        // the port is now provably closed on this host.
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
-        let port = listener.local_addr().expect("local addr").port();
-        drop(listener);
+        // the port is now provably closed on this host. Between the drop and
+        // the probe another process on the host may bind that very port (the
+        // test binaries of a workspace run side by side, and some of them
+        // listen), in which case the probe is right to say `Reachable` and the
+        // test has not been given a closed port; it takes a fresh one.
+        let mut last = None;
+        for _ in 0..8 {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
+            let port = listener.local_addr().expect("local addr").port();
+            drop(listener);
 
-        let profile = EndpointProfile::new(
-            format!("http://127.0.0.1:{port}"),
-            ProtocolFamily::Native,
-            caps(),
-        )
-        .expect("loopback profile");
+            let profile = EndpointProfile::new(
+                format!("http://127.0.0.1:{port}"),
+                ProtocolFamily::Native,
+                caps(),
+            )
+            .expect("loopback profile");
 
-        // A closed port normally resets the connection immediately
-        // (`ConnectionRefused`). Some sandboxed/virtualized network layers
-        // (confirmed empirically for this execution environment) instead
-        // suppress the RST and let the connect attempt run out the clock,
-        // which this probe honestly reports as `Timeout` rather than
-        // fabricating a refusal it never observed (see the `Err(_) =>
-        // Timeout` fallback above) — both outcomes agree the endpoint is
-        // not serving, which is what this test asserts.
-        let outcome = profile.probe_with_timeout(Duration::from_millis(300));
-        assert!(
-            matches!(
+            // A closed port normally resets the connection immediately
+            // (`ConnectionRefused`). Some sandboxed/virtualized network layers
+            // (confirmed empirically for this execution environment) instead
+            // suppress the RST and let the connect attempt run out the clock,
+            // which this probe honestly reports as `Timeout` rather than
+            // fabricating a refusal it never observed (see the `Err(_) =>
+            // Timeout` fallback above) — both outcomes agree the endpoint is
+            // not serving, which is what this test asserts.
+            let outcome = profile.probe_with_timeout(Duration::from_millis(300));
+            if matches!(
                 outcome,
                 ProbeOutcome::ConnectionRefused | ProbeOutcome::Timeout
-            ),
-            "a closed port must classify as refused or (honestly) timed-out, got {outcome:?}"
+            ) {
+                return;
+            }
+            last = Some(outcome);
+        }
+        panic!(
+            "a closed port must classify as refused or (honestly) timed-out, got {last:?} \
+             on every one of eight fresh ports"
         );
     }
 

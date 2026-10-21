@@ -36,6 +36,7 @@ mod findings;
 mod fixtures;
 mod harness;
 mod projection;
+mod renderings;
 mod report;
 
 pub use findings::{
@@ -47,4 +48,8 @@ pub use fixtures::{
 };
 pub use harness::{check_outcomes, check_schema, check_surface_set, run};
 pub use projection::SurfaceProjection;
-pub use report::{ConformanceReport, DeclaredExclusion};
+pub use renderings::{
+    InstallationFixture, InstallationRendering, InstallationState, Shown, Signal,
+    check_installation_renderings, installation_fixtures,
+};
+pub use report::{ConformanceReport, DeclaredExclusion, RenderingProblem};

@@ -8,7 +8,8 @@ use nodus::validator::Severity;
 use nodus::workflows::{self, RunOptions, TranspileMode};
 use nodus::{AuditProvider, ExecutionEvent, ExecutionMode, RunManifest, RunResult};
 
-use super::{core_id, flag_arg, opt_text_arg, text_arg};
+use super::{begin_work, core_id, flag_arg, opt_text_arg, text_arg};
+use crate::endpoint::ledger::WorkKind;
 
 pub(super) fn register(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
     register_scaffold(registry, dispatcher);
@@ -80,6 +81,8 @@ fn register_scaffold(registry: &mut InvocableRegistry, dispatcher: &mut Dispatch
                 None if name.ends_with(".nodus") => std::path::PathBuf::from(name),
                 None => std::path::PathBuf::from(format!("{name}.nodus")),
             };
+            // Relative to where the caller stands, not where this process does.
+            let dest = crate::paths::from_caller(&dest);
             if dest.exists() {
                 return Outcome::Unavailable {
                     reason: format!("file already exists: {}", dest.display()),
@@ -131,7 +134,7 @@ fn register_validate(registry: &mut InvocableRegistry, dispatcher: &mut Dispatch
     dispatcher.attach(
         id,
         Arc::new(|args| {
-            let file = std::path::PathBuf::from(text_arg(args, "file"));
+            let file = crate::paths::from_caller(std::path::Path::new(text_arg(args, "file")));
             let source = match std::fs::read_to_string(&file) {
                 Ok(s) => s,
                 Err(e) => {
@@ -228,7 +231,7 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
     dispatcher.attach(
         id,
         Arc::new(|args| {
-            let file = std::path::PathBuf::from(text_arg(args, "file"));
+            let file = crate::paths::from_caller(std::path::Path::new(text_arg(args, "file")));
             let source = match std::fs::read_to_string(&file) {
                 Ok(s) => s,
                 Err(e) => {
@@ -256,6 +259,11 @@ fn register_run(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
                         };
                     }
                 },
+            };
+            // A run has a lifetime: it is registered before it starts.
+            let _work = match begin_work(WorkKind::WorkflowRun, filename.clone()) {
+                Ok(work) => work,
+                Err(refused) => return refused,
             };
             run_outcome(&source, &filename, parsed_input)
         }),
@@ -443,7 +451,7 @@ fn register_transpile(registry: &mut InvocableRegistry, dispatcher: &mut Dispatc
     dispatcher.attach(
         id,
         Arc::new(|args| {
-            let file = std::path::PathBuf::from(text_arg(args, "file"));
+            let file = crate::paths::from_caller(std::path::Path::new(text_arg(args, "file")));
             let human = flag_arg(args, "human");
             let compact = flag_arg(args, "compact");
             // The pre-migration grammar enforced `--human`/`--compact`

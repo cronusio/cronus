@@ -2,7 +2,7 @@
 id       = "check-on-the-installation-without-leaving-the-terminal-ui"
 tier     = "short"
 surfaces = ["tui", "cli"]
-covers   = ["status", "doctor", "backup.list", "backup.create", "workspace.list", "ext.list"]
+covers   = ["status", "doctor", "backup.list", "backup.create", "workspace.list", "workspace.create", "activation.enable", "ext.list"]
 roles    = ["owner"]
 vantage  = "builtin-help"
 world    = "seeded-small"
@@ -14,7 +14,7 @@ at    = "asks for the health check a second time, now with the repair option, ex
 
 [[perturbation]]
 class = "surface-crossing"
-at    = "having looked around from inside the terminal UI, wants a backup taken before trying something risky and has to decide whether to do that here or in a shell"
+at    = "having looked around from inside the terminal UI, wants a backup taken before trying something risky and has to decide whether to do that here, where it is asked about first, or in a shell"
 
 [[obligation]]
 id         = "the-installation-commands-are-found-from-the-listing-alone"
@@ -29,11 +29,23 @@ decided_by = "observation-of-output"
 evidence   = "the finding lines shown in the terminal UI's result block are the same lines the shell's diagnostics prints for the same workspace, or both report that all checks passed"
 
 [[obligation]]
-id         = "a-change-asked-for-inside-is-left-undone-and-points-to-the-shell"
-statement  = "asking the terminal UI to take a backup makes no backup and names the shell command that does"
+id         = "a-backup-asked-for-inside-is-made-only-after-saying-yes"
+statement  = "asking the terminal UI to take a backup shows the exact command it will run and makes no backup until the person agrees"
 decided_by = "observation-of-state"
-evidence   = "listing backups after the request shows no new backup, and the result block names a shell command the person could run to take it"
+evidence   = "after the request and before any answer, listing backups shows no new backup and the screen shows the command it will run; after declining there is still none; after agreeing the backup is listed and the result names it"
 positive_control = "replays/backup-create-from-the-shell-succeeds.toml"
+
+[[obligation]]
+id         = "background-activation-is-explained-in-plain-words-before-it-is-agreed-to"
+statement  = "asking the terminal UI to enable background activation shows, before any answer, what the person would be letting Cronus do while they are away"
+decided_by = "judgement"
+evidence   = "reading only the question, a first-time reader can say that Cronus will run unattended, call models and spend allowance, and can tell what answering yes and no each do"
+
+[[obligation]]
+id         = "a-change-the-terminal-ui-cannot-carry-out-points-to-the-shell"
+statement  = "asking the terminal UI for a change it cannot carry out answers with the shell command that carries it out and says the request is left for the shell"
+decided_by = "observation-of-output"
+evidence   = "after asking to enable background activation for the whole system, the result block says the request was left for the shell and names a shell command the person could run to enable it"
 
 [[obligation]]
 id         = "a-refusal-tells-a-first-time-reader-what-to-do-next"

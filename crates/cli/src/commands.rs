@@ -1,11 +1,52 @@
+// ─── answers from the core ────────────────────────────────────────────────────
+
+/// The text of a named field in a record answer; empty when it is absent.
+pub(crate) fn text_of<'a>(
+    fields: &'a [(String, cronus_contract::OutcomeValue)],
+    name: &str,
+) -> &'a str {
+    fields
+        .iter()
+        .find_map(|(k, v)| match v {
+            cronus_contract::OutcomeValue::Text(t) if k == name => Some(t.as_str()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// The count in a named field of a record answer; zero when it is absent.
+pub(crate) fn count_of(fields: &[(String, cronus_contract::OutcomeValue)], name: &str) -> i64 {
+    fields
+        .iter()
+        .find_map(|(k, v)| match v {
+            cronus_contract::OutcomeValue::Integer(n) if k == name => Some(*n),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Report an answer that is not the success the caller was waiting for: a
+/// rejection or an unavailable subject becomes the line `error: …` and exit
+/// code 1, as every installation verb has always ended.
+pub(crate) fn fail_with(outcome: cronus_contract::Outcome) -> i32 {
+    use cronus_contract::Outcome;
+    match outcome {
+        Outcome::Rejected(rejection) => eprintln!("error: {}", rejection.detail),
+        Outcome::Unavailable { reason } => eprintln!("error: {reason}"),
+        other => eprintln!("error: unexpected answer {other:?}"),
+    }
+    1
+}
+
 // ─── init ─────────────────────────────────────────────────────────────────────
 
 pub(crate) mod init {
     use std::path::{Path, PathBuf};
 
-    use cronus_core::state;
+    use cronus_core::installation::carry_out;
 
-    use crate::output::{Context, describe_io_error, json_escape};
+    use crate::commands::{fail_with, text_of};
+    use crate::output::{Context, json_escape};
 
     pub fn run(path: Option<PathBuf>, ctx: &Context) -> i32 {
         let dir =
@@ -18,39 +59,23 @@ pub(crate) mod init {
     }
 
     fn run_at(target: &Path, ctx: &Context) -> i32 {
-        let already = target.join("app.json").exists();
-        // A project-local root sits next to the project's own files, so it
-        // also gets the version-control exclusion that keeps office state out
-        // of a commit.
-        match state::bootstrap_project_local(target) {
-            Ok(()) => {
-                if already {
-                    if ctx.is_json() {
-                        let p = json_escape(&target.display().to_string());
-                        println!("{{\"result\":\"already-initialized\",\"path\":\"{p}\"}}");
-                    } else {
-                        println!("Workspace already initialized: {}", target.display());
-                    }
+        use cronus_contract::{Outcome, OutcomeValue};
+        match carry_out::init(target) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let (result, path) = (text_of(&fields, "result"), text_of(&fields, "path"));
+                if ctx.is_json() {
+                    println!(
+                        "{{\"result\":\"{result}\",\"path\":\"{}\"}}",
+                        json_escape(path)
+                    );
+                } else if result == "already-initialized" {
+                    println!("Workspace already initialized: {path}");
                 } else {
-                    let abs = target
-                        .canonicalize()
-                        .unwrap_or_else(|_| target.to_path_buf());
-                    let shown = cronus_core::paths::display_clean(&abs);
-                    if ctx.is_json() {
-                        println!(
-                            "{{\"result\":\"initialized\",\"path\":\"{}\"}}",
-                            json_escape(&shown)
-                        );
-                    } else {
-                        println!("Initialized: {shown}");
-                    }
+                    println!("Initialized: {path}");
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {}", describe_io_error(&e, target));
-                1
-            }
+            other => fail_with(other),
         }
     }
 
@@ -337,7 +362,8 @@ pub(crate) mod doctor {
 pub(crate) mod backup_cmd {
     use std::path::{Path, PathBuf};
 
-    use cronus_core::backup::{self, BackupOptions};
+    use cronus_core::backup;
+    use cronus_core::installation::carry_out;
 
     use crate::output::{Context, json_escape};
 
@@ -374,25 +400,38 @@ pub(crate) mod backup_cmd {
         include_logs: bool,
         ctx: &Context,
     ) -> i32 {
-        let options = BackupOptions { include_logs };
-        match backup::create(state_root, backups_dir, to, options) {
-            Ok(backup_ref) => {
-                // A mixed-separator path (an env-var override, a
-                // caller-supplied --to) must display consistently.
-                let shown = cronus_core::paths::display_clean(&backup_ref.path);
+        use cronus_contract::{Outcome, OutcomeValue};
+        // The backup itself is the core's, shared with every surface that can
+        // take one; only the rendering is this frontend's.
+        match carry_out::backup_create(state_root, backups_dir, to, include_logs) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let text = |name: &str| {
+                    fields
+                        .iter()
+                        .find_map(|(k, v)| match v {
+                            OutcomeValue::Text(t) if k == name => Some(t.as_str()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+                let (id, shown) = (text("id"), text("path"));
                 if ctx.is_json() {
                     println!(
                         "{{\"id\":\"{}\",\"path\":\"{}\"}}",
-                        json_escape(&backup_ref.id),
-                        json_escape(&shown)
+                        json_escape(id),
+                        json_escape(shown)
                     );
                 } else {
-                    println!("backup created: {} ({shown})", backup_ref.id);
+                    println!("backup created: {id} ({shown})");
                 }
                 0
             }
-            Err(err) => {
-                eprintln!("backup failed: {err}");
+            Outcome::Unavailable { reason } => {
+                eprintln!("{reason}");
+                1
+            }
+            other => {
+                eprintln!("backup failed: unexpected answer {other:?}");
                 1
             }
         }
@@ -446,25 +485,22 @@ pub(crate) mod backup_cmd {
     }
 
     fn restore_at(state_root: &Path, backups_dir: &Path, backup_id: &str, ctx: &Context) -> i32 {
-        let Ok(backups) = backup::list(backups_dir) else {
-            eprintln!("could not read backups directory");
-            return 1;
-        };
-        let Some(backup_ref) = backups.into_iter().find(|b| b.id == backup_id) else {
-            eprintln!("backup not found: {backup_id}");
-            return 1;
-        };
-        match backup::restore(&backup_ref, state_root) {
-            Ok(()) => {
+        use cronus_contract::Outcome;
+        use cronus_core::installation::carry_out::recompose;
+
+        // Restoring is the core's, shared with every surface that can do it.
+        match recompose::restore(state_root, backups_dir, backup_id) {
+            Outcome::Value(_) => {
                 if !ctx.is_json() {
                     println!("restored {backup_id} into {}", state_root.display());
                 }
                 0
             }
-            Err(err) => {
-                eprintln!("restore failed: {err}");
+            Outcome::Unavailable { reason } => {
+                eprintln!("{reason}");
                 1
             }
+            other => crate::commands::fail_with(other),
         }
     }
 
@@ -534,9 +570,11 @@ pub(crate) mod backup_cmd {
 pub(crate) mod workspace {
     use std::path::{Path, PathBuf};
 
+    use cronus_core::installation::carry_out;
     use cronus_core::installation::inspect::{self, open_workspace_manager as open_manager};
-    use cronus_core::workspace::{WorkspaceId, WorkspaceTemplate};
+    use cronus_core::workspace::WorkspaceId;
 
+    use crate::commands::{fail_with, text_of};
     use crate::output::{Context, json_escape};
 
     // Reached directly from `crate::installation::dispatch` now — the
@@ -557,21 +595,7 @@ pub(crate) mod workspace {
     }
 
     fn create_inner(id: &str, name: Option<&str>, path: Option<&Path>, ctx: &Context) -> i32 {
-        if cronus_core::dev_office_workspace::is_reserved_dev_workspace_id(id) {
-            eprintln!("error: '{id}' is a reserved system workspace id and cannot be created here");
-            return 1;
-        }
-        let ws_id = match parse_id(id) {
-            Ok(i) => i,
-            Err(e) => {
-                eprintln!("error: {e}");
-                return 1;
-            }
-        };
-        let ws_name = name.unwrap_or(id);
-        let ws_path = path
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        use cronus_contract::{Outcome, OutcomeValue};
         let mgr = match open_manager() {
             Ok(m) => m,
             Err(e) => {
@@ -579,20 +603,39 @@ pub(crate) mod workspace {
                 return 1;
             }
         };
-        match mgr.create(&ws_id, ws_name, &ws_path, WorkspaceTemplate::Default) {
-            Ok(ws) => {
+        // The workspace itself is the core's, shared with every surface that
+        // can create one; only the rendering is this frontend's.
+        match carry_out::workspace_create(&mgr, id, name, path) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let text = |wanted: &str| {
+                    fields
+                        .iter()
+                        .find_map(|(k, v)| match v {
+                            OutcomeValue::Text(t) if k == wanted => Some(t.as_str()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"created\",\"id\":\"{}\"}}",
-                        crate::output::json_escape(&ws.id.to_string())
+                        crate::output::json_escape(text("id"))
                     );
                 } else {
-                    println!("Created workspace: {} ({})", ws.id, ws.name);
+                    println!("Created workspace: {} ({})", text("id"), text("name"));
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
+            Outcome::Rejected(rejection) => {
+                eprintln!("error: {}", rejection.detail);
+                1
+            }
+            Outcome::Unavailable { reason } => {
+                eprintln!("error: {reason}");
+                1
+            }
+            other => {
+                eprintln!("error: unexpected answer {other:?}");
                 1
             }
         }
@@ -654,13 +697,12 @@ pub(crate) mod workspace {
     }
 
     pub(crate) fn switch(id: String, ctx: &Context) -> i32 {
-        let ws_id = match parse_id(&id) {
-            Ok(i) => i,
-            Err(e) => {
-                eprintln!("error: {e}");
-                return 1;
-            }
-        };
+        use cronus_contract::{Outcome, OutcomeValue};
+        // A malformed id is refused before the registry is touched.
+        if let Err(e) = parse_id(&id) {
+            eprintln!("error: {e}");
+            return 1;
+        }
         let mgr = match open_manager() {
             Ok(m) => m,
             Err(e) => {
@@ -668,37 +710,34 @@ pub(crate) mod workspace {
                 return 1;
             }
         };
-        match mgr.set_active(&ws_id) {
-            Ok(()) => {
+        match carry_out::workspace_switch(&mgr, &id) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let id = text_of(&fields, "id");
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"switched\",\"id\":\"{}\"}}",
-                        crate::output::json_escape(&ws_id.to_string())
+                        crate::output::json_escape(id)
                     );
                 } else {
-                    println!("Active workspace: {ws_id}");
+                    println!("Active workspace: {id}");
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
-            }
+            other => fail_with(other),
         }
     }
 
     pub(crate) fn delete(id: String, ctx: &Context) -> i32 {
+        use cronus_contract::{Outcome, OutcomeValue};
+        // A reserved or malformed id is refused before the registry is touched.
         if cronus_core::dev_office_workspace::is_reserved_dev_workspace_id(&id) {
             eprintln!("error: '{id}' is a reserved system workspace and cannot be deleted here");
             return 1;
         }
-        let ws_id = match parse_id(&id) {
-            Ok(i) => i,
-            Err(e) => {
-                eprintln!("error: {e}");
-                return 1;
-            }
-        };
+        if let Err(e) = parse_id(&id) {
+            eprintln!("error: {e}");
+            return 1;
+        }
         let mgr = match open_manager() {
             Ok(m) => m,
             Err(e) => {
@@ -706,26 +745,20 @@ pub(crate) mod workspace {
                 return 1;
             }
         };
-        match mgr.delete(&ws_id) {
-            Ok(true) => {
+        match carry_out::workspace_delete(&mgr, &id) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let id = text_of(&fields, "id");
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"deleted\",\"id\":\"{}\"}}",
-                        crate::output::json_escape(&ws_id.to_string())
+                        crate::output::json_escape(id)
                     );
                 } else {
-                    println!("Deleted workspace: {ws_id}");
+                    println!("Deleted workspace: {id}");
                 }
                 0
             }
-            Ok(false) => {
-                eprintln!("error: workspace not found: {ws_id}");
-                1
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
-            }
+            other => fail_with(other),
         }
     }
 
@@ -916,10 +949,7 @@ pub(crate) mod ext {
     use std::io::{self, IsTerminal, Write};
     use std::path::PathBuf;
 
-    use cronus_core::extensions::{
-        ExtensionKind, ExtensionManifest, ExtensionPermissions, ExtensionRegistry, ExtensionSource,
-        ExtensionState,
-    };
+    use cronus_core::extensions::{ExtensionManifest, ExtensionRegistry};
 
     use crate::commands::consent::{self, Gate};
     use crate::output::{Context, describe_io_error, json_escape};
@@ -935,16 +965,6 @@ pub(crate) mod ext {
             Err(e) => {
                 eprintln!("error: {e}");
                 None
-            }
-        }
-    }
-
-    fn save_registry(registry: &ExtensionRegistry) -> bool {
-        match registry.save() {
-            Ok(()) => true,
-            Err(e) => {
-                eprintln!("error: could not persist the extension registry: {e}");
-                false
             }
         }
     }
@@ -979,59 +999,23 @@ pub(crate) mod ext {
     }
 
     pub(crate) fn add(path: PathBuf, ctx: &Context) -> i32 {
-        let json = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("error: {}", describe_io_error(&e, &path));
-                return 1;
-            }
-        };
-        let manifest = match parse_manifest(&json) {
-            Some(m) => m,
-            None => {
-                eprintln!("error: invalid manifest (missing id, name, or version)");
-                return 1;
-            }
-        };
-        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("ext");
-        let scan = cronus_core::tool_security::SkillScanner::scan_content(&json, fname);
-        if !scan.is_safe {
-            eprintln!(
-                "error: refused: the scan found {} finding(s) at risk {} ({}) — run 'cronus ext scan {}' for detail",
-                scan.findings.len(),
-                scan.risk_score,
-                scan.risk_band.as_str(),
-                path.display()
-            );
-            return 1;
-        }
-        let Some(mut registry) = open_registry() else {
-            return 1;
-        };
-        match registry.register(manifest) {
-            Ok(()) => {
-                if !save_registry(&registry) {
-                    return 1;
-                }
+        use cronus_contract::{Outcome, OutcomeValue};
+        use cronus_core::installation::carry_out::catalogs;
+
+        match catalogs::ext_add_default(&path) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let findings = crate::commands::count_of(&fields, "findings");
+                let band = crate::commands::text_of(&fields, "risk_band");
                 if ctx.is_json() {
                     println!(
-                        "{{\"result\":\"registered\",\"findings\":{},\"risk_band\":\"{}\"}}",
-                        scan.findings.len(),
-                        scan.risk_band.as_str()
+                        "{{\"result\":\"registered\",\"findings\":{findings},\"risk_band\":\"{band}\"}}"
                     );
                 } else {
-                    println!(
-                        "Extension registered ({} scan finding(s), risk {}).",
-                        scan.findings.len(),
-                        scan.risk_band.as_str()
-                    );
+                    println!("Extension registered ({findings} scan finding(s), risk {band}).");
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
-            }
+            other => crate::commands::fail_with(other),
         }
     }
 
@@ -1066,24 +1050,11 @@ pub(crate) mod ext {
         0
     }
 
-    fn declared(items: &[String]) -> String {
-        if items.is_empty() {
-            "(none declared)".to_string()
-        } else {
-            items.join(", ")
-        }
-    }
-
     fn confirm_grant(manifest: &ExtensionManifest) -> bool {
-        println!(
-            "Activating '{}' ({} v{}) grants it what its manifest declares:",
-            manifest.id,
-            manifest.kind.as_str(),
-            manifest.version
-        );
-        println!("  filesystem: {}", declared(&manifest.permissions.fs));
-        println!("  network:    {}", declared(&manifest.permissions.network));
-        println!("  secrets:    {}", declared(&manifest.permissions.secrets));
+        // The words are the core's, so every surface that asks shows the same.
+        for line in cronus_core::installation::carry_out::recompose::grant_lines(manifest) {
+            println!("{line}");
+        }
         print!("Type 'yes' to confirm, anything else to cancel: ");
         let _ = io::stdout().flush();
         let mut input = String::new();
@@ -1094,7 +1065,7 @@ pub(crate) mod ext {
     }
 
     pub(crate) fn activate(id: String, acknowledged: bool, ctx: &Context) -> i32 {
-        let Some(mut registry) = open_registry() else {
+        let Some(registry) = open_registry() else {
             return 1;
         };
         let Some(manifest) = registry.manifest(&id).cloned() else {
@@ -1113,13 +1084,11 @@ pub(crate) mod ext {
             }
             Gate::Proceed => {}
         }
-        // State machine: Discovered → Permitted → Active. Try the intermediate step first.
-        let _ = registry.transition(&id, ExtensionState::Permitted);
-        match registry.transition(&id, ExtensionState::Active) {
-            Ok(()) => {
-                if !save_registry(&registry) {
-                    return 1;
-                }
+        // The activation itself is the core's; the consent was collected
+        // above, so the acknowledgement it requires is given here.
+        use cronus_contract::Outcome;
+        match cronus_core::installation::carry_out::recompose::ext_activate_default(&id, true) {
+            Outcome::Value(_) => {
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"activated\",\"id\":\"{}\"}}",
@@ -1130,22 +1099,14 @@ pub(crate) mod ext {
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
-            }
+            other => crate::commands::fail_with(other),
         }
     }
 
     pub(crate) fn deactivate(id: String, ctx: &Context) -> i32 {
-        let Some(mut registry) = open_registry() else {
-            return 1;
-        };
-        match registry.transition(&id, ExtensionState::Inactive) {
-            Ok(()) => {
-                if !save_registry(&registry) {
-                    return 1;
-                }
+        use cronus_contract::Outcome;
+        match cronus_core::installation::carry_out::recompose::ext_deactivate_default(&id) {
+            Outcome::Value(_) => {
                 if ctx.is_json() {
                     println!(
                         "{{\"result\":\"deactivated\",\"id\":\"{}\"}}",
@@ -1156,81 +1117,17 @@ pub(crate) mod ext {
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
-            }
-        }
-    }
-
-    fn parse_manifest(json: &str) -> Option<ExtensionManifest> {
-        let value: serde_json::Value = serde_json::from_str(json).ok()?;
-        let field = |key: &str| value.get(key)?.as_str().map(str::to_string);
-        let id = field("id")?;
-        let name = field("name").unwrap_or_else(|| id.clone());
-        let version = field("version").unwrap_or_else(|| "0.0.0".to_string());
-        Some(ExtensionManifest {
-            id,
-            kind: ExtensionKind::Skill,
-            name,
-            version,
-            source: ExtensionSource::Custom,
-            capabilities: Vec::new(),
-            permissions: ExtensionPermissions::default(),
-        })
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::parse_manifest;
-
-        #[test]
-        fn a_pretty_printed_manifest_parses() {
-            let manifest = parse_manifest(
-                "{\n  \"id\": \"demo/x\",\n  \"name\": \"X\",\n  \"version\": \"2.0.0\"\n}",
-            )
-            .expect("pretty-printed JSON is still JSON");
-            assert_eq!(manifest.id, "demo/x");
-            assert_eq!(manifest.name, "X");
-            assert_eq!(manifest.version, "2.0.0");
-        }
-
-        #[test]
-        fn an_escaped_quote_in_a_field_is_kept_whole() {
-            let manifest =
-                parse_manifest(r#"{"id":"demo/x","name":"say \"hi\""}"#).expect("a valid manifest");
-            assert_eq!(manifest.name, "say \"hi\"");
-        }
-
-        #[test]
-        fn name_and_version_default_when_absent() {
-            let manifest = parse_manifest(r#"{"id":"demo/x"}"#).expect("id alone is enough");
-            assert_eq!(manifest.name, "demo/x");
-            assert_eq!(manifest.version, "0.0.0");
-        }
-
-        #[test]
-        fn a_missing_id_or_non_object_json_is_not_a_manifest() {
-            assert!(parse_manifest(r#"{"name":"no id"}"#).is_none());
-            assert!(parse_manifest(r#"["id","demo/x"]"#).is_none());
-            assert!(parse_manifest("not json at all").is_none());
+            other => crate::commands::fail_with(other),
         }
     }
 
     pub(crate) mod skill {
-        use std::collections::HashMap;
         use std::path::Path;
 
-        use cronus_core::extensions::{
-            ExtensionKind, ExtensionManifest, ExtensionPermissions, ExtensionSource,
-        };
-        use cronus_core::skills::convert::{
-            self, ConvertError, ForeignItem, ForeignKind, WitnessStatus,
-        };
+        use cronus_core::installation::carry_out::catalogs;
         use cronus_core::skills::store::{SkillId, SkillStore, SkillTier};
-        use cronus_core::skills::synthesize::{self, AuthoredSkill, SynthesizeError};
 
-        use crate::output::{Context, describe_io_error};
+        use crate::output::Context;
 
         /// Single-name lookups aren't pack-qualified at the CLI surface yet;
         /// everything resolves under one placeholder pack until a real
@@ -1241,139 +1138,43 @@ pub(crate) mod ext {
         // installation half's own generated grammar owns `ext skill`, so no
         // `SkillCommand`-shaped wrapper is needed here any more.
 
-        /// Best-effort kind inference from a single imported file's
-        /// extension. A real foreign package spans many files classified by
-        /// its own source adapter; this binding handles the
-        /// single-file case honestly until a directory-walking adapter
-        /// exists.
-        fn infer_kind(path: &Path) -> ForeignKind {
-            match path.extension().and_then(|e| e.to_str()) {
-                Some("md" | "txt") => ForeignKind::Instruction,
-                Some("sh" | "py" | "ps1" | "bat") => ForeignKind::Script,
-                Some("nd" | "yaml" | "yml") => ForeignKind::ProceduralStep,
-                _ => ForeignKind::Asset,
-            }
-        }
-
         pub(crate) fn import(path: &Path, ctx: &Context) -> i32 {
-            let content = match std::fs::read_to_string(path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("error: {}", describe_io_error(&e, path));
-                    return 1;
-                }
-            };
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("imported")
-                .to_string();
-            let item = ForeignItem {
-                path: file_name.clone(),
-                kind: infer_kind(path),
-                content,
-            };
-            let manifest = ExtensionManifest {
-                id: format!("{DEFAULT_PACK}/{file_name}"),
-                kind: ExtensionKind::Skill,
-                name: file_name,
-                version: "0.0.0".to_string(),
-                source: ExtensionSource::Custom, // convert() overrides this regardless
-                capabilities: Vec::new(),
-                permissions: ExtensionPermissions::default(),
-            };
-            // No signed-witness mechanism is wired yet; a single-file CLI
-            // import is treated as pre-verified — a real witness adapter
-            // replaces this input, not this call site, once one exists. No
-            // persisted transpile-mapping table exists yet either, so every
-            // script/procedure degrades honestly rather than being silently
-            // guessed at.
-            match convert::convert(WitnessStatus::Valid, manifest, &[item], &HashMap::new()) {
-                Ok(outcome) => {
+            use cronus_contract::{Outcome, OutcomeValue};
+
+            match catalogs::skill_import_default(path) {
+                Outcome::Value(OutcomeValue::Record(fields)) => {
+                    let (mapped, degraded) = (
+                        crate::commands::count_of(&fields, "mapped"),
+                        crate::commands::count_of(&fields, "degraded"),
+                    );
                     if ctx.is_json() {
-                        println!(
-                            "{{\"mapped\":{},\"degraded\":{}}}",
-                            outcome.report.mapped.len(),
-                            outcome.report.degraded.len()
-                        );
+                        println!("{{\"mapped\":{mapped},\"degraded\":{degraded}}}");
                     } else {
                         println!(
-                            "Imported '{}': {} mapped, {} degraded to instruction-only.",
-                            outcome.package.manifest.id,
-                            outcome.report.mapped.len(),
-                            outcome.report.degraded.len()
+                            "Imported '{}': {mapped} mapped, {degraded} degraded to instruction-only.",
+                            crate::commands::text_of(&fields, "id")
                         );
                     }
                     0
                 }
-                Err(ConvertError::WitnessDenied(status)) => {
-                    eprintln!("error: witness denied: {status:?}");
-                    1
-                }
-                Err(ConvertError::InvalidResult(e)) => {
-                    eprintln!("error: invalid package: {e}");
-                    1
-                }
+                other => crate::commands::fail_with(other),
             }
         }
 
         pub(crate) fn create(prompt: &str, ctx: &Context) -> i32 {
-            let slug = slugify(prompt);
-            let manifest = ExtensionManifest {
-                id: format!("generated/{slug}"),
-                kind: ExtensionKind::Skill,
-                name: slug,
-                version: "0.0.0".to_string(),
-                source: ExtensionSource::Generated, // synthesize() overrides this regardless
-                capabilities: Vec::new(),
-                permissions: ExtensionPermissions::default(),
-            };
-            // The authoring model call is a seam: this binding
-            // lands an honest instruction-only skill from the prompt text
-            // until a model adapter exists — no workflow.nd is fabricated.
-            let authored = AuthoredSkill {
-                manifest,
-                workflow_nd: false,
-                workflow_md: false,
-                assets: Vec::new(),
-            };
-            match synthesize::synthesize(authored) {
-                Ok(outcome) => {
+            use cronus_contract::{Outcome, OutcomeValue};
+
+            match catalogs::skill_create(prompt) {
+                Outcome::Value(OutcomeValue::Record(fields)) => {
+                    let id = crate::commands::text_of(&fields, "id");
                     if ctx.is_json() {
-                        println!(
-                            "{{\"id\":\"{}\",\"status\":\"discovered\"}}",
-                            outcome.package.manifest.id
-                        );
+                        println!("{{\"id\":\"{id}\",\"status\":\"discovered\"}}");
                     } else {
-                        println!(
-                            "Created '{}' (source: generated, pending review).",
-                            outcome.package.manifest.id
-                        );
+                        println!("Created '{id}' (source: generated, pending review).");
                     }
                     0
                 }
-                Err(SynthesizeError::Lint(e)) => {
-                    eprintln!("error: lint failed: {e:?}");
-                    1
-                }
-                Err(SynthesizeError::InvalidResult(e)) => {
-                    eprintln!("error: invalid package: {e}");
-                    1
-                }
-            }
-        }
-
-        fn slugify(prompt: &str) -> String {
-            let slug = prompt
-                .split_whitespace()
-                .take(4)
-                .collect::<Vec<_>>()
-                .join("-")
-                .to_lowercase();
-            if slug.is_empty() {
-                "untitled".to_string()
-            } else {
-                slug
+                other => crate::commands::fail_with(other),
             }
         }
 
@@ -1447,8 +1248,11 @@ pub(crate) mod ext {
             use std::fs;
             use std::path::PathBuf;
 
+            /// A package from outside the office must present a witness that
+            /// verifies, and this build can verify none: the import is denied,
+            /// and what it contains makes no difference.
             #[test]
-            fn import_maps_instruction_and_reports_zero_degraded() {
+            fn import_is_denied_while_no_witness_can_be_verified() {
                 let dir = std::env::temp_dir()
                     .join(format!("cronus-skill-import-{}", std::process::id()));
                 fs::create_dir_all(&dir).unwrap();
@@ -1458,25 +1262,9 @@ pub(crate) mod ext {
                 let ctx = Context::new(OutputFormat::Text);
                 assert_eq!(
                     import(&file, &ctx),
-                    0,
-                    "importing a plain instruction file must succeed"
+                    1,
+                    "an unattested package must be denied, not converted"
                 );
-
-                let _ = fs::remove_dir_all(&dir);
-            }
-
-            #[test]
-            fn import_degrades_an_unmapped_script() {
-                let dir = std::env::temp_dir()
-                    .join(format!("cronus-skill-degrade-{}", std::process::id()));
-                fs::create_dir_all(&dir).unwrap();
-                let file = dir.join("run.sh");
-                fs::write(&file, "#!/bin/sh\necho hi\n").unwrap();
-
-                let ctx = Context::new(OutputFormat::Text);
-                // No transpile mapping exists for this script — it must
-                // degrade to instruction-only, not fail the command.
-                assert_eq!(import(&file, &ctx), 0);
 
                 let _ = fs::remove_dir_all(&dir);
             }
@@ -1492,12 +1280,6 @@ pub(crate) mod ext {
             fn create_lands_an_instruction_only_skill() {
                 let ctx = Context::new(OutputFormat::Text);
                 assert_eq!(create("summarize the weekly report", &ctx), 0);
-            }
-
-            #[test]
-            fn slugify_falls_back_to_untitled_on_empty_prompt() {
-                assert_eq!(slugify("   "), "untitled");
-                assert_eq!(slugify("Draft A Standup Note"), "draft-a-standup-note");
             }
 
             #[test]
@@ -1596,59 +1378,65 @@ pub(crate) mod registry {
     }
 
     pub(crate) fn create(name: String, description: String, ctx: &Context) -> i32 {
-        let mut registry = AgentRegistry::load();
-        let def = AgentRegistry::generate_from_description(&name, &description);
-        let def_name = def.name.clone();
-        registry.register_custom(def);
-        if let Err(e) = registry.save() {
-            eprintln!("error: could not persist the agent registry: {e}");
-            return 1;
+        use cronus_contract::{Outcome, OutcomeValue};
+        use cronus_core::installation::carry_out::catalogs;
+
+        match catalogs::registry_create_default(&name, &description) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let created = crate::commands::text_of(&fields, "name");
+                if ctx.is_json() {
+                    println!(
+                        "{{\"result\":\"created\",\"name\":\"{}\"}}",
+                        crate::output::json_escape(created)
+                    );
+                } else {
+                    println!("Created: {created}");
+                }
+                0
+            }
+            // This verb has always reported a store it cannot write without
+            // the `error:` prefix of the others.
+            Outcome::Unavailable { reason } => {
+                eprintln!("error: {reason}");
+                1
+            }
+            other => crate::commands::fail_with(other),
         }
-        if ctx.is_json() {
-            println!(
-                "{{\"result\":\"created\",\"name\":\"{}\"}}",
-                crate::output::json_escape(&def_name)
-            );
-        } else {
-            println!("Created: {def_name}");
-        }
-        0
     }
 
     pub(crate) fn disable(name: String, ctx: &Context) -> i32 {
-        let mut registry = AgentRegistry::load();
-        registry.apply_user_config(&name, true, None);
-        if let Err(e) = registry.save() {
-            eprintln!("error: could not persist the agent registry: {e}");
-            return 1;
+        set_enabled(name, false, ctx)
+    }
+
+    /// Enable or disable a definition. The change itself is the core's, shared
+    /// with every surface that can make it; only the rendering is this frontend's.
+    fn set_enabled(name: String, enabled: bool, ctx: &Context) -> i32 {
+        use cronus_contract::Outcome;
+        use cronus_core::installation::carry_out::recompose;
+
+        match recompose::registry_set_enabled_default(&name, enabled) {
+            Outcome::Value(_) => {
+                let (word, shown) = if enabled {
+                    ("enabled", "Enabled")
+                } else {
+                    ("disabled", "Disabled")
+                };
+                if ctx.is_json() {
+                    println!(
+                        "{{\"result\":\"{word}\",\"name\":\"{}\"}}",
+                        crate::output::json_escape(&name)
+                    );
+                } else {
+                    println!("{shown}: {name}");
+                }
+                0
+            }
+            other => crate::commands::fail_with(other),
         }
-        if ctx.is_json() {
-            println!(
-                "{{\"result\":\"disabled\",\"name\":\"{}\"}}",
-                crate::output::json_escape(&name)
-            );
-        } else {
-            println!("Disabled: {name}");
-        }
-        0
     }
 
     pub(crate) fn enable(name: String, ctx: &Context) -> i32 {
-        let mut registry = AgentRegistry::load();
-        registry.apply_user_config(&name, false, None);
-        if let Err(e) = registry.save() {
-            eprintln!("error: could not persist the agent registry: {e}");
-            return 1;
-        }
-        if ctx.is_json() {
-            println!(
-                "{{\"result\":\"enabled\",\"name\":\"{}\"}}",
-                crate::output::json_escape(&name)
-            );
-        } else {
-            println!("Enabled: {name}");
-        }
-        0
+        set_enabled(name, true, ctx)
     }
 }
 
@@ -1657,10 +1445,7 @@ pub(crate) mod registry {
 pub(crate) mod activation_cmd {
     use std::io::{self, IsTerminal, Write};
 
-    use cronus_core::activation::{
-        TransitionError, TransitionOutcome, disable as disable_transition,
-        enable as enable_transition,
-    };
+    use cronus_core::installation::carry_out;
     use cronus_core::installation::inspect::activation_state_label;
     use cronus_core::{ActivationMode, ActivationRegistry, default_activation_registry};
 
@@ -1680,21 +1465,6 @@ pub(crate) mod activation_cmd {
         }
     }
 
-    fn transition_error_str(err: &TransitionError) -> String {
-        match err {
-            TransitionError::PriorModeNotRemoved { observed } => {
-                format!("the prior mode could not be verified removed (observed {observed:?})")
-            }
-            TransitionError::RegistrationFailed { detail } => detail.clone(),
-            TransitionError::VerificationFailed { observed } => {
-                format!("registration did not verify (observed {observed:?})")
-            }
-            TransitionError::ConsentMissing { mode } => {
-                format!("no consent recorded for {} mode", mode_str(*mode))
-            }
-        }
-    }
-
     pub(crate) fn status(ctx: &Context) -> i32 {
         let registry = default_activation_registry();
         let label = activation_state_label(&registry.observe());
@@ -1707,14 +1477,17 @@ pub(crate) mod activation_cmd {
     }
 
     fn confirm_disclosure(mode: ActivationMode) -> bool {
-        println!(
-            "Enabling {} background activation lets Cronus run while you are not present.",
-            mode_str(mode)
+        // The words are the core's, so every surface that asks shows the same.
+        let id = cronus_contract::InvocableId::new("core:activation.enable")
+            .expect("a literal invocable id must be well-formed");
+        let mut args = cronus_contract::ArgValues::new();
+        args.insert(
+            "mode",
+            cronus_contract::ArgValue::Text(mode_str(mode).to_string()),
         );
-        println!(
-            "It will call models, spend allowance, and act on your behalf under the \
-             currently configured autonomy level and spend ceiling."
-        );
+        for line in carry_out::disclosure(&id, &args) {
+            println!("{line}");
+        }
         print!("Type 'yes' to confirm, anything else to cancel: ");
         let _ = io::stdout().flush();
         let mut input = String::new();
@@ -1746,43 +1519,47 @@ pub(crate) mod activation_cmd {
             Gate::Proceed => {}
         }
 
+        use cronus_contract::{Outcome, OutcomeValue};
+        // The registration itself is the core's; the consent was collected
+        // above, so the acknowledgement it requires is given here.
         let registry = default_activation_registry();
-        match enable_transition(&registry, target) {
-            Ok(TransitionOutcome::Activated(m)) => {
+        match carry_out::activation_enable(&registry, mode_str(target), true) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let text = |wanted: &str| {
+                    fields
+                        .iter()
+                        .find_map(|(k, v)| match v {
+                            OutcomeValue::Text(t) if k == wanted => Some(t.as_str()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+                let (outcome, mode) = (text("outcome"), text("mode"));
                 if ctx.is_json() {
-                    println!("{{\"outcome\":\"activated\",\"mode\":\"{}\"}}", mode_str(m));
+                    println!("{{\"outcome\":\"{outcome}\",\"mode\":\"{mode}\"}}");
+                } else if outcome == "requires-approval" {
+                    println!("{}", text("note"));
                 } else {
-                    println!("activation enabled: {}", mode_str(m));
+                    println!("activation enabled: {mode}");
                 }
                 0
             }
-            Ok(TransitionOutcome::RequiresApproval(m)) => {
-                if ctx.is_json() {
-                    println!(
-                        "{{\"outcome\":\"requires-approval\",\"mode\":\"{}\"}}",
-                        mode_str(m)
-                    );
-                } else {
-                    println!(
-                        "registered ({}), but the OS requires your approval before it will run — \
-                         see your system's background-items settings",
-                        mode_str(m)
-                    );
-                }
-                0
+            Outcome::Unavailable { reason } => {
+                eprintln!("{reason}");
+                1
             }
-            Ok(TransitionOutcome::Deactivated) => 0, // enable() never returns this in practice
-            Err(err) => {
-                eprintln!("activation enable failed: {}", transition_error_str(&err));
+            other => {
+                eprintln!("activation enable failed: unexpected answer {other:?}");
                 1
             }
         }
     }
 
     pub(crate) fn disable(ctx: &Context) -> i32 {
+        use cronus_contract::Outcome;
         let registry = default_activation_registry();
-        match disable_transition(&registry) {
-            Ok(_) => {
+        match carry_out::activation_disable(&registry) {
+            Outcome::Value(_) => {
                 if ctx.is_json() {
                     println!("{{\"outcome\":\"deactivated\"}}");
                 } else {
@@ -1790,8 +1567,12 @@ pub(crate) mod activation_cmd {
                 }
                 0
             }
-            Err(err) => {
-                eprintln!("activation disable failed: {}", transition_error_str(&err));
+            Outcome::Unavailable { reason } => {
+                eprintln!("{reason}");
+                1
+            }
+            other => {
+                eprintln!("activation disable failed: unexpected answer {other:?}");
                 1
             }
         }
@@ -1804,9 +1585,9 @@ pub(crate) mod archetype_cmd {
     use std::path::PathBuf;
 
     use cronus_core::archetype::{ArchetypeCatalog, ValidationStatus};
-    use cronus_core::installation::inspect::{active_archetype_marker, read_active_archetype};
+    use cronus_core::installation::inspect::read_active_archetype;
 
-    use crate::output::{Context, describe_io_error, json_escape};
+    use crate::output::{Context, json_escape};
 
     // Reached directly from `crate::installation::dispatch` now — the
     // installation half's own generated grammar owns the `archetype`
@@ -1822,10 +1603,6 @@ pub(crate) mod archetype_cmd {
     /// separate fix.
     fn state_dir() -> PathBuf {
         cronus_core::paths::resolve_workspace_root()
-    }
-
-    fn active_marker() -> PathBuf {
-        active_archetype_marker(&state_dir())
     }
 
     fn read_active() -> Option<String> {
@@ -1972,75 +1749,51 @@ pub(crate) mod archetype_cmd {
     }
 
     pub(crate) fn set(id: Option<String>, clear: bool, ctx: &Context) -> i32 {
-        let marker = active_marker();
-        if let Some(parent) = marker.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            eprintln!("error: {}", describe_io_error(&e, parent));
-            return 1;
-        }
+        use cronus_contract::{Outcome, OutcomeValue};
+        use cronus_core::installation::carry_out::recompose;
 
-        if clear {
-            let _ = std::fs::remove_file(&marker);
-            if ctx.is_json() {
-                println!("{{\"active\":null}}");
-            } else {
-                println!("archetype cleared — office is archetype-free");
-            }
-            return 0;
-        }
-
-        let Some(id) = id else {
-            eprintln!("error: provide an archetype id or --clear");
-            return 1;
-        };
-
-        // Only a shippable archetype may be set active; a blocked one is not
-        // usable, and an unknown one is refused (never silently accepted).
-        let catalog = ArchetypeCatalog::program();
-        if catalog.get(&id).is_none() {
-            if catalog.blocked_status(&id).is_some() {
-                eprintln!("error: '{id}' is declared-blocked and cannot be applied");
-            } else {
-                eprintln!("error: archetype not found: {id}");
-            }
-            return 1;
-        }
-
-        if let Err(e) = std::fs::write(&marker, &id) {
-            eprintln!("error: {}", describe_io_error(&e, &marker));
-            return 1;
-        }
-        if ctx.is_json() {
-            println!("{{\"active\":\"{}\"}}", json_escape(&id));
-        } else {
-            println!("archetype set: {id} (expectations re-scoped; staff unchanged)");
-        }
-        0
-    }
-
-    pub(crate) fn create(name: &str, from: &str, ctx: &Context) -> i32 {
-        let catalog = ArchetypeCatalog::program();
-        match catalog.create_from_preset(&state_dir(), name, from) {
-            Ok(custom) => {
+        match recompose::archetype_set(&state_dir(), id.as_deref(), clear) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let active = crate::commands::text_of(&fields, "active");
                 if ctx.is_json() {
-                    println!(
-                        "{{\"id\":\"{}\",\"derived_from\":\"{}\"}}",
-                        json_escape(&custom.definition.id),
-                        json_escape(&custom.derived_from)
-                    );
+                    if clear {
+                        println!("{{\"active\":null}}");
+                    } else {
+                        println!("{{\"active\":\"{}\"}}", json_escape(active));
+                    }
+                } else if clear {
+                    println!("archetype cleared — office is archetype-free");
                 } else {
-                    println!(
-                        "created custom archetype '{}' from preset '{}'",
-                        custom.definition.id, custom.derived_from
-                    );
+                    println!("archetype set: {active} (expectations re-scoped; staff unchanged)");
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                1
+            other => crate::commands::fail_with(other),
+        }
+    }
+
+    pub(crate) fn create(name: &str, from: &str, ctx: &Context) -> i32 {
+        use cronus_contract::{Outcome, OutcomeValue};
+        use cronus_core::installation::carry_out::catalogs;
+
+        match catalogs::archetype_create(&state_dir(), name, from) {
+            Outcome::Value(OutcomeValue::Record(fields)) => {
+                let (id, derived) = (
+                    crate::commands::text_of(&fields, "id"),
+                    crate::commands::text_of(&fields, "derived_from"),
+                );
+                if ctx.is_json() {
+                    println!(
+                        "{{\"id\":\"{}\",\"derived_from\":\"{}\"}}",
+                        json_escape(id),
+                        json_escape(derived)
+                    );
+                } else {
+                    println!("created custom archetype '{id}' from preset '{derived}'");
+                }
+                0
             }
+            other => crate::commands::fail_with(other),
         }
     }
 
@@ -2078,12 +1831,12 @@ pub(crate) mod archetype_cmd {
 pub(crate) mod dev_office_cmd {
     use std::path::PathBuf;
 
-    use cronus_core::auth::{DeveloperAdmissionStore, HumanPrincipal};
+    use cronus_core::installation::carry_out::recompose;
     use cronus_core::installation::inspect::{
         dev_admission_path, dev_tier_label, resolve_dev_tier,
     };
 
-    use crate::output::{Context, describe_io_error};
+    use crate::output::Context;
 
     fn admission_path() -> PathBuf {
         dev_admission_path()
@@ -2107,14 +1860,9 @@ pub(crate) mod dev_office_cmd {
     /// principal — a legitimate admission path, distinct from an *agent*
     /// self-granting through a tool call (no such tool call exists).
     pub(crate) fn admit(ctx: &Context) -> i32 {
-        let path = admission_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match DeveloperAdmissionStore::open(path.clone())
-            .mint(&HumanPrincipal::assert_human_operated())
-        {
-            Ok(()) => {
+        use cronus_contract::Outcome;
+        match recompose::dev_admit_at(&admission_path()) {
+            Outcome::Value(_) => {
                 if ctx.is_json() {
                     println!("{{\"result\":\"admitted\"}}");
                 } else {
@@ -2122,22 +1870,14 @@ pub(crate) mod dev_office_cmd {
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {}", describe_io_error(&e, &path));
-                1
-            }
+            other => crate::commands::fail_with(other),
         }
     }
 
     pub(crate) fn revoke(ctx: &Context) -> i32 {
-        let path = admission_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match DeveloperAdmissionStore::open(path.clone())
-            .revoke(&HumanPrincipal::assert_human_operated())
-        {
-            Ok(()) => {
+        use cronus_contract::Outcome;
+        match recompose::dev_revoke_at(&admission_path()) {
+            Outcome::Value(_) => {
                 if ctx.is_json() {
                     println!("{{\"result\":\"revoked\"}}");
                 } else {
@@ -2145,10 +1885,7 @@ pub(crate) mod dev_office_cmd {
                 }
                 0
             }
-            Err(e) => {
-                eprintln!("error: {}", describe_io_error(&e, &path));
-                1
-            }
+            other => crate::commands::fail_with(other),
         }
     }
 

@@ -21,8 +21,8 @@
 //!   src/lib.rs` (`capabilities_reflect_a_real_per_host_check_not_a_hardcoded_yes`);
 //!   this file proves only that the *type* is representable and distinct
 //!   through the facade.
-//! - `crates/core/src/
-//!   engine_lock.rs`'s own test module, exercised against a real temp
+//! - `crates/core/src/endpoint/
+//!   seat.rs`'s own test module, exercised against a real temp
 //!   directory with real file I/O.
 
 use std::sync::Mutex;

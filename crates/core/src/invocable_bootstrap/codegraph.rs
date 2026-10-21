@@ -5,7 +5,8 @@ use cronus_codegraph::index::CodeIndex;
 use cronus_contract::{Binder, BinderKind, Invocable, Locus, Outcome, OutcomeValue, Stability};
 use cronus_domain::invocable::{Dispatcher, InvocableRegistry, Registrant};
 
-use super::{core_id, text_arg};
+use super::{begin_work, core_id, text_arg};
+use crate::endpoint::ledger::WorkKind;
 
 /// On-disk location of the codegraph index. An index is symbols from a
 /// specific project's own source tree — resolves against the current
@@ -59,7 +60,11 @@ fn register_index(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher)
     dispatcher.attach(
         id,
         Arc::new(|args| {
-            let path = std::path::PathBuf::from(text_arg(args, "path"));
+            let path = crate::paths::from_caller(std::path::Path::new(text_arg(args, "path")));
+            let _work = match begin_work(WorkKind::IndexBuild, path.display().to_string()) {
+                Ok(work) => work,
+                Err(refused) => return refused,
+            };
             let index = match open_index() {
                 Ok(index) => index,
                 Err(reason) => {

@@ -30,7 +30,7 @@ pub mod auth;
 pub mod context_compaction;
 pub mod dev_office_gate;
 pub mod dev_office_workspace;
-pub mod engine_lock;
+pub mod endpoint;
 pub mod inbox;
 pub mod installation;
 pub mod invocable_bootstrap;

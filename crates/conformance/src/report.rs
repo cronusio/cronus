@@ -5,6 +5,8 @@
 
 use cronus_contract::{Binder, Dispatched, InvocableId};
 
+use crate::renderings::Signal;
+
 /// A surface deliberately does not expose an otherwise-shipped invocable
 ///  — a scope decision stated with its reason, so an unexposed id is
 /// read as "declared here, on purpose" rather than a corpus finding.
@@ -58,4 +60,21 @@ pub enum ConformanceReport {
         expected: Dispatched,
         actual: Dispatched,
     },
+    /// A surface's rendering of an installation fixture disagrees with the
+    /// fixture: it signals the wrong outcome, or leaves out a fact every
+    /// rendering must carry.
+    Rendering {
+        fixture: &'static str,
+        problem: RenderingProblem,
+    },
+}
+
+/// How a rendering of an installation fixture diverged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderingProblem {
+    /// The rendering signals a different outcome than the fixture demands —
+    /// an unavailable answer shown as a success, for one.
+    Signal { expected: Signal, actual: Signal },
+    /// A fact every rendering must carry is not in the text.
+    MissingFact(&'static str),
 }

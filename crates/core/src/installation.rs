@@ -23,17 +23,21 @@
 //! read-only verb is carried out through [`inspect`], which also holds what
 //! the command line reads for the same verbs, and every other verb answers
 //! with the shell invocation that carries it out ([`command_line_invocation`])
-//! until a surface can collect consent and tell whether work is in flight.
+//! until a surface can collect consent and tell whether work is in flight. The
+//! ones a surface may ask for and then run are named by [`is_carried_out`].
 
 use cronus_contract::{
     Apply, ArgValue, ArgValues, Binder, BinderKind, Invocable, InvocableId, LiveEffect, Locus,
     Stability,
 };
 
+pub mod carry_out;
+pub mod gate;
 pub mod inspect;
 mod invocation;
 mod registration;
 
+pub use carry_out::{blocked_reason, is_carried_out, is_carried_out_as, needs_relaunch};
 pub use invocation::command_line_invocation;
 pub use registration::register;
 

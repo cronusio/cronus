@@ -7,9 +7,10 @@ use cronus_domain::session::chat;
 use cronus_domain::session::journal::{self, JournalError, SessionSummary};
 use cronus_domain::session::writer::StopReason;
 
+use crate::endpoint::ledger::WorkKind;
 use crate::model::{Capabilities, EndpointProfile, ProtocolFamily};
 
-use super::{core_id, opt_text_arg, text_arg};
+use super::{begin_work, core_id, opt_text_arg, text_arg};
 
 /// A session belongs to a specific project's work — its journals live in the
 /// current workspace's `sessions/`, like every other project-scoped verb's
@@ -310,11 +311,20 @@ fn register_say(registry: &mut InvocableRegistry, dispatcher: &mut Dispatcher) {
             // token is a chunk, and the settled result is the stream's end.
             // It is registered as running before this call returns, so a stop
             // that follows at once finds it.
+            //
+            // It also enters the engine's work ledger first: while an
+            // installation change is being applied no turn begins, and the
+            // change is refused while one is running.
+            let work = match begin_work(WorkKind::AgentTurn, session.clone()) {
+                Ok(work) => work,
+                Err(refused) => return refused,
+            };
             let (handle, sink) = streams.open();
             let cancel = CancelHandle::new();
             let running = RunningTurn::register(&session, &cancel);
             std::thread::spawn(move || {
                 let _running = running;
+                let _work = work;
                 let dir = sessions_dir();
                 let result = chat::run_turn(
                     chat::SessionSlot {

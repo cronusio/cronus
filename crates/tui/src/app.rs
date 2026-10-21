@@ -30,13 +30,14 @@ use ratatui::layout::Rect;
 use crate::chat_actions::ChatAction;
 use crate::command::{self, CommandOutcome, CommandSpec, SlashCommand};
 use crate::dispatch;
-use crate::installation;
+use crate::installation::{self, Placement, Question, Setting, Step};
 use crate::pane_actions::{self, PaneAction};
 use crate::terminal::{CrosstermBackend, Key, TermEvent, TerminalBackend, Tui};
 use crate::view::{
     self, Addressee, BoardColumn, BoardCursor, BoardView, ChatView, Focus, OfficeView, Projection,
     ResultBlock, Screen, SessionList, SessionRow, SessionsView, StatusView, TranscriptView,
 };
+use crate::work::{CommandResult, Finished, Kind, Work};
 use cronus_contract::{
     ArgValue, ArgValues, Dispatched, Invocable, InvocableId, Invocation, Outcome, OutcomeValue,
     Surface,
@@ -47,6 +48,10 @@ use cronus_domain::{Capabilities, Engine};
 /// How long the loop blocks for input before ticking again. Bounds redraw
 /// latency for state changes that arrive without a terminal event.
 const TICK: Duration = Duration::from_millis(50);
+
+/// What a line meets between a change that asked for a relaunch and the
+/// relaunch: nothing new starts on a composition that is about to be replaced.
+const RESTARTING: &str = "restarting onto the changed installation — one moment";
 
 /// An immutable projection of durable core state at one instant.
 ///
@@ -121,8 +126,9 @@ enum TurnEvent {
 /// The seam the loop reads core state through.
 ///
 /// The core exposes no event/observe bus yet, so the production source
-/// ([`CapabilitySource`]) *polls* a fresh snapshot each tick — the poll-snapshot
-/// fallback the spec mandates. An event-driven source can implement the same
+/// ([`CapabilitySource`]) *polls* — the poll-snapshot fallback the spec
+/// mandates. Polling never waits: the reads run on a thread of their own and
+/// a poll hands over whatever has finished. An event-driven source can implement the same
 /// trait unchanged if the core later grows a subscription. Takes the loop's own
 /// `registry`/`dispatcher` so a real source can dispatch `board`/`office`
 /// reads through the identical mechanism the command bar uses — one dispatch
@@ -134,9 +140,13 @@ pub trait SnapshotSource {
     /// flight). The loop must stay responsive to input when this happens.
     fn poll_snapshot(
         &mut self,
-        registry: &InvocableRegistry,
-        dispatcher: &Dispatcher,
+        registry: &Arc<InvocableRegistry>,
+        dispatcher: &Arc<Dispatcher>,
     ) -> Option<CoreSnapshot>;
+
+    /// What the snapshot shows has probably changed (a command just ran):
+    /// read again at the next chance instead of waiting out the interval.
+    fn invalidate(&mut self) {}
 }
 
 /// Draws a single frame from the immutable view-model.
@@ -155,6 +165,11 @@ pub struct TickResult {
     pub redrawn: bool,
     /// Whether the loop should exit after this tick.
     pub quit: bool,
+    /// Whether the loop should rebuild the composition and carry on in a
+    /// fresh [`App`] onto the same view: a change that was applied by
+    /// relaunch has left the one it was running on out of date. Never set
+    /// together with `quit`, and never while anything is still running.
+    pub relaunch: bool,
 }
 
 /// The render loop's state: the view-model, a quit flag, and the command-dispatch
@@ -174,6 +189,28 @@ pub struct App {
     /// The reply being written on a background thread, when there is one: a
     /// model turn takes seconds, and the screen must stay alive meanwhile.
     turn: Option<mpsc::Receiver<TurnEvent>>,
+    /// Where everything else that leaves the render thread reports back.
+    work: Work,
+    /// A command is running; a second one waits for it to finish.
+    command_running: bool,
+    /// The conversation key of the Sessions screen's read in flight.
+    transcript_reading: Option<String>,
+    /// A finished reply is waiting for its conversation to be read back
+    /// before the pending message is cleared.
+    settling: bool,
+    /// Stop requests in flight.
+    stops: usize,
+    /// What the snapshot shows may have changed since it was read.
+    stale: bool,
+    /// A change waiting for the person's answer; until it comes, the keys
+    /// answer it and do nothing else.
+    awaiting: Option<Question>,
+    /// Where this frontend stands, and how a recomposing change is asked
+    /// about: the engine can relaunch, a spoke leaves that to the engine.
+    setting: Setting,
+    /// A change applied by relaunch was carried out; the loop is asked to
+    /// rebuild the composition as soon as nothing is running on this one.
+    relaunch_pending: bool,
     /// The slash-command catalog, built once at construction from the core's
     /// invocable registry (`command::build_catalog`) — never a hand-maintained
     /// list. Held on `App` rather than re-derived per keystroke, since it
@@ -193,15 +230,74 @@ impl App {
         dispatcher: Dispatcher,
         catalog: Vec<CommandSpec>,
     ) -> Self {
+        Self::shared(initial, Arc::new(registry), Arc::new(dispatcher), catalog)
+    }
+
+    /// The same, over a registry and dispatcher that something else holds too:
+    /// an engine serves the very pair this app dispatches through, so the work
+    /// a spoke sends and the work typed here run through one dispatcher.
+    pub fn shared(
+        initial: ViewModel,
+        registry: Arc<InvocableRegistry>,
+        dispatcher: Arc<Dispatcher>,
+        catalog: Vec<CommandSpec>,
+    ) -> Self {
         Self {
             view: initial,
             should_quit: false,
             pending_dispatch: None,
-            registry: Arc::new(registry),
-            dispatcher: Arc::new(dispatcher),
+            registry,
+            dispatcher,
             turn: None,
+            work: Work::new(),
+            command_running: false,
+            transcript_reading: None,
+            settling: false,
+            stops: 0,
+            stale: false,
+            awaiting: None,
+            setting: Setting::live(Placement::Engine),
+            relaunch_pending: false,
             catalog,
         }
+    }
+
+    /// The same app, standing where `setting` says: as the engine of its state
+    /// root or as a spoke of another process's.
+    pub fn placed(mut self, setting: Setting) -> Self {
+        self.setting = setting;
+        self
+    }
+
+    /// The view this app leaves for the one that replaces it after a
+    /// relaunch: the same screen, focus and conversation, with the answer to
+    /// the change that caused it still showing.
+    pub fn into_view(self) -> ViewModel {
+        self.view
+    }
+
+    /// This app as the continuation of one that was relaunched: everything it
+    /// shows that was read from the installation is read again, because the
+    /// change may have replaced it.
+    pub fn after_relaunch(mut self) -> Self {
+        self.stale = true;
+        self.view.transcript = None;
+        if self.view.chat.session.is_some() {
+            self.refresh_chat_transcript();
+        }
+        self
+    }
+
+    /// Whether a change is waiting for the person's yes or no.
+    pub fn is_awaiting_consent(&self) -> bool {
+        self.awaiting.is_some()
+    }
+
+    /// Whether work started off the render thread — a command, a read of a
+    /// conversation, a stop request — is still running. A reply being written
+    /// is not counted: it is shown as it arrives, and has its own marker.
+    pub fn is_busy(&self) -> bool {
+        self.command_running || self.transcript_reading.is_some() || self.settling || self.stops > 0
     }
 
     /// The current view-model the panels render from.
@@ -269,24 +365,7 @@ impl App {
                     self.dispatch_pane_action(action);
                     self.view.command_feedback = None;
                 }
-                (None, None) => {
-                    // An installation verb is not addressed to any agent and
-                    // runs beside the work; its answer is a block, not the
-                    // bar's one line. Anything else is an ordinary command.
-                    match installation::run(&self.registry, &self.dispatcher, &command) {
-                        Some(block) => {
-                            self.view.command_feedback = None;
-                            self.view.result_block = Some(block);
-                        }
-                        None => {
-                            self.view.command_feedback = dispatch::dispatch_command(
-                                &self.registry,
-                                &self.dispatcher,
-                                &command,
-                            );
-                        }
-                    }
-                }
+                (None, None) => self.run_command(command),
             }
             needs_redraw = true;
         }
@@ -294,6 +373,14 @@ impl App {
         // 1c) A reply finished on its background thread.
         if self.poll_turn() {
             needs_redraw = true;
+        }
+
+        // 1d) Whatever else was running beside the loop has finished.
+        if self.poll_work() {
+            needs_redraw = true;
+        }
+        if std::mem::take(&mut self.stale) {
+            source.invalidate();
         }
 
         // 2) Snapshot poll — may be `None` (slow call in flight); the loop has
@@ -319,6 +406,13 @@ impl App {
         Ok(TickResult {
             redrawn: needs_redraw,
             quit: self.should_quit,
+            // A reply still being written, or any work still running beside the
+            // loop, finishes first: it was started on this composition and is
+            // not cut off from it.
+            relaunch: self.relaunch_pending
+                && !self.should_quit
+                && !self.is_busy()
+                && self.turn.is_none(),
         })
     }
 
@@ -334,6 +428,9 @@ impl App {
     /// `ClientLocal` invocable ([`pane_actions`]), and this match only ever
     /// names which one a key requests, never what running it does.
     fn handle_key(&mut self, key: Key) -> bool {
+        if self.awaiting.is_some() {
+            return self.consent_key(key);
+        }
         match key {
             Key::Tab => self.dispatch_pane_action(PaneAction::FocusNext),
             Key::BackTab => self.dispatch_pane_action(PaneAction::FocusPrev),
@@ -364,6 +461,43 @@ impl App {
             }
             _ if self.view.focus == Focus::CommandBar => self.handle_command_key(key),
             Key::Esc => self.dispatch_pane_action(PaneAction::Quit),
+            _ => false,
+        }
+    }
+
+    /// Keys while a change waits for the person's answer. Only the answer
+    /// does anything: yes runs the invocation the question named, no (or
+    /// Esc) leaves it undone, and every other key is ignored, so a stray
+    /// keystroke can neither agree nor wander off with the question open.
+    fn consent_key(&mut self, key: Key) -> bool {
+        match key {
+            Key::Char('y' | 'Y') | Key::Enter => {
+                let Some(question) = self.awaiting.take() else {
+                    return false;
+                };
+                self.view.result_block = None;
+                self.command_running = true;
+                self.view.command_feedback = Some(format!("running {} …", question.title));
+                self.work.spawn(
+                    Kind::Command,
+                    &self.registry,
+                    &self.dispatcher,
+                    move |registry, dispatcher| {
+                        let installation::Carried { block, relaunch } =
+                            installation::confirmed(registry, dispatcher, &question);
+                        Finished::Command(CommandResult::Applied { block, relaunch })
+                    },
+                );
+                true
+            }
+            Key::Char('n' | 'N') | Key::Esc => {
+                let Some(question) = self.awaiting.take() else {
+                    return false;
+                };
+                self.view.result_block = None;
+                self.view.command_feedback = Some(format!("left undone: {}", question.title));
+                true
+            }
             _ => false,
         }
     }
@@ -547,6 +681,10 @@ impl App {
     /// Make the transcript match the selected session: read it when the
     /// selection or the journal's length differs from what was read, drop it
     /// when there is nothing selected.
+    ///
+    /// The read runs beside the loop. Until it answers, the conversation of
+    /// the same session stays on screen (it only grew); that of another
+    /// session does not — it would sit under the wrong header.
     fn sync_transcript(&mut self) {
         let Projection::Available(list) = &self.view.snapshot.session_list else {
             self.view.transcript = None;
@@ -561,6 +699,7 @@ impl App {
             return;
         };
         let key = format!("{}:{}", row.id, row.entries);
+        let id = row.id.clone();
         if self
             .view
             .transcript
@@ -569,16 +708,160 @@ impl App {
         {
             return;
         }
+        if self
+            .view
+            .transcript
+            .as_ref()
+            .is_some_and(|(read, _)| !read.starts_with(&format!("{id}:")))
+        {
+            self.view.transcript = None;
+        }
+        if self.transcript_reading.as_deref() == Some(key.as_str()) {
+            return;
+        }
+        self.transcript_reading = Some(key.clone());
         let mut args = ArgValues::new();
-        args.insert("id", ArgValue::Text(row.id.clone()));
-        let projection = dispatch_projection(
+        args.insert("id", ArgValue::Text(id));
+        self.work.spawn(
+            Kind::Transcript,
             &self.registry,
             &self.dispatcher,
-            "core:session.show",
-            args,
-            parse_transcript,
+            move |registry, dispatcher| Finished::Transcript {
+                key,
+                projection: dispatch_projection(
+                    registry,
+                    dispatcher,
+                    "core:session.show",
+                    args,
+                    parse_transcript,
+                ),
+            },
         );
-        self.view.transcript = Some((key, projection));
+    }
+
+    /// Run a slash command beside the loop. An installation verb is not
+    /// addressed to any agent; its answer is a block, not the bar's one line.
+    /// Anything else is an ordinary command. One command runs at a time: a
+    /// second line is held back with a note, never queued silently.
+    fn run_command(&mut self, command: SlashCommand) {
+        if self.command_running {
+            self.view.command_feedback = Some("a command is still running".to_string());
+            return;
+        }
+        if self.relaunch_pending {
+            self.view.command_feedback = Some(RESTARTING.to_string());
+            return;
+        }
+        self.command_running = true;
+        // Only the verb and its first word: what follows may be a secret the
+        // person typed, and the line has already left the input block.
+        self.view.command_feedback = Some(match command.args.first() {
+            Some(sub_verb) => format!("running /{} {sub_verb} …", command.verb),
+            None => format!("running /{} …", command.verb),
+        });
+        let setting = self.setting;
+        self.work.spawn(
+            Kind::Command,
+            &self.registry,
+            &self.dispatcher,
+            move |registry, dispatcher| {
+                Finished::Command(
+                    match installation::prepare(registry, dispatcher, &command, &setting) {
+                        Some(Step::Done(block)) => CommandResult::Block(block),
+                        Some(Step::Ask(question)) => CommandResult::Ask(question),
+                        None => CommandResult::Feedback(dispatch::dispatch_command(
+                            registry, dispatcher, &command,
+                        )),
+                    },
+                )
+            },
+        );
+    }
+
+    /// Apply every job that has finished since the last tick; returns whether
+    /// anything on screen changed.
+    fn poll_work(&mut self) -> bool {
+        let mut changed = false;
+        while let Some(finished) = self.work.next() {
+            changed |= self.apply(finished);
+        }
+        changed
+    }
+
+    fn apply(&mut self, finished: Finished) -> bool {
+        match finished {
+            Finished::Command(result) => {
+                self.command_running = false;
+                self.stale = true;
+                match result {
+                    CommandResult::Block(block) => {
+                        self.view.command_feedback = None;
+                        self.view.result_block = Some(block);
+                    }
+                    CommandResult::Applied { block, relaunch } => {
+                        self.view.command_feedback = None;
+                        self.view.result_block = Some(block);
+                        self.relaunch_pending |= relaunch;
+                    }
+                    CommandResult::Feedback(feedback) => self.view.command_feedback = feedback,
+                    CommandResult::Ask(question) => {
+                        self.view.command_feedback = None;
+                        self.view.result_block = Some(question.block().clone());
+                        self.awaiting = Some(question);
+                    }
+                }
+                true
+            }
+            Finished::Transcript { key, projection } => {
+                if self.transcript_reading.as_deref() == Some(key.as_str()) {
+                    self.transcript_reading = None;
+                }
+                let wanted = match &self.view.snapshot.session_list {
+                    Projection::Available(list) => list
+                        .rows
+                        .get(
+                            self.view
+                                .session_cursor
+                                .min(list.rows.len().saturating_sub(1)),
+                        )
+                        .map(|row| format!("{}:{}", row.id, row.entries)),
+                    Projection::Unavailable { .. } => None,
+                };
+                if wanted.as_deref() == Some(key.as_str()) {
+                    self.view.transcript = Some((key, projection));
+                } else {
+                    // The selection moved on while this was being read.
+                    self.sync_transcript();
+                }
+                true
+            }
+            Finished::ChatTranscript(projection) => {
+                self.view.chat.transcript = Some(projection);
+                self.finish_reply();
+                true
+            }
+            Finished::Stopped(reason) => {
+                self.stops = self.stops.saturating_sub(1);
+                match reason {
+                    Some(reason) => {
+                        self.view.command_feedback = Some(reason);
+                        true
+                    }
+                    None => false,
+                }
+            }
+            Finished::Failed(kind) => {
+                match kind {
+                    Kind::Command => self.command_running = false,
+                    Kind::Transcript => self.transcript_reading = None,
+                    Kind::ChatTranscript => self.finish_reply(),
+                    Kind::Stop => self.stops = self.stops.saturating_sub(1),
+                }
+                self.view.command_feedback =
+                    Some("background work ended without an answer".to_string());
+                true
+            }
+        }
     }
 
     /// The line in the bar as a slash command. Everywhere but the Chat screen
@@ -622,6 +905,10 @@ impl App {
     /// turn runs through the shared `session say` verb on a background
     /// thread; the screen shows the message as pending until it finishes.
     fn send_message(&mut self, text: String) {
+        if self.relaunch_pending {
+            self.view.command_feedback = Some(RESTARTING.to_string());
+            return;
+        }
         if self.view.chat.pending.is_some() {
             self.view.command_feedback =
                 Some("a reply is still being written — Esc stops it".to_string());
@@ -712,8 +999,7 @@ impl App {
             }
         };
         self.turn = None;
-        self.view.chat.pending = None;
-        self.view.chat.partial.clear();
+        self.stale = true;
         // A recorded failure is told here; the journal holds it too.
         self.view.command_feedback = match outcome {
             Outcome::Value(_) => None,
@@ -724,21 +1010,39 @@ impl App {
         true
     }
 
-    /// Read the conversation back from its session's journal.
+    /// Read the conversation back from its session's journal, beside the
+    /// loop. The message and the reply stay on screen until the read answers,
+    /// so the reply never blinks out between the stream's end and its record.
     fn refresh_chat_transcript(&mut self) {
         let Some(session) = self.view.chat.session.clone() else {
             self.view.chat.transcript = None;
+            self.finish_reply();
             return;
         };
+        self.settling = true;
         let mut args = ArgValues::new();
         args.insert("id", ArgValue::Text(session));
-        self.view.chat.transcript = Some(dispatch_projection(
+        self.work.spawn(
+            Kind::ChatTranscript,
             &self.registry,
             &self.dispatcher,
-            "core:session.show",
-            args,
-            parse_transcript,
-        ));
+            move |registry, dispatcher| {
+                Finished::ChatTranscript(dispatch_projection(
+                    registry,
+                    dispatcher,
+                    "core:session.show",
+                    args,
+                    parse_transcript,
+                ))
+            },
+        );
+    }
+
+    /// The turn is over and its conversation is on screen: nothing is pending.
+    fn finish_reply(&mut self) {
+        self.settling = false;
+        self.view.chat.pending = None;
+        self.view.chat.partial.clear();
     }
 
     /// Stop the reply being written: the turn is cut short and recorded as
@@ -757,11 +1061,18 @@ impl App {
             },
             caller: Surface::Tui,
         };
-        if let Dispatched::Ran(Outcome::Unavailable { reason }) =
-            self.dispatcher.dispatch(&self.registry, &invocation)
-        {
-            self.view.command_feedback = Some(reason);
-        }
+        self.stops += 1;
+        self.work.spawn(
+            Kind::Stop,
+            &self.registry,
+            &self.dispatcher,
+            move |registry, dispatcher| {
+                Finished::Stopped(match dispatcher.dispatch(registry, &invocation) {
+                    Dispatched::Ran(Outcome::Unavailable { reason }) => Some(reason),
+                    _ => None,
+                })
+            },
+        );
     }
 
     /// Put the command listing on screen as a result block.
@@ -823,29 +1134,64 @@ impl App {
     }
 }
 
-/// Production [`SnapshotSource`] over the core capability surface.
-///
-/// Reads `version`/`status` each tick — a cheap call — and hands the loop a fresh
-/// snapshot every time; [`App::tick`] dedupes by equality so identical reads do
-/// not trigger redraws. Heavier future snapshots can be produced off-thread and
-/// delivered through this same poll seam without changing the loop.
-pub struct CapabilitySource<C: Capabilities> {
-    core: C,
-    /// The sessions list and when it was read: journals are parsed in full
-    /// to be summarized, so the list is re-read about once a second, not on
-    /// every tick.
-    sessions: Option<(std::time::Instant, Projection<SessionList>)>,
+/// What the background read of the core produces: the three projections
+/// dispatched through the registry.
+#[derive(Default)]
+struct Reads {
+    board: Projection<BoardView>,
+    office: Projection<OfficeView>,
+    session_list: Projection<SessionList>,
 }
 
-/// How long a read of the sessions list is reused.
-const SESSIONS_REFRESH: Duration = Duration::from_secs(1);
+impl Reads {
+    /// What stands in for a read whose thread ended without an answer.
+    fn lost() -> Self {
+        fn gone<T>() -> Projection<T> {
+            Projection::Unavailable {
+                reason: "the background read ended without an answer".to_string(),
+            }
+        }
+        Self {
+            board: gone(),
+            office: gone(),
+            session_list: gone(),
+        }
+    }
+}
+
+/// Production [`SnapshotSource`] over the core capability surface.
+///
+/// The version and status come from the core handle each poll — a cheap call.
+/// The board, the roster and the sessions list are dispatched through the
+/// registry, which touches the disk (journals are parsed in full to be
+/// summarized), so they are read on a thread of their own, about twice a
+/// second or sooner when a command has just run. A poll never waits for the
+/// read: it returns the snapshot made of the last finished one, and
+/// [`App::tick`] dedupes by equality so an unchanged read triggers no redraw.
+pub struct CapabilitySource<C: Capabilities> {
+    core: C,
+    /// The last finished background read.
+    latest: Reads,
+    /// The read in flight, if any.
+    reading: Option<mpsc::Receiver<Reads>>,
+    /// When the last read finished.
+    read_at: Option<std::time::Instant>,
+    /// The next poll should start a read whatever the interval says.
+    stale: bool,
+}
+
+/// How long a finished read is reused before another is started.
+const REFRESH: Duration = Duration::from_millis(500);
 
 impl<C: Capabilities> CapabilitySource<C> {
     /// Wrap a core handle as a snapshot source.
     pub fn new(core: C) -> Self {
         Self {
             core,
-            sessions: None,
+            latest: Reads::default(),
+            reading: None,
+            read_at: None,
+            stale: false,
         }
     }
 }
@@ -853,27 +1199,53 @@ impl<C: Capabilities> CapabilitySource<C> {
 impl<C: Capabilities> SnapshotSource for CapabilitySource<C> {
     fn poll_snapshot(
         &mut self,
-        registry: &InvocableRegistry,
-        dispatcher: &Dispatcher,
+        registry: &Arc<InvocableRegistry>,
+        dispatcher: &Arc<Dispatcher>,
     ) -> Option<CoreSnapshot> {
-        let session_list = match &self.sessions {
-            Some((read_at, list)) if read_at.elapsed() < SESSIONS_REFRESH => list.clone(),
-            _ => {
-                let list = dispatch_session_list(registry, dispatcher);
-                self.sessions = Some((std::time::Instant::now(), list.clone()));
-                list
+        if let Some(receiver) = &self.reading {
+            match receiver.try_recv() {
+                Ok(reads) => {
+                    self.latest = reads;
+                    self.reading = None;
+                    self.read_at = Some(std::time::Instant::now());
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.latest = Reads::lost();
+                    self.reading = None;
+                    self.read_at = Some(std::time::Instant::now());
+                }
             }
-        };
+        }
+        if self.reading.is_none()
+            && (self.stale || self.read_at.is_none_or(|at| at.elapsed() >= REFRESH))
+        {
+            self.stale = false;
+            let (sender, receiver) = mpsc::channel();
+            let (registry, dispatcher) = (Arc::clone(registry), Arc::clone(dispatcher));
+            std::thread::spawn(move || {
+                let _ = sender.send(Reads {
+                    board: dispatch_board(&registry, &dispatcher),
+                    office: dispatch_office(&registry, &dispatcher),
+                    session_list: dispatch_session_list(&registry, &dispatcher),
+                });
+            });
+            self.reading = Some(receiver);
+        }
         Some(CoreSnapshot {
             status: Projection::Available(StatusView {
                 version: self.core.version().to_string(),
                 status: self.core.status(),
             }),
-            board: dispatch_board(registry, dispatcher),
-            office: dispatch_office(registry, dispatcher),
-            sessions: sessions_panel(&session_list),
-            session_list,
+            board: self.latest.board.clone(),
+            office: self.latest.office.clone(),
+            sessions: sessions_panel(&self.latest.session_list),
+            session_list: self.latest.session_list.clone(),
         })
+    }
+
+    fn invalidate(&mut self) {
+        self.stale = true;
     }
 }
 
@@ -1279,8 +1651,26 @@ pub fn render_view(area: Rect, buf: &mut Buffer, view: &ViewModel) {
     view::render_status_line(areas.status_line, buf, &snapshot.status);
 }
 
-/// Run the TUI against the real terminal and the live engine.
-pub fn run() -> io::Result<()> {
+/// A composition this frontend runs in: the registry and dispatcher it
+/// dispatches through, the catalog derived from them, the source its snapshots
+/// are read through, and where it stands in relation to the engine.
+pub struct Hosted<S> {
+    pub registry: Arc<InvocableRegistry>,
+    pub dispatcher: Arc<Dispatcher>,
+    pub catalog: Vec<CommandSpec>,
+    pub source: S,
+    pub setting: Setting,
+    /// What makes this process the engine of its state root or a spoke of
+    /// another's — the seat, the link. It is held for as long as the
+    /// composition runs and let go when a relaunch replaces it, so the next
+    /// composition takes the role afresh.
+    pub keep: Box<dyn std::any::Any>,
+}
+
+/// Compose this frontend over the live installation: the core's registry, this
+/// surface's own actions registered through the same door, the catalog derived
+/// from the result — and the role over the state root.
+pub fn compose_live() -> io::Result<Hosted<CapabilitySource<Engine>>> {
     // The same public composition door every surface uses
     // (`invocable_bootstrap::bootstrap`) — no private construction path.
     // Secret values to mask are loaded from the core secrets store once that
@@ -1296,64 +1686,126 @@ pub fn run() -> io::Result<()> {
     let invocables: Vec<&Invocable> = registry.all().collect();
     let catalog = command::build_catalog(&invocables);
 
-    run_with(
-        CrosstermBackend::new(),
-        CapabilitySource::new(Engine::new()),
-        RatatuiRenderer::new()?,
+    // One engine owns a state root; this terminal UI is either that engine
+    // (and serves the composition it just built, so other processes can reach
+    // it) or a spoke of the one that is (and its engine-run handlers are
+    // re-pointed there). Either way it holds the role until it exits or is
+    // relaunched.
+    let joined = cronus_core::endpoint::join_composition(
+        &cronus_core::paths::resolve_workspace_root(),
         registry,
         dispatcher,
+        cronus_contract::Surface::Tui,
+        cronus_core::endpoint::DEFAULT_PATIENCE,
+    )
+    .map_err(|err| io::Error::other(err.to_string()))?;
+    let placement = match &joined.role {
+        cronus_core::endpoint::Role::Engine(_) => Placement::Engine,
+        cronus_core::endpoint::Role::Spoke(_) => Placement::Spoke,
+    };
+
+    Ok(Hosted {
+        registry: joined.registry,
+        dispatcher: joined.dispatcher,
         catalog,
+        source: CapabilitySource::new(Engine::new()),
+        setting: Setting::live(placement),
+        keep: Box::new(joined.role),
+    })
+}
+
+/// Run the TUI against the real terminal and the live engine.
+pub fn run() -> io::Result<()> {
+    run_with(
+        CrosstermBackend::new(),
+        RatatuiRenderer::new()?,
+        compose_live,
     )
 }
 
-/// Run the loop against injected backend / source / renderer / registry /
-/// dispatcher.
+/// Run the loop against an injected backend and renderer, over the
+/// compositions `compose` builds.
+///
+/// `compose` is called once to start, and again each time a change applied by
+/// relaunch has left the composition out of date: the old one is dropped first
+/// — its role over the state root with it — so the next takes the role afresh,
+/// and the loop carries on in a new [`App`] onto the same screen, focus and
+/// conversation with the answer to that change still showing. The terminal is
+/// not left and re-entered between the two.
 ///
 /// The terminal lifecycle is RAII-guarded by [`Tui`], so any exit path — normal,
 /// `?` error, or panic — restores the terminal.
-pub fn run_with<B, S, R>(
-    backend: B,
-    mut source: S,
-    mut renderer: R,
-    registry: InvocableRegistry,
-    dispatcher: Dispatcher,
-    catalog: Vec<CommandSpec>,
-) -> io::Result<()>
+pub fn run_with<B, S, R, C>(backend: B, mut renderer: R, mut compose: C) -> io::Result<()>
 where
     B: TerminalBackend,
     S: SnapshotSource,
     R: Renderer,
+    C: FnMut() -> io::Result<Hosted<S>>,
 {
+    // The first composition is built before the terminal is taken over, so a
+    // failure to compose is reported on the screen the person came from.
+    let mut hosted = compose()?;
     let mut tui = Tui::new(backend)?;
-    let (cols, rows) = tui.size()?;
-    let mut app = App::new(
-        ViewModel {
-            size: (cols, rows),
-            chat: ChatView {
-                model: std::env::var("CRONUS_CHAT_MODEL")
-                    .ok()
-                    .filter(|m| !m.is_empty()),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        registry,
-        dispatcher,
-        catalog,
-    );
-
-    // Initial frame so the screen is populated before the first event.
-    renderer.draw(app.view())?;
-
+    let mut resume: Option<ViewModel> = None;
     loop {
-        let mut events = Vec::new();
-        if let Some(event) = tui.poll_event(TICK)? {
-            events.push(event);
-        }
-        let result = app.tick(&events, &mut source, &mut renderer)?;
-        if result.quit {
+        let Hosted {
+            registry,
+            dispatcher,
+            catalog,
+            mut source,
+            setting,
+            keep,
+        } = hosted;
+        let (cols, rows) = tui.size()?;
+        let mut app = match resume.take() {
+            Some(mut view) => {
+                view.size = (cols, rows);
+                App::shared(view, registry, dispatcher, catalog)
+                    .placed(setting)
+                    .after_relaunch()
+            }
+            None => App::shared(
+                ViewModel {
+                    size: (cols, rows),
+                    chat: ChatView {
+                        model: std::env::var("CRONUS_CHAT_MODEL")
+                            .ok()
+                            .filter(|m| !m.is_empty()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                registry,
+                dispatcher,
+                catalog,
+            )
+            .placed(setting),
+        };
+
+        // Initial frame so the screen is populated before the first event.
+        renderer.draw(app.view())?;
+
+        let relaunch = loop {
+            let mut events = Vec::new();
+            if let Some(event) = tui.poll_event(TICK)? {
+                events.push(event);
+            }
+            let result = app.tick(&events, &mut source, &mut renderer)?;
+            if result.quit {
+                break false;
+            }
+            if result.relaunch {
+                break true;
+            }
+        };
+        if !relaunch {
             break;
         }
+
+        resume = Some(app.into_view());
+        drop(source);
+        drop(keep);
+        hosted = compose()?;
     }
 
     tui.restore()
@@ -1387,8 +1839,8 @@ mod tests {
     impl SnapshotSource for ScriptedSource {
         fn poll_snapshot(
             &mut self,
-            _registry: &InvocableRegistry,
-            _dispatcher: &Dispatcher,
+            _registry: &Arc<InvocableRegistry>,
+            _dispatcher: &Arc<Dispatcher>,
         ) -> Option<CoreSnapshot> {
             self.queue.pop_front().flatten()
         }
@@ -1405,6 +1857,23 @@ mod tests {
             self.frames.push(view.clone());
             Ok(())
         }
+    }
+
+    /// Tick until the work the loop started beside itself has been applied.
+    fn settle(app: &mut App) {
+        for _ in 0..2000 {
+            if !app.is_busy() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            app.tick(
+                &[],
+                &mut ScriptedSource::new(vec![None]),
+                &mut RecordingRenderer::default(),
+            )
+            .unwrap();
+        }
+        panic!("the work started beside the loop never finished");
     }
 
     fn snap(status: &str) -> CoreSnapshot {
@@ -1720,12 +2189,15 @@ mod tests {
             Vec::new(),
         );
         let press = |app: &mut App, key: Key| {
-            app.tick(
-                &[TermEvent::Key(key)],
-                &mut ScriptedSource::new(vec![None]),
-                &mut RecordingRenderer::default(),
-            )
-            .unwrap()
+            let result = app
+                .tick(
+                    &[TermEvent::Key(key)],
+                    &mut ScriptedSource::new(vec![None]),
+                    &mut RecordingRenderer::default(),
+                )
+                .unwrap();
+            settle(app);
+            result
         };
 
         press(&mut app, Key::F(7));
@@ -1789,12 +2261,15 @@ mod tests {
             Vec::new(),
         );
         let press = |app: &mut App, key: Key| {
-            app.tick(
-                &[TermEvent::Key(key)],
-                &mut ScriptedSource::new(vec![None]),
-                &mut RecordingRenderer::default(),
-            )
-            .unwrap()
+            let result = app
+                .tick(
+                    &[TermEvent::Key(key)],
+                    &mut ScriptedSource::new(vec![None]),
+                    &mut RecordingRenderer::default(),
+                )
+                .unwrap();
+            settle(app);
+            result
         };
         press(&mut app, Key::Char('/'));
         assert_eq!(app.view().focus, Focus::CommandBar);
@@ -1943,12 +2418,15 @@ mod tests {
             Vec::new(),
         );
         let press = |app: &mut App, key: Key| {
-            app.tick(
-                &[TermEvent::Key(key)],
-                &mut ScriptedSource::new(vec![None]),
-                &mut RecordingRenderer::default(),
-            )
-            .unwrap()
+            let result = app
+                .tick(
+                    &[TermEvent::Key(key)],
+                    &mut ScriptedSource::new(vec![None]),
+                    &mut RecordingRenderer::default(),
+                )
+                .unwrap();
+            settle(app);
+            result
         };
         let reads_so_far = || reads.load(std::sync::atomic::Ordering::SeqCst);
         let shown_id = |app: &App| app.view().transcript.as_ref().map(|(key, _)| key.clone());
@@ -1999,6 +2477,7 @@ mod tests {
             &mut RecordingRenderer::default(),
         )
         .unwrap();
+        settle(&mut app);
         assert!(matches!(
             app.view().transcript,
             Some((_, Projection::Unavailable { ref reason })) if reason.contains("s-ghost")
@@ -2454,6 +2933,102 @@ mod tests {
         );
     }
 
+    fn tick_once(app: &mut App) -> TickResult {
+        app.tick(
+            &[],
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap()
+    }
+
+    /// A relaunch waits for what is still running on the composition it will
+    /// replace — a reply being written is finished, not cut off — and nothing
+    /// new is started on it meanwhile.
+    #[test]
+    fn a_pending_relaunch_waits_for_a_reply_being_written_and_takes_nothing_new() {
+        let mut app = chat_app(Say::UntilStopped);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        type_and_enter(&mut app, "tell me everything");
+        assert!(app.view().chat.pending.is_some());
+
+        app.relaunch_pending = true;
+        assert!(
+            !tick_once(&mut app).relaunch,
+            "a reply is being written on this composition"
+        );
+        type_and_enter(&mut app, "and another thing");
+        assert_eq!(app.view().command_feedback.as_deref(), Some(RESTARTING));
+        assert_eq!(
+            app.view().chat.pending.as_deref(),
+            Some("tell me everything"),
+            "the second message was not sent"
+        );
+
+        key(&mut app, Key::Esc);
+        wait_for_the_reply(&mut app);
+        assert!(tick_once(&mut app).relaunch, "nothing is running now");
+    }
+
+    #[test]
+    fn a_command_is_held_back_while_a_relaunch_is_pending() {
+        let (mut registry, mut dispatcher) = registry_with_probe();
+        pane_actions::register(&mut registry, &mut dispatcher);
+        let mut app = App::new(ViewModel::default(), registry, dispatcher, test_catalog());
+        app.relaunch_pending = true;
+        key(&mut app, Key::Char('/'));
+        type_and_enter(&mut app, "test probe hello");
+        assert_eq!(app.view().command_feedback.as_deref(), Some(RESTARTING));
+        assert!(!app.is_busy(), "nothing was started");
+        assert!(tick_once(&mut app).relaunch);
+    }
+
+    #[test]
+    fn leaving_wins_over_a_relaunch_and_nothing_is_asked_for_without_a_change() {
+        let mut app = App::new(
+            ViewModel::default(),
+            InvocableRegistry::new(),
+            Dispatcher::new(),
+            Vec::new(),
+        );
+        assert!(!tick_once(&mut app).relaunch, "no change, no relaunch");
+        app.relaunch_pending = true;
+        app.should_quit = true;
+        let result = tick_once(&mut app);
+        assert!(result.quit && !result.relaunch);
+    }
+
+    /// What replaces an app after a relaunch shows the same screen, focus and
+    /// conversation, and the answer to the change that caused it.
+    #[test]
+    fn the_view_a_relaunch_carries_over_is_the_one_the_person_was_in() {
+        let mut app = chat_app(Say::Answers);
+        key(&mut app, Key::F(3));
+        type_and_enter(&mut app, "/chat model m");
+        app.view.result_block = Some(ResultBlock {
+            title: "/restore backup-1".to_string(),
+            lines: vec!["restarting onto the changed installation".to_string()],
+        });
+        let carried = app.into_view();
+
+        let (registry, dispatcher) = registry_with_pane_actions();
+        let invocables: Vec<&Invocable> = registry.all().collect();
+        let catalog = command::build_catalog(&invocables);
+        let resumed = App::new(carried, registry, dispatcher, catalog).after_relaunch();
+        assert_eq!(resumed.view().screen, Screen::Chat);
+        assert_eq!(resumed.view().chat.model.as_deref(), Some("m"));
+        assert_eq!(
+            resumed
+                .view()
+                .result_block
+                .as_ref()
+                .map(|block| block.title.as_str()),
+            Some("/restore backup-1")
+        );
+        assert!(!resumed.is_busy(), "no conversation to read back yet");
+    }
+
     #[test]
     fn escape_on_an_idle_chat_leaves_it_and_a_new_conversation_forgets_the_old() {
         let mut app = chat_app(Say::Answers);
@@ -2610,6 +3185,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         assert_eq!(app.view().command_feedback.as_deref(), Some("probe: hello"));
     }
@@ -2681,6 +3257,7 @@ mod tests {
 
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
         assert_eq!(app.view().command_input, "", "input clears on submit");
         assert_eq!(
             app.view().command_feedback.as_deref(),
@@ -2710,6 +3287,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
         assert!(
             app.view()
                 .command_feedback
@@ -2786,6 +3364,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
         assert_eq!(
             app.view().command_feedback,
             None,
@@ -2801,6 +3380,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         let feedback = app.view().command_feedback.as_deref().unwrap();
         assert!(
@@ -2834,6 +3414,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         let feedback = app.view().command_feedback.as_deref().unwrap();
         assert!(
@@ -2873,6 +3454,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         assert_eq!(
             app.view().focus,
@@ -2946,6 +3528,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         assert_eq!(
             app.view().command_feedback,
@@ -3229,6 +3812,225 @@ mod tests {
         );
     }
 
+    /// A `core:test.probe` that holds until `gate` is set, then echoes its
+    /// argument — a command that takes as long as the test says.
+    fn registry_with_gated_probe(
+        gate: &Arc<std::sync::atomic::AtomicBool>,
+    ) -> (InvocableRegistry, Dispatcher) {
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        let id = InvocableId::new("core:test.probe").expect("well-formed test id");
+        registry
+            .register(
+                &Registrant::core(),
+                Invocable {
+                    id: id.clone(),
+                    name: "Probe",
+                    summary: "Test-only gated probe invocable.",
+                    group: "test",
+                    locus: Locus::Semantic,
+                    binders: vec![Binder {
+                        name: "value",
+                        kind: BinderKind::Text,
+                        optional: false,
+                    }],
+                    stability: Stability::Shipped,
+                    journal_raw_input: true,
+                },
+            )
+            .expect("test fixture registers cleanly");
+        let gate = Arc::clone(gate);
+        dispatcher.attach(
+            id,
+            Arc::new(move |args| {
+                for _ in 0..1000 {
+                    if gate.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                let echoed = match args.get("value") {
+                    Some(ArgValue::Text(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                Outcome::Value(OutcomeValue::Text(format!("probe: {echoed}")))
+            }),
+        );
+        (registry, dispatcher)
+    }
+
+    #[test]
+    fn a_slow_command_does_not_hold_the_loop_and_a_second_line_waits_for_it() {
+        let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (registry, dispatcher) = registry_with_gated_probe(&gate);
+        let mut app = App::new(
+            ViewModel {
+                focus: Focus::CommandBar,
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            test_catalog(),
+        );
+        let mut source = ScriptedSource::new(vec![]);
+        let mut renderer = RecordingRenderer::default();
+        let mut line = |app: &mut App, text: &str| {
+            let mut events: Vec<TermEvent> =
+                text.chars().map(|c| TermEvent::Key(Key::Char(c))).collect();
+            events.push(TermEvent::Key(Key::Enter));
+            app.tick(&events, &mut source, &mut renderer).unwrap();
+        };
+
+        // The command is still holding its handler when the tick returns.
+        line(&mut app, "test probe one");
+        assert!(app.is_busy(), "the command runs beside the loop");
+        assert_eq!(
+            app.view().command_feedback.as_deref(),
+            Some("running /test probe …"),
+            "the line says what is running, and not what was typed after it"
+        );
+
+        // The keyboard is alive meanwhile, and a second line is told to wait.
+        line(&mut app, "test probe two");
+        assert_eq!(
+            app.view().command_feedback.as_deref(),
+            Some("a command is still running")
+        );
+        app.tick(
+            &[TermEvent::Key(Key::Char('x'))],
+            &mut ScriptedSource::new(vec![None]),
+            &mut RecordingRenderer::default(),
+        )
+        .unwrap();
+        assert_eq!(app.view().command_input, "x", "typing goes on");
+
+        gate.store(true, std::sync::atomic::Ordering::SeqCst);
+        settle(&mut app);
+        assert!(!app.is_busy());
+        assert_eq!(app.view().command_feedback.as_deref(), Some("probe: one"));
+
+        // And the bar takes a line again.
+        app.view.command_input.clear();
+        line(&mut app, "test probe three");
+        settle(&mut app);
+        assert_eq!(app.view().command_feedback.as_deref(), Some("probe: three"));
+    }
+
+    #[test]
+    fn a_command_that_ran_asks_the_snapshot_source_to_read_again() {
+        struct Counting {
+            invalidated: usize,
+        }
+        impl SnapshotSource for Counting {
+            fn poll_snapshot(
+                &mut self,
+                _registry: &Arc<InvocableRegistry>,
+                _dispatcher: &Arc<Dispatcher>,
+            ) -> Option<CoreSnapshot> {
+                None
+            }
+            fn invalidate(&mut self) {
+                self.invalidated += 1;
+            }
+        }
+        let (registry, dispatcher) = registry_with_probe();
+        let mut app = App::new(
+            ViewModel {
+                focus: Focus::CommandBar,
+                ..Default::default()
+            },
+            registry,
+            dispatcher,
+            test_catalog(),
+        );
+        let mut source = Counting { invalidated: 0 };
+        let mut renderer = RecordingRenderer::default();
+        let mut events: Vec<TermEvent> = "test probe hi"
+            .chars()
+            .map(|c| TermEvent::Key(Key::Char(c)))
+            .collect();
+        events.push(TermEvent::Key(Key::Enter));
+        app.tick(&events, &mut source, &mut renderer).unwrap();
+        for _ in 0..400 {
+            if source.invalidated > 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            app.tick(&[], &mut source, &mut renderer).unwrap();
+        }
+        assert_eq!(source.invalidated, 1, "once, when the command finished");
+    }
+
+    #[test]
+    fn the_production_source_never_waits_for_a_slow_read() {
+        let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut registry = InvocableRegistry::new();
+        let mut dispatcher = Dispatcher::new();
+        let id = InvocableId::new("core:board.list").expect("well-formed test id");
+        registry
+            .register(
+                &Registrant::core(),
+                Invocable {
+                    id: id.clone(),
+                    name: "List",
+                    summary: "Test-only gated board.list fixture.",
+                    group: "board",
+                    locus: Locus::Semantic,
+                    binders: vec![Binder {
+                        name: "archived",
+                        kind: BinderKind::Flag,
+                        optional: true,
+                    }],
+                    stability: Stability::Shipped,
+                    journal_raw_input: true,
+                },
+            )
+            .expect("test fixture registers cleanly");
+        let held = Arc::clone(&gate);
+        dispatcher.attach(
+            id,
+            Arc::new(move |args| {
+                for _ in 0..1000 {
+                    if held.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                if matches!(args.get("archived"), Some(ArgValue::Flag)) {
+                    return Outcome::Value(OutcomeValue::List(Vec::new()));
+                }
+                Outcome::Value(OutcomeValue::List(vec![OutcomeValue::Record(vec![
+                    ("id".to_string(), OutcomeValue::Text("card-1".to_string())),
+                    ("state".to_string(), OutcomeValue::Text("todo".to_string())),
+                ])]))
+            }),
+        );
+        let (registry, dispatcher) = (Arc::new(registry), Arc::new(dispatcher));
+        let mut source = CapabilitySource::new(Engine::new());
+
+        // The board read is held, and the poll still answers at once with
+        // the status and the neutral starting board.
+        let first = source
+            .poll_snapshot(&registry, &dispatcher)
+            .expect("a snapshot is always handed over");
+        assert!(matches!(first.status, Projection::Available(_)));
+        assert_eq!(first.board, Projection::Available(BoardView::default()));
+
+        gate.store(true, std::sync::atomic::Ordering::SeqCst);
+        for _ in 0..400 {
+            let snapshot = source
+                .poll_snapshot(&registry, &dispatcher)
+                .expect("a snapshot is always handed over");
+            if let Projection::Available(board) = &snapshot.board
+                && board.cards.len() == 1
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("the finished read never reached the snapshot");
+    }
+
     #[test]
     fn dispatch_board_reports_a_genuinely_empty_result_as_available() {
         let mut registry = InvocableRegistry::new();
@@ -3430,6 +4232,7 @@ mod tests {
         }
         app.tick(&[TermEvent::Key(Key::Enter)], &mut source, &mut renderer)
             .unwrap();
+        settle(&mut app);
 
         let area = Rect::new(0, 0, 80, 24);
         let buf = render_to_buffer(app.view(), area);

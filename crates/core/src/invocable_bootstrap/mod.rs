@@ -77,6 +77,22 @@ pub fn bootstrap(engine: Engine) -> (InvocableRegistry, Dispatcher) {
 /// shortcut: a malformed literal is a bug in this file, never a caller
 /// condition — the same judgment call `InvocableId::new` callers elsewhere
 /// in this facade already make.
+/// Register a piece of long-running work before it starts, so a change that
+/// would alter what it runs on is refused while it lasts and the refusal can
+/// name it. Hold the guard until the work has ended. If the work cannot be
+/// registered — an installation change is being applied, or the state root
+/// cannot be written — it does not start, and the outcome says why.
+fn begin_work(
+    kind: crate::endpoint::ledger::WorkKind,
+    label: impl Into<String>,
+) -> Result<crate::endpoint::WorkGuard, cronus_contract::Outcome> {
+    crate::endpoint::begin_work(&crate::paths::resolve_workspace_root(), kind, label).map_err(
+        |refused| cronus_contract::Outcome::Unavailable {
+            reason: refused.to_string(),
+        },
+    )
+}
+
 fn core_id(tail: &str) -> InvocableId {
     InvocableId::new(format!("core:{tail}"))
         .expect("core-authored literal identity must be well-formed — a bug if it isn't")

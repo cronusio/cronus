@@ -29,8 +29,7 @@ fn register_constitution(registry: &mut InvocableRegistry, dispatcher: &mut Disp
     dispatcher.attach(
         id,
         Arc::new(|_args| {
-            let workspace =
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let workspace = crate::paths::caller_dir();
             let paths = identity_paths(&workspace);
             Outcome::Value(OutcomeValue::List(
                 IDENTITY_FILES
