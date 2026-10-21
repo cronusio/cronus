@@ -1,6 +1,6 @@
 # File Store (Implementation)
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-file-management.md
@@ -247,6 +247,7 @@ crates/
 2. Stream the upload body; do not buffer the entire file in memory before hashing — use an incrementally-updating hasher.
 3. Temp file during upload: write to a `.tmp` path in the same directory, then rename to the final hash-derived path (atomic on most filesystems).
 4. Magic-byte MIME detection: inspect only the first 4 KiB; use `infer` crate or equivalent.
+5. `[ADDED v1.1.2]` **Content addresses name their scheme, and the stand-in stays in memory.** A production address is self-describing — `sha256:<hex>` — so an address written under one algorithm is never compared, equal or unequal, with one written under another, and a later algorithm change is a recognizable re-keying migration rather than a silent orphaning of every blob. The algebra's 64-bit std-hash stand-in is acceptable only while blobs live in memory and come from trusted input: for any 64-bit address a colliding pair can be constructed with roughly 2³² hash evaluations (the birthday bound), which is minutes of work, and a collision in a deduplicating store serves one file's bytes for another's id without any error. The stand-in is also not guaranteed stable across toolchain releases, so persisting it would orphan every stored blob on an upgrade. It is therefore replaced before the store gains persistence or ingests untrusted content (fetched pages, received attachments). The doc comment's reason for the stand-in — avoiding a cryptographic dependency — no longer holds: the domain crate already depends on a cryptographic hash.
 
 ## 6. Drawbacks & Alternatives
 
@@ -266,6 +267,7 @@ crates/
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.2 | 2026-10-21 | Implementation note 5: production content addresses carry their scheme (`sha256:<hex>`) so an algorithm change is a recognizable migration; the 64-bit std-hash stand-in is confined to in-memory, trusted input, because a colliding pair for any 64-bit address costs about 2³² evaluations and a dedup collision silently serves the wrong bytes, and because the std hash is not stable across toolchain releases; the stand-in's stated reason (no cryptographic dependency) is stale. Clarification of an existing seam — no invariant or compliance status changed. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): The target backend and download API were async, contradicting the synchronous core — restated with pull-based readers. The upload's exists-then-write dedup could race GC and leave a record pointing at a collected blob — both run on the store's single writer. GC used a `deleted_at` column the schema lacked — added. An S3-compatible backend is an opt-in, egress-gated destination (SEC-3); the MIME blocklist is labeled a heuristic behind the allowlist; ID prefix notation and section numbering corrected. |
 | 1.1.0 | 2026-09-12 | **Realization Status correction** (Retro L2 finding, `/magic.spec main`): this spec described a production mechanism (SQLite schema, async pipeline, storage-backend trait, access-control wiring, MIME allowlist, size guard) that was never built, as though it were current — `crates/file-store/` was never minted as a crate. What actually exists is a domain-tier reference algebra at `crates/domain/src/file_store.rs`, proving FM-1/2/3/7 and a narrower ref-counting realization of FM-5; FM-4 and FM-6 are unbuilt. Every §4 subsection describing the unbuilt mechanism is now explicitly labelled target design rather than presented as built; §4.1 added as the disclosure table; Invariant Compliance (§3) rewritten against the real module; Related Specifications corrected — the dead `l2-source-layout.md` citation (that spec never covered this placement) dropped, `l2-knowledge-store.md`'s real dependency on `FileStore` named. No L1 invariant added, removed, or reworded — `l1-file-management.md` is unchanged. |
 | 1.0.0 | 2026-06-24 | Initial spec. |

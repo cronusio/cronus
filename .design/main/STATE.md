@@ -4,14 +4,14 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-21 18:00
+**Updated:** 2026-10-21 14:32
 **Phase:** 33 — Execution Sandbox
 **Status:** Active
 
 ## Current Position
 
-- **Task:** Terminal UI screens, the first conversation turn, and installation changes carried out from inside, built in code: Kanban, Sessions, Chat; session journals read and written; `session say` streams token by token; the terminal UI runs everything it waits on beside its loop; every `Install` and `Recompose` verb the core carries out is asked about and carried out there, and a change applied by relaunch rebuilds the composition onto the same screen, focus and conversation (INDEX v1.0.230; `l2-invocable-registry` 1.10.0, `l2-engine-endpoint` 1.1.0, `l2-agent-session` 1.5.0, `l2-tui` 1.18.0). PLAN and TASKS untouched. Phase 33 (Execution Sandbox) remains the active phase, 0/25.
-- **Next Action:** Run /magic.task main — sync PLAN to INDEX v1.0.230 (`SYNC_GAP`; four specs unplanned, `ORPHANED_SPEC`: `l1-state-authority`, `l1-honest-solicitation`, `l1-surface-driver`, `l2-surface-driver`), and plan what remains around the installation verbs: the corpus obligation that an `Install` change alters only installation state and that a `Recompose` is refused while work runs (`l2-surface-conformance` 1.2.0 — now writable), the desktop shell joining the composition as a role-holder, the scheduled-job producer entering the ledger, a pause verb for `l2-office-control` so a refusal can offer it, and engine succession for spokes
+- **Task:** Candidate windows and embedding generations specified (INDEX v1.0.231): new `l1-candidate-windows` 1.0.0 (CW-1…CW-6), `l1-state-authority` 1.1.0 SAU-8, `l1-knowledge-base` 1.6.0 KB-18/KB-19, `l2-knowledge-store` 1.2.0 §4.8/§4.9, `l2-memory-store` 1.5.0, `l2-codegraph` 1.5.0, `l2-file-store` 1.1.2. No code changed. Before that, in code: terminal UI screens, the first conversation turn, and installation changes carried out from inside (INDEX v1.0.230). PLAN and TASKS untouched. Phase 33 (Execution Sandbox) remains the active phase, 0/25.
+- **Next Action:** Run /magic.task main — sync PLAN to INDEX v1.0.231 (`SYNC_GAP`; unplanned: `l1-state-authority`, `l1-honest-solicitation`, `l1-surface-driver`, `l2-surface-driver`, `l2-engine-endpoint`, `l1-candidate-windows`), and plan the new Pending rows: KB-19 / MEM-3 candidate windows (knowledge `ann_search`/`fts_search`, memory `search_fts`/`search_ranked`), KB-18 embedding generations (model identity recorded, same-dimension swap refused), plus what remains around the installation verbs (`l2-surface-conformance` 1.2.0 obligations, desktop shell as role-holder, scheduled-job producer in the ledger, an `l2-office-control` pause verb, engine succession for spokes)
 
 ## Progress
 

@@ -1,6 +1,6 @@
 # State Authority
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -25,6 +25,9 @@ The failure it closes is quiet. Two representations that both claim to know the 
 - [l1-doctor.md](l1-doctor.md) - Self-repair is the tool most able to run recovery in the wrong direction; SAU-4/SAU-5 bind it.
 - [l1-deliberation.md](l1-deliberation.md) - DL-4: the append-only log is the record-authoritative class.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - The realization: the path-level authority map (§4.6).
+- [l1-knowledge-base.md](l1-knowledge-base.md) - [ADDED v1.1.0] KB-18: the collection vector index is the first projection SAU-8 governs — an embedding-model change is a new generation built beside the live one.
+- [l1-retrieval-evaluation.md](l1-retrieval-evaluation.md) - [ADDED v1.1.0] RE-7 variant comparison is the declared quality measure a retrieval projection's new generation is compared on before the switch (SAU-8).
+- [l1-candidate-windows.md](l1-candidate-windows.md) - [ADDED v1.1.0] A candidate window presumes comparable items; SAU-8 refuses a window over vectors derived differently from the query before it is ever sized.
 
 ## 1. Motivation
 
@@ -35,6 +38,8 @@ Three occurrences in this corpus, found by reading it against itself:
 - **Projection rules without a repair direction.** The board, wiki, office view and generated surfaces each forbid becoming a second source. None says what happens when a projection and its authority disagree, which one a repair may overwrite, or whether a backup may skip a "derived" store.
 
 The contract here is deliberately small: it adds no store, only the vocabulary and the direction rule that make the existing per-subsystem statements compose.
+
+`[ADDED v1.1.0]` A fourth occurrence, found by reading the code against the corpus: **a derivation change with no way back.** The knowledge base and the code index both prescribe "purge and full rebuild" when the embedding model changes, so for the length of the rebuild the scope answers from nothing or from a mix of two models, and a worse new model can only be undone by a second full rebuild. The knowledge store records the vector dimension but not the model, so a swap to another model of the same dimension — common among local embedding models — would score queries against vectors from a different space with no error anywhere. SAU-4 says re-deriving a projection is always safe; it is safe for correctness, and that sentence was being read as licence for a destructive procedure.
 
 ## 2. Constraints & Assumptions
 
@@ -54,6 +59,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **SAU-5 (Backup, restore, export, sync and repair decide by the declared class):** a backup includes every authority; excluding a projection is a declaration, so excluding a "derived" store can never exclude a truth, and including an expensive-to-rebuild projection is a convenience the declaration records, never a substitute for the authority. A restore brings back authorities and re-derives projections. An export of a projection is labelled as one. Sync reconciles by the kind's class (SY-4). A repair tool rebuilds projections only (SAU-4). A tool that decides by file extension, directory or storage engine instead of by the declared class will, sooner or later, treat a truth as a cache.
 - **SAU-6 (The owning specification declares; the map only indexes):** the declaration of a kind's authority lives in the specification that owns the kind, beside its other invariants. The authority map kept in the realization is an index of those declarations — each row cites the invariant that makes it — and is never a second definition (SAU-1 applies to the map itself). A kind whose owner is silent is shown as *proposed*, which is a finding against the owner, not a class by default.
 - **SAU-7 (A move of authority is explicit and swept):** when a kind's authority moves (text to database, database to a log, a cache promoted to a source), the move is one revision that declares the new authority, demotes the old to a projection (regenerated export) or retires it, and updates every place that claimed the old one — the owning spec, the map, the repair list, the backup set, and any blanket statement that quoted the old rule. A kind never has two authorities "for a while": the window between old and new is closed by a versioned migration (STO-9), not left open.
+- **SAU-8 (A projection names its derivation; a new derivation is a new generation built beside the live one):** `[ADDED v1.1.0]` a projection records the identity of the derivation that produced it — the model and dimension of an embedding, the tokenizer of a lexical index, the scheme of a digest, the format version of a cache — and a reader whose own derivation differs treats it as **not comparable**, never as merely different: a query embedded by one model is never scored against vectors another model produced, and an output of the same size is no evidence of the same derivation. Changing the derivation produces a new **generation**, derived from the authority beside the live one. The live generation keeps answering until the new one covers the authority's in-scope content and has been compared with it on the projection's declared quality measure; writes made meanwhile reach both; the switch is one atomic change per scope; the predecessor stays until it is released, so going back is a switch rather than a re-derivation; then it is reclaimed. A projection is not purged before its successor is complete: re-deriving is safe for correctness (SAU-4), but purge-then-rebuild leaves the scope unanswered, or answered from a mix of derivations, for the length of the rebuild, and leaves no way back if the new derivation is worse. A same-derivation rebuild of a lost or damaged projection is SAU-4's ordinary repair and needs no generation.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -119,6 +125,41 @@ move_authority(kind, from, to):
 | CONV-8, OVZ-1, PW-3, generative-surface GS-6, DIR-2 | one lens or view is a projection | the repair direction and the closed class vocabulary all of them share |
 | OL-3 (canonical-source precedence) | which source wins when sources disagree about a fact | not a replacement: precedence ranks sources of one fact, authority names the one store for one kind |
 
+### 4.6 Changing a derivation (SAU-8) `[ADDED v1.1.0]`
+
+```text
+[REFERENCE]
+change_derivation(projection, scope, new_derivation):
+    g_live := active_generation(projection, scope)
+    g_next := create_generation(projection, scope, identity(new_derivation), state = building)
+    write path: every change to the authority in scope is applied to g_live and g_next
+    backfill g_next from the authority (resumable; g_live keeps answering)
+    when covers(g_next, authority, scope):
+        verdict := compare(g_next, g_live, declared_quality_measure(projection))
+        if verdict regresses beyond the declared threshold and no one directs otherwise:
+            hold g_next, report the comparison                // never switch on a regression silently
+        else:
+            atomically: active_generation(projection, scope) := g_next
+            mark g_live retained                               // revert = switch back, not rebuild
+    reclaim(g_live) only when released (by the user or a declared retention period)
+
+read(projection, scope, query):
+    g := active_generation(projection, scope)
+    if identity(query.derivation) != identity(g): refuse as not comparable   // never "no results"
+```
+
+Derivation identities the corpus's projections carry, and what is recorded today:
+
+| Projection | Derivation identity | Recorded today |
+| --- | --- | --- |
+| Knowledge collection vectors (KB-18) | embedding model, dimension, distance metric | dimension only |
+| Learned-memory vectors (MEM-3) | embedding model, dimension | not recorded |
+| Code-index symbol vectors (CI-8) | embedding model, dimension | staleness judged by row count only |
+| Full-text indices | tokenizer and its options | fixed at creation, not recorded |
+| Workflow definition digests | digest scheme tag | recorded — a digest with another tag is not comparable; the pattern the others follow |
+
+A projection whose rebuild is cheap and whose derivation never changes (a rendered view, a board projection) never needs a second generation; SAU-8 applies at the moment a derivation changes, not to every projection all the time.
+
 ## 5. Drawbacks & Alternatives
 
 - **Declaration overhead.** Every owning specification states a class. Mitigated: it is one sentence per kind, usually already present (MEM-4, DL-4, PW-3), and the map is generated from them by reading rather than written twice.
@@ -126,6 +167,8 @@ move_authority(kind, from, to):
 - **Alternative — fold this into the storage model.** Rejected: the storage model owns *where* state lives (tiers, scopes, versioning). The work board, the wiki and the office view are not storage questions, and putting their rules there would give the storage spec the work-state vocabulary it deliberately does not hold.
 - **Alternative — authority by location (state tier is truth, cache tier is projection).** Rejected: the memory database and the wiki index sit in the same tier with opposite classes; location says how regenerable a file is expected to be, not which copy is true.
 - **Cost: a repair tool may refuse.** A doctor that finds a damaged authority and no backup reports and stops instead of rebuilding. That is the intended cost of SAU-4: a refusal is recoverable, a laundered loss is not.
+- **Cost: a derivation change holds two generations at once (SAU-8).** Storage for the projection roughly doubles until the predecessor is released, and writes during the build are applied twice. Accepted: the alternative spends the same rebuild time with the scope unanswered and no way back, and the cost ends at release.
+- **Alternative — rebuild in place and keep the old projection as a file backup.** Rejected: restoring the backup is a second destructive swap, the scope still answers from a half-built projection during the rebuild, and a backup of a projection is exactly the "derived store kept for its rebuild cost" SAU-5 says must be declared, not improvised.
 
 ## Canonical References
 
@@ -141,4 +184,5 @@ move_authority(kind, from, to):
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-21 | Added SAU-8 + §4.6 — **a projection names its derivation; a new derivation is a new generation built beside the live one.** A reader derived differently treats a projection as not comparable (a query embedded by one model is never scored against another model's vectors; equal size proves nothing); a derivation change is built beside the live generation, compared on the projection's declared quality measure, switched atomically per scope, and the predecessor kept until released so reverting is a switch. Motivated by a fourth occurrence found reading code against the corpus: the knowledge base and code index prescribed purge-then-rebuild on an embedding-model change, and the knowledge store recorded the vector dimension but not the model, so a same-dimension model swap would have mixed vector spaces silently. The migration discipline (two structures held side by side, a stable choice of which one answers, rollback without rebuilding, cleanup after) transfers from a published study of a large-scale load balancer's hash-ring replacement. §4.6 lists each projection's derivation identity and what is recorded today; Drawbacks gain the two-generation cost and the rejected backup-and-swap alternative. Related Specifications extended with `l1-knowledge-base`, `l1-retrieval-evaluation`, `l1-candidate-windows`. Additive — stays Stable after Post-Update Review (C9). |
 | 1.0.0 | 2026-10-03 | Initial concept — one authority per kind of state (SAU-1), every other representation a projection or a description of a different object (SAU-2), a closed authority-class vocabulary — text, store, record (SAU-3), recovery from authority to projection and never back (SAU-4), backup/restore/export/sync/repair deciding by declared class (SAU-5), the owning specification declares and the map only indexes (SAU-6), a move of authority explicit and swept (SAU-7). Motivated by two contradictions found reading the corpus against itself (a plan status and a board state each called the single source of execution truth; a blanket "databases are derived indices" surviving the move of learned memory to a database). |

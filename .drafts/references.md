@@ -214,3 +214,11 @@
 - [Loop Engineering: как перестать промптить вручную и начать проектировать циклы для ИИ-агентов](https://ai4dev.ru/posts/loop-engineering)
 - [How to Build a Dynamic Workflow Engine for Your Need?](https://www.nected.ai/blog/dynamic-workflow-engine)
 - [APILayer Unified Suite](https://github.com/public-apis/public-apis)
+- [Saving another 100TB of RAM with math (and Rust)](https://blog.cloudflare.com/saving-100-tb-of-ram-with-math/)
+- [How we saved 100 terabytes of memory by optimizing 1.1.1.1’s DNS cache](https://blog.cloudflare.com/dns-cache-memory-optimization-1111/)
+
+### Источники по sqlite-vec
+
+- [sqlite-vec v0.1.6: metadata columns, partition keys](https://https-alexgarcia_xyz.proxy.bugsmash.io/blog/2024/sqlite-vec-metadata-release/index.html)
+- [vec0 features](https://https-alexgarcia_xyz.proxy.bugsmash.io/sqlite-vec/features/vec0.html)
+- [sqlite-vec skill (third-party)](https://playbooks.com/skills/existential-birds/beagle/sqlite-vec)

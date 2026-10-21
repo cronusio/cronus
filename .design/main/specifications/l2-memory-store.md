@@ -1,6 +1,6 @@
 # Memory Store
 
-**Version:** 1.4.3
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -17,7 +17,8 @@ The concrete realization of the memory model for v0.1.0: an embedded store using
 - [l2-core-library.md](l2-core-library.md) - Hosts the memory service on the hot path.
 - [l2-agent-constitution.md](l2-agent-constitution.md) - §4.25 standing-instruction sink rule the quick-memory files share (§4.11).
 - [l1-action-gating.md](l1-action-gating.md) - AG-10: a write into text loaded as standing instruction is a privileged sink.
-- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.4.3] the authority classes MEM-4 is the first declaration of, and the rule that a repair never rebuilds an authority from its projection.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.4.3] the authority classes MEM-4 is the first declaration of, and the rule that a repair never rebuilds an authority from its projection. [ADDED v1.5.0] SAU-8: `memory_vec` records the embedding model that produced it; a model change is a new generation beside the live one.
+- [l1-candidate-windows.md](l1-candidate-windows.md) - [ADDED v1.5.0] Each recall leg is a candidate window: the recall filter runs inside the leg's search (CW-1) and the fuse receives legs deeper than the budgeted count (CW-4).
 
 ## 1. Motivation
 
@@ -29,6 +30,7 @@ The model demands cheap, multi-signal, local recall with clean forgetting and co
 - sqlite-vec is pre-1.0 — pin the version and isolate it behind a repository interface.
 - **Source of truth by kind (MEM-4):** the high-volume **learned** corpus is store-authoritative — the SQLite `memory_item` row (with its `content` column) is the truth, and the vector/lexical/graph indices are derived and rebuildable from it, with no parallel authoritative note file. The small **authored** quick-memory (`MEMORY.md` / `USER.md` per role, §4.11) stays human-readable-authoritative — it is the one tier a human edits directly. A human-readable export of the learned corpus is a derived projection, not a second truth.
 - v0.1.0 ships vector + lexical + tags. No relationship graph yet.
+- `[ADDED v1.5.0]` `memory_vec` is a projection with a derivation identity (embedding model, dimension). The identity is recorded per scope database, a query embedded under another identity is refused rather than scored, and a model change builds a new vector generation beside the live one (`l1-state-authority` SAU-8; the knowledge store's §4.8 is the reference realization of the same lifecycle). A dimension check alone would let a same-dimension model swap mix vector spaces silently.
 
 ## 3. Invariant Compliance (Layer 2 only)
 
@@ -36,7 +38,7 @@ The model demands cheap, multi-signal, local recall with clean forgetting and co
 | --- | --- |
 | MEM-1 Four scopes | Separate stores per scope: global `<state>/memory/`, workspace `<ws>/memory/`, employee `<role>/memory/`, session `<ws>/sessions/`. |
 | MEM-2 Most-specific-first | Recall queries employee → workspace → global; merges with specificity precedence; truncates to a token budget. |
-| MEM-3 Multi-signal recall | Fuse sqlite-vec similarity + FTS5 BM25 + tag filter into one ranked set. |
+| MEM-3 Multi-signal recall | Fuse sqlite-vec similarity + FTS5 BM25 + tag filter into one ranked set. `[ADDED v1.5.0]` Each leg applies the recall filter inside its own search and returns `leg_depth` candidates, deeper than the budgeted count, before the fuse (`l1-candidate-windows` CW-1/CW-4, §4.2). **Pending:** the shipped lexical recall (`search_fts`) and ranked recall (`search_ranked`, `crates/store-local/src/memory/store.rs`) take `LIMIT n` from the full-text index first and drop low-trust, superseded, non-active and expired entries afterwards, so any ineligible match inside the top `n` shortens the answer; ranked recall then re-orders only those survivors by its multiplicative signals, so an item one past the lexical cut can never be promoted. Superseded versions rank beside their replacements, so the shortfall concentrates on the facts the store knows best. |
 | MEM-4 Source of truth by kind | **Learned corpus:** the `memory_item` row (`content` column) is authoritative; `memory_fts` / `memory_vec` are derived and rebuildable from it — no external note file. **Authored quick-memory:** `MEMORY.md` / `USER.md` (§4.11) are human-readable-authoritative, the one tier a human edits directly. A text export of the learned corpus is a projection, not a second truth. Declared classes (`l1-state-authority` SAU-3): store-authoritative for the learned corpus, text-authoritative for authored quick-memory; `l2-doctor` re-derives `memory_fts` / `memory_vec` from the row and never rebuilds the corpus from an export. |
 | MEM-5 Decay & prune | `validity_scope` sets a half-life; a prune job deletes expired low-utility rows and old sessions. |
 | MEM-6 Compounding, non-destructive | Archivist promotes/distills; contradictions set `invalid_at` (supersede), never hard-delete durable knowledge. |
@@ -107,8 +109,18 @@ recall_score = ( w_vec  · vec_similarity                          // §4.1 vec0
                + w_rec  · recency                                 // §4.2.2, off by default (w_rec = 0)
                + w_graph· graph_score )                           // §4.16, 0 when no code node is active
              / (sum of the active weights)
-filter: trust_score ≥ TRUST_MIN_SEARCH (§4.6); superseded_at IS NULL (§4.14); tag filter when given
+filter: trust_score ≥ TRUST_MIN_SEARCH (§4.6); superseded_at IS NULL (§4.14); lifecycle active; not expired; tag filter when given
+        — applied INSIDE each leg's search, before its LIMIT (CW-1), never to a leg's already-cut window
+depth:  each leg returns leg_depth candidates (> the budgeted count, CW-4); the fuse ranks the union
 then:   MMR re-ordering when mmr_lambda < 1 (§4.2.2); merge across scopes; truncate to the token budget
+```
+
+`[ADDED v1.5.0]` The lexical leg evaluates the filter by joining `memory_fts` to `memory_item` in the same statement, so `LIMIT leg_depth` counts eligible rows only. The vector leg follows the knowledge store's vector channel (`l2-knowledge-store` §4.9): exact restricted scoring when the eligible set is no larger than the first window, otherwise a window sized from the eligible share and widened. The merge across scopes is itself a re-ordering stage, so each scope contributes `leg_depth`, not the final count.
+
+```text
+[REFERENCE] window knobs — estimates until the memory-recall fixture measures them (CW-5)
+leg_depth = max(4 · budgeted_count, budgeted_count + 20)   // per leg, per scope
+miss      = 0.01                                           // vector leg first-window miss target
 ```
 
 <!-- [ADDED] v1.3.0 -->
@@ -126,6 +138,9 @@ The default FTS5 tokenizer splits on whitespace and ASCII punctuation, so it und
 SELECT … FROM memory_item
 WHERE content LIKE '%' || ? || '%'
   AND trust_score >= ?           -- TRUST_MIN_SEARCH (§4.6)
+  AND superseded_at IS NULL      -- [ADDED v1.5.0] the same eligibility as the primary leg (CW-1):
+  AND lifecycle_state = 'Active' --   supersession, lifecycle and expiry, not only trust
+  AND (expiry IS NULL OR expiry > ?)
   [AND type = ?]                 -- optional category filter
 ORDER BY trust_score DESC
 LIMIT ?;
@@ -951,6 +966,7 @@ The archivist's `reconcile` stage reads the pending review queue and either:
 
 | Version | Change |
 | --- | --- |
+| 1.5.0 | Candidate windows and vector generations (2026-10-21). §4.2: the recall filter (trust floor, supersession, lifecycle, expiry, tags) runs inside each leg's search before its `LIMIT` (`l1-candidate-windows` CW-1), and each leg and each scope contributes `leg_depth` candidates, deeper than the budgeted count, to the fuse and the cross-scope merge (CW-4); `leg_depth` and the vector leg's miss target are labelled estimates (CW-5). §4.2.1's fallback scan gains the supersession, lifecycle and expiry predicates it lacked. §2: `memory_vec` records its embedding identity and changes model through a new generation (`l1-state-authority` SAU-8). MEM-3 row records the gap as **Pending**: shipped lexical and ranked recall cut at the requested count and filter afterwards, and ranked recall re-orders only that window. |
 | 1.4.3 | Patch (2026-10-03): MEM-4's compliance row now names the authority classes it declares (`l1-state-authority` SAU-3 — the learned corpus store-authoritative, authored quick-memory text-authoritative) and the repair direction (`l2-doctor` re-derives the indices from the row, never the corpus from an export). The storage model's and the filesystem layout's blanket "databases are derived indices" had outlived this declaration; both are corrected in the same pass. No behaviour changed. |
 | 1.4.2 | Consistency pass (2026-09-23): One recall fusion formula defined in §4.2 (it had four incompatible forms across §4.2.2, §4.6, §4.15, §4.16); the other sections now name their term. §4.3 no longer writes `notes/*.md` (the dual write v1.4.0 removed). The HRR capacity guard bounded the wrong quantity and deleted real memories to relieve a fallback encoding — the SNR limit applies to components bundled into one vector, and the guard never prunes (MEM-6). `MEMORY.md` had three incompatible definitions (§-delimited 2200-char file, consolidation output, 25 KB link index): the topic index is now `INDEX.md` with `topics/` files, `MEMORY.md` stays the small always-injected file. Quick-memory files are a standing-instruction sink like the constitution's (§4.25 there, AG-10): untrusted-provenance machine writes are staged under `.pending/`. Phase 2 no longer removes human-authored entries and lists every removal. `/forget` confirms the model-selected target before deleting. |
 | 1.4.1 | Disclosed simplification (FR-6) recorded in §5: the shipped HRR encoder is a zeroed-vector stub, so the HRR fallback recall leg is inert until a real encoding (or an embedding model) lands; no schema or contract change |

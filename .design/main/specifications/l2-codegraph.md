@@ -1,6 +1,6 @@
 # Code Graph
 
-**Version:** 1.4.1
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-code-intelligence.md
@@ -16,6 +16,7 @@ An in-workspace code intelligence index: language-aware entity extraction builds
 - [l1-office-model.md](l1-office-model.md) - OFF-1: the global graph (§4.15) joins an office's graph only on an explicit add.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - `codegraph.db` lives in the workspace state tier.
 - [l2-memory-store.md](l2-memory-store.md) - Memory store uses the same `sqlite-vec` extension for dense embeddings; shared pattern.
+- [l1-state-authority.md](l1-state-authority.md) - [ADDED v1.5.0] SAU-8: `symbol_vecs` names its embedding identity, and a model change is a new generation beside the live one (§4.6).
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Codegraph indexes an execution workspace's source tree during active tasks.
 - [l2-quality-pipeline.md](l2-quality-pipeline.md) - Quality pipeline can seed codegraph queries to scope check commands.
 
@@ -202,11 +203,11 @@ Results are sorted descending by `rrf_score`, then trimmed to `limit`. Filters (
 
 Embeddings are computed on first search, not at index time:
 
-1. `codegraph.search()` detects that `symbol_vecs` is empty or stale (fewer rows than `symbols`).
+1. `codegraph.search()` detects that `symbol_vecs` is empty or stale (fewer rows than `symbols`), or that its recorded embedding identity (model, dimension) differs from the configured model's.
 2. A background task computes embeddings for all symbols in batches (default: 64 symbols per batch).
 3. The current query proceeds with FTS5-only ranking until the embedding batch for the query's top results completes; subsequent calls use RRF fusion.
 
-The embedding model is configurable and can be swapped via the extension registry (interface: `EmbeddingModel`). The default is a quantized sentence-embedding model bundled with the application. Embedding dimension must match the `symbol_vecs` schema; changing the model requires a `codegraph purge` and full rebuild.
+The embedding model is configurable and can be swapped via the extension registry (interface: `EmbeddingModel`). The default is a quantized sentence-embedding model bundled with the application. `[MODIFIED v1.5.0]` `symbol_vecs` records the embedding identity (model, dimension) that produced it, and a query embedded under another identity is not fused with it. Changing the model builds a new `symbol_vecs` generation beside the live one (`l1-state-authority` SAU-8): search keeps fusing with the live generation until the new one covers every symbol, then switches, and the predecessor is dropped once the switch is confirmed. A row count cannot detect a model change — a full table of vectors from the previous model has exactly as many rows. `codegraph purge` remains the explicit way to discard every generation; it is no longer the procedure for changing models.
 
 ### 4.7 Command surface
 
@@ -546,6 +547,7 @@ Operations:
 
 | Version | Change |
 | --- | --- |
+| 1.5.0 | Embedding generations (2026-10-21, `l1-state-authority` SAU-8). §4.6: `symbol_vecs` records its embedding identity (model, dimension); staleness also fires on an identity mismatch, since a row count cannot see a model change; a model change builds a new generation beside the live one and switches when it covers every symbol, replacing the former "purge and full rebuild" procedure; `codegraph purge` stays as the explicit discard. The embedding leg is not yet built in code, so this changes the design target only. |
 | 1.4.1 | Consistency pass (2026-09-23): §2 claimed no remote calls for indexing while Pass 3 sends documents and images to LLM subagents — Pass 3 now runs only under authorized routing (SEC-3) and reports when skipped. Implementation details of a Python reference removed (hash-seed variable, process workaround, a graph library's file format); the global graph moves from a home-directory path to the state tier and joins an office's graph only on explicit `global_add` (OFF-1). Storage citations corrected (STO-1/STO-8); canonical range CI-1…CI-20. |
 | 1.4.0 | Mapped new parent invariants CI-18 (disposable local cache / shared wiring — partial), CI-19 (read-triggered freshness against working-tree bytes; read-only drift report — partial), CI-20 (context delivery mode push vs. pull — roadmap) in §3; added the "graph as a folder of linked plain files, no store" alternative to §5 with the reason Cronus keeps the SQLite index |
 | 1.3.0 | Mapped new parent invariants CI-16 (resolution & indirect-edge synthesis w/ provenance — partial) and CI-17 (measured resolution coverage — roadmap) in §3 |
