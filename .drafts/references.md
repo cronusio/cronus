@@ -167,6 +167,7 @@
 - <https://github.com/affaan-m/agentshield>
 - <https://github.com/affaan-m/claude-swarm>
 - <https://github.com/morluto/rea>
+- <https://github.com/cli/cli>
 
 ## Audio
 

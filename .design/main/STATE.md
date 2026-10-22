@@ -4,14 +4,14 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-21 14:32
+**Updated:** 2026-10-22 09:11
 **Phase:** 33 — Execution Sandbox
 **Status:** Active
 
 ## Current Position
 
-- **Task:** Candidate windows and embedding generations specified (INDEX v1.0.231): new `l1-candidate-windows` 1.0.0 (CW-1…CW-6), `l1-state-authority` 1.1.0 SAU-8, `l1-knowledge-base` 1.6.0 KB-18/KB-19, `l2-knowledge-store` 1.2.0 §4.8/§4.9, `l2-memory-store` 1.5.0, `l2-codegraph` 1.5.0, `l2-file-store` 1.1.2. No code changed. Before that, in code: terminal UI screens, the first conversation turn, and installation changes carried out from inside (INDEX v1.0.230). PLAN and TASKS untouched. Phase 33 (Execution Sandbox) remains the active phase, 0/25.
-- **Next Action:** Run /magic.task main — sync PLAN to INDEX v1.0.231 (`SYNC_GAP`; unplanned: `l1-state-authority`, `l1-honest-solicitation`, `l1-surface-driver`, `l2-surface-driver`, `l2-engine-endpoint`, `l1-candidate-windows`), and plan the new Pending rows: KB-19 / MEM-3 candidate windows (knowledge `ann_search`/`fts_search`, memory `search_fts`/`search_ranked`), KB-18 embedding generations (model identity recorded, same-dimension swap refused), plus what remains around the installation verbs (`l2-surface-conformance` 1.2.0 obligations, desktop shell as role-holder, scheduled-job producer in the ledger, an `l2-office-control` pause verb, engine succession for spokes)
+- **Task:** Backlog pass over the user's idea list (INDEX v1.0.234): eight new specifications — `l1-program-lifecycle` + `l2-program-lifecycle` (install, `cronus` on the search path, signed updates with rollback, uninstall), `l2-diagnostic-log` (logging; no crate logs today), `l1-remote-attachment`, `l1-client-involvement`, `l1-work-method`, `l1-compute-acceleration`, `l1-prompt-templates` — and twelve amendments (handoff record CXT-13/14 + `l2-session-checkpoint` §4.11, ISS-8, MB-11/12, OFF-6/IR-2/IR-9 expert exception, localized help + generated en/ru command reference, `l2-filesystem-layout` 1.6.0 path catalog, `state.location`, `share.office_state`). No code changed. Phase 33 (Execution Sandbox) remains current, 0/25.
+- **Next Action:** Run /magic.task main — absorb the 12 orphaned specs (v1.0.232–v1.0.234: artifact reach, onboarding, epistemic status, usage analytics, program lifecycle ×2, diagnostic log, remote attachment, client involvement, work method, compute acceleration, prompt templates) into Phase 0 / Concept Library (concept-only where no L2 is planned), plan the Pending rows (logging first: `l2-diagnostic-log`; then `l2-program-lifecycle` command registration; `l2-filesystem-layout` 1.5–1.6 rows), sync PLAN to INDEX v1.0.234; then /magic.run main
 
 ## Progress
 

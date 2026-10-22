@@ -1,6 +1,6 @@
 # Model Benchmarking
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -25,6 +25,8 @@ This closes a measurement gap the evaluation family leaves open: [l1-evaluations
 - [l2-budget-engine.md](l2-budget-engine.md) - Budget caps that bound benchmark runs on metered credentials (MB-8).
 - [l1-reasoning-spend.md](l1-reasoning-spend.md) - [ADDED v1.1.0] RSN-7 requires the reasoning class to be reported as its own figure inside MB-3's token dimension: two candidates producing the same answer with a tenfold deliberation gap are economically different, and a combined total hides it at exactly the moment the comparison exists to expose it.
 - [l1-output-contracts.md](l1-output-contracts.md) - [ADDED v1.1.0] OC-4's retry budget is the production value MB-10 requires an output-validity retry to be measured at; raising it for a benchmark measures the harness's persistence, not the model's compliance.
+- [l1-outcome-attributed-cost.md](l1-outcome-attributed-cost.md) - [ADDED v1.2.0] Cost attributed to accepted outcomes, the cost column of the in-service record (MB-11).
+- [l1-evaluations.md](l1-evaluations.md) - [ADDED v1.2.0] The client's evaluations, the third labeled source of the internal rating (MB-12).
 
 ## 1. Motivation
 
@@ -70,6 +72,10 @@ Rules every Layer 2 implementation MUST NOT violate. They are technology-neutral
   - **Output-validity retries** — malformed, contract-failing, or non-compliant model output re-requested until it passes. These **are the measured property**. They MUST stay at the production value, identical across candidates, because raising them measures the harness's persistence rather than the model's compliance: a candidate that produces valid output on the third attempt is not a candidate that produces valid output, and a benchmark that retries until it passes reports a first-attempt compliance rate that no user will ever experience.
 
   **Attempts are counted and reported** in both classes — a score with a hidden retry count is unreproducible, and the counts themselves are a result (a candidate needing three attempts to satisfy the same contract is the finding, not noise to be smoothed away). The retry configuration is recorded in the run's provenance (MB-7) and is part of what makes two runs comparable (MB-5): results produced under different output-retry allowances are **not** comparable and MUST NOT be pooled. This is the measurement-side complement to MB-9's rule against silently retrying a failure until it passes — MB-9 forbids the practice, MB-10 states which retries are legitimate, which are the measurement itself, and what must be recorded either way.
+
+- **MB-11 (The in-service record is a second source, kept apart from the probes):** `[ADDED v1.2.0]` beside probe fitness, the office keeps per (model, task class) a record of how its **real work** fared — first-attempt acceptance at the quality gates, rework requested, independent-judge verdicts, and cost per accepted outcome — derived from the run records it already writes, each entry carrying the harness and role it ran under, because a production outcome measures the (model, harness) pair, not the model alone. It is never merged into the probe profile: probes are comparable and controlled, the record is realistic and confounded, and each is honest only about what it is.
+
+- **MB-12 (The internal rating ranks per task class over labeled sources, never one global number):** `[ADDED v1.2.0]` the product's internal model rating presents, for each task class, the models ranked on each source separately — probe fitness, in-service record, the client's evaluations — with the sample count, the age of the evidence and, for local models, the hardware it was measured on. A model under the minimum sample shows *not enough evidence* rather than a rank. The rating is a projection rebuilt from the records, kept on the device and never published; the router may read each source as a signal under MB-6, and a person reads the same view to see which model the office trusts for what, and why.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -195,6 +201,7 @@ None substitutes for another; this spec is the only member that measures the mod
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-22 | Added MB-11 and MB-12 from the user's backlog (an internal rating of AI models): the in-service record of real work per (model, task class) — first-attempt gate acceptance, rework, judge verdicts, cost per accepted outcome — kept as a second source beside the probes and never merged with them; the internal rating ranks models per task class on each labeled source separately, with sample counts, evidence age and hardware, *not enough evidence* below the minimum sample, rebuilt locally and never published. |
 | 1.1.0 | 2026-08-06 | MB-10 added — **retry policy is part of the measured unit, and it is asymmetric**. MB-5 fixed the harness across candidates and MB-9 forbade silently retrying a failure until it passes, but neither said which retries are legitimate. The split: **availability retries** (rate limiting, throttling, service unavailability) measure the provider's queue on the day rather than the candidate, so they MAY be relaxed generously to keep a quota event from destroying a long run; **output-validity retries** (malformed or contract-failing output re-requested until it passes) **are the measured property** and MUST stay at the production value across candidates, because a candidate that produces valid output on the third attempt is not a candidate that produces valid output, and a suite that retries until it passes publishes a first-attempt compliance rate no user will ever experience. Attempts are counted and reported in both classes — a score with a hidden retry count is unreproducible, and the count is itself a result. The configuration joins MB-7 provenance and MB-5 comparability: runs under different output-retry allowances MUST NOT be pooled. |
 | 1.0.0 | 2026-07-02 | Initial concept: hardcoded three-class micro-benchmark (code / content / instruction-compliance probes) measuring base-model fitness per task class on quality + time + tokens/cost (MB-1…MB-9); fitness profiles feed the model router as a signal, never an override; deterministic-first grading composing the evaluation-suite grader taxonomy. |
 | 1.0.1 | 2026-07-03 | Added a Related Specifications cross-reference to the new sibling spec l1-specialty-exemplars (per-specialty competency graded against gold-standard reference exemplars, staffing consumer); demarcation only, no invariant or logic change. |

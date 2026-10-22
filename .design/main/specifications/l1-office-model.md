@@ -1,6 +1,6 @@
 # Agent Office Model
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -37,7 +37,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **OFF-3 (Role specialization):** work is executed by specialized role agents, each with a defined specialty. The orchestrator MAY introduce intermediate layers (sub-managers / department managers).
 - **OFF-4 (Adaptive staffing):** the office instantiates ("hires") the roles a project needs on demand as understanding of the client's intent grows; the roster is adaptive, never required to be complete up front.
 - **OFF-5 (Client-as-client / minimal intrusion):** the client supplies ideas and requirements only. The system performs all technical work autonomously and MUST NOT require the client to participate in execution.
-- **OFF-6 (Clarify only on genuine ambiguity):** the orchestrator MUST NOT pose unnecessary or technical questions to the client. It MAY ask the client ONLY to resolve a genuine ambiguity, contradiction, or missing requirement that would otherwise block correct work.
+- **OFF-6 (Clarify only on genuine ambiguity):** the orchestrator MUST NOT pose unnecessary or technical questions to the client. It MAY ask the client ONLY to resolve a genuine ambiguity, contradiction, or missing requirement that would otherwise block correct work. `[ADDED v1.1.0]` The one admitted exception is a client who set their office to the expert involvement level (`l1-client-involvement` CIV-3): there, technology questions are admissible at intake and planning and at an architecture-shaping decision, and nowhere else; every other level keeps this invariant exactly as written.
 - **OFF-7 (Managed work lifecycle):** the orchestrator translates client intent into a managed pipeline — plans, tasks, and a Kanban board (`triage → todo → ready → running → blocked → done → archive`, extensible) — and drives it toward completion.
 - **OFF-8 (Autonomous, location-flexible operation):** the office operates autonomously on its host (local, remote, or ssh-tunnelled) without continuous supervision.
 - **OFF-9 (Persistent, compounding capability):** the office persists what it learns; its capability MUST be non-decreasing across sessions — it improves over time and MUST NOT reset acquired knowledge on restart.
@@ -110,6 +110,7 @@ Specialties an office may staff (not exhaustive; staffing is adaptive per OFF-4)
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | OFF-6 gains its one exception: a client who chose the expert involvement level (`l1-client-involvement`, new) may be asked technology questions at intake, planning and architecture-shaping decisions; the default and every other level are unchanged. |
 | 1.0.2 | 2026-09-24 | Consistency pass (2026-09-24): A TBD asked which orchestration scheme is the default — one top manager, or a manager with department sub-managers. `l1-orchestration` ORC-2 already settles it (direct management while small, sub-managers as the office grows); the marker is replaced by that answer, and the promotion thresholds stay open where ORC-2 lives. |
 | 1.0.1 | 2026-07-10 | Cross-reference only: linked `l1-office-archetype.md`, which supplies domain-scoped staffing priors while preserving OFF-4 and the §5 rejection of the fixed org chart. No invariant or design change. History table added with this entry. |
 | 1.0.0 | 2026-06-24 | Initial stable spec — OFF-1…OFF-9: office-per-project isolation, single delegating orchestrator, role specialization, adaptive staffing, client-as-client, managed work lifecycle, autonomous operation, compounding capability. |

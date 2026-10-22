@@ -1,6 +1,6 @@
 # Session Checkpoint
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-memory-model.md
@@ -19,6 +19,8 @@ The session checkpoint system persists enough task context across LLM context-wi
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - Path layout for session-scoped files.
 - [l2-security.md](l2-security.md) - Secrets-tier patterns the snapshot store never captures (SNAP-5).
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Where shell mutations are recovered, since snapshots cannot precede them (§4.10).
+- [l1-context-transition.md](l1-context-transition.md) - [ADDED v1.1.0] CXT-13/CXT-14: the work-scoped handoff record §4.11 stores and loads.
+- [l2-kanban-board.md](l2-kanban-board.md) - [ADDED v1.1.0] Per-attempt run records, where a card's handoff record is kept (§4.11).
 
 ## 1. Motivation
 
@@ -292,6 +294,37 @@ Invariants:
          keep secrets out of every copy. Other file content is captured verbatim.
 ```
 
+### 4.11 Handoff record `[ADDED v1.1.0]`
+
+The checkpoint files of §4.1 are session-scoped: they let *this* session resume after its own window fills. A new session that picks up the same work does not read them. The handoff record (`l1-context-transition` CXT-13) is the work-scoped complement: written when a session hands its work on, read first by the next session that takes the same work.
+
+**Where it lives.** It is stored with the work, not as a free-standing file:
+
+| The work is | The record is | Read by |
+| --- | --- | --- |
+| a card | the closing entry of the card's per-attempt run record (`<ws>/kanban/runs/`, record-authoritative, `l2-kanban-board` §4.6–4.7) | the next run that claims the card, in its prologue, before the first model call |
+| a conversation with no card | a `handoff` entry in the session journal (`l2-agent-session` §4.15) | a session started with `--continue <session>`, or the next turn after a rollover |
+
+A single project-wide `HANDOFF.md` is not used: two parallel sessions would overwrite each other's record, and a stale file would be read as current by work it does not describe. A Markdown view is a projection for people (`cronus session handoff show [--card <id> \| --session <id>]`).
+
+```text
+[REFERENCE]
+HandoffRecord {
+  goal:            String,               // the work's purpose in its owner's terms
+  current_state:   String,               // verified facts at the boundary
+  active:          Vec<ArtifactRef>,     // files, cards, documents — by reference
+  changes:         Vec<ChangeRef>,       // commits, diffs, card transitions this window made
+  failed_attempts: Vec<{ tried: String, why_abandoned: String }>,
+  next_steps:      Vec<String>,          // first item is the concrete next action
+  empty_reasons:   Map<Part, String>,    // why a part is empty, never silently omitted
+  written_at, written_by (session, agent), boundary (which disposition, CXT-11)
+}
+```
+
+**When it is written.** At the boundary where the ladder chooses a disposition that moves work to a fresh window (a directed reduction that empties the window, an externalization, the end of a run that leaves its card unfinished), the checkpoint-writer fork of §4.4 composes it from `checkpoint.md`, the progress diff of §4.5 and the session's own record of abandoned approaches — reusing the parent's frozen prefix, so writing it costs a cache-warm call.
+
+**When it is read.** The prologue (`l2-agent-session` §4.4) of a run or session that takes the work loads the latest record within the injection budget of §4.2 (default 2 000 tokens), then checks each referenced artifact against its authority (CXT-14): a card's current status, a file's current content hash against the one the record saw. Mismatches are injected as a short "changed since handoff" list ahead of the record. **Pending:** none of this is built; run records exist in the specification only.
+
 ## 5. Drawbacks & Alternatives
 
 - **Fork-agent complexity:** the ForkContext in-memory map couples the spawn machinery to the checkpoint writer. The benefit (KV-cache warm hit) is significant for long-running autonomous tasks.
@@ -313,5 +346,6 @@ Invariants:
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Core Team | New §4.11 Handoff record (`l1-context-transition` CXT-13/CXT-14), from the user's backlog (a handoff file written during a session and read first by the next one): six fixed parts stored with the work — the closing entry of a card's run record, or a `handoff` entry in the session journal for work with no card — rather than one project-wide file that parallel sessions would overwrite; composed by the checkpoint-writer fork at the boundary; loaded by the next run's prologue within a 2 000-token budget after checking each referenced artifact against its authority. `cronus session handoff show` as the human projection. Pending in code. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance cited MEM-2 (most-specific-first recall) for session scope and ORC-6 (judged termination) for isolation — now MEM-5 and ORC-5. SNAP-5 captured secret files verbatim into the shadow store ("the user's responsibility"), contradicting SEC-1/STO-6 — secrets-tier files are recorded by path only. `run_shell` was snapshotted "when its output shows file mutations", which cannot precede the mutation — removed from the covered set, with shell changes recovered through the execution workspace and the gap stated. SNAP-2 names could collide within one second — counter suffix. Restore confirms before overwriting files changed after the snapshot. |
 | 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

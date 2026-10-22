@@ -1,6 +1,6 @@
 # Invocable Registry & Dispatch Contract
 
-**Version:** 1.10.0
+**Version:** 1.11.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -28,6 +28,9 @@ The registry is simultaneously the `contribute` extension point of the EP-2 taxo
 - [l1-action-gating.md](l1-action-gating.md) · [l1-consent-binding.md](l1-consent-binding.md) — `[ADDED v1.2.0]` The friction an installation verb passes through on a composed surface, and what the granted consent covers (§4.8.1).
 - [l2-office-control.md](l2-office-control.md) — `[ADDED v1.2.0]` The drain-and-checkpoint path a `Recompose` installation verb is refused into while work it would alter is running (§4.8.1).
 - [l2-config-hotreload.md](l2-config-hotreload.md) — `[ADDED v1.2.0]` Decides whether a `Recompose` change applies in place or needs a relaunch (§4.8.1).
+- [l2-program-lifecycle.md](l2-program-lifecycle.md) - [ADDED v1.11.0] Adds the `update`, `shell` and `uninstall` installation verbs with their effect classes to the declaration of §4.7.1.
+- [l2-diagnostic-log.md](l2-diagnostic-log.md) - [ADDED v1.11.0] Adds the `log` inspect verbs and reuses §4.12 redaction and the "do not journal input" declaration for log fields.
+- [l1-content-language.md](l1-content-language.md) - [ADDED v1.11.0] CL-5: verb names, flags and identifiers are never translated in localized help (§4.14).
 
 ## 1. Motivation
 
@@ -365,6 +368,18 @@ A dispatch that resolved is journaled as a **pair** — one record when the invo
 
 The last row is the INV-7 half of this section and it is a *declaration on the descriptor*, not a redaction pass over the journal. Redaction (§4.12) masks values it has been told about; an invocable whose entire argument is a credential cannot rely on that, because the store may not know the value. Declaring that this invocable's input is not journaled removes the class rather than filtering it — and, unlike a redaction rule, it is stated at the invocable by the person who knows what the argument is.
 
+### 4.14 Help in the person's language, and the command reference `[ADDED v1.11.0]`
+
+Help, slash discovery and completion are already projections of the descriptor (SP-2). Two things were missing: the person's language, and a written reference that cannot drift from the catalog.
+
+**Descriptor text is a message key with an English source.** Each descriptor's `name`, `summary` and binder help keep their English text as the source string and gain a key derived from the identity (`core:board.list` → `core.board.list.summary`). Translations live in the language packs of the program tier (`<program>/languages/<locale>/`), the same packs the desktop shell uses (`l2-app-ui` §4.6); the command line and the terminal UI resolve the active locale from `app.json` `locale`, overridden by `--lang <locale>` or `CRONUS_LANG`. A missing translation renders the English source. Verb names, flags, identifiers and example values are never translated (`l1-content-language` CL-5), so a command typed from a Russian help page is the same command. A contributed descriptor may carry its own translations in its manifest; they are validated at registration like the rest of its text (§4.2).
+
+**One help, every spelling.** `cronus help [<group> [<verb>]]`, `cronus [<group> [<verb>]] --help` and the terminal UI's `/help [<verb>]` render the same projection; the terminal UI's list is the slash catalog, the command line's is the parser's.
+
+**The command reference is generated, in each shipped language.** `cronus help --all --format markdown [--lang <locale>]` writes the full reference — every shipped group and verb, its summary, binders and installation effect class — and the repository keeps `docs/reference/commands.md` and `docs/reference/commands.ru.md` as that output. A test regenerates both and fails on any difference, so the documents are a projection like the help itself and never a second hand-kept list. Hand-written guides stay as `docs/<name>.md` with a `docs/<name>.ru.md` sibling and link to the reference rather than restating it.
+
+**Pending:** no descriptor carries a key, no command-line or terminal-UI language pack exists, and the generator and its drift test are not written.
+
 ## 5. Implementation Notes
 
 Ordering is constrained by SP-9 — the primitive precedes the second consumer — and by the rule that convergence never travels with correction (SP-10).
@@ -408,6 +423,7 @@ Ordering is constrained by SP-9 — the primitive precedes the second consumer �
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.11.0 | 2026-10-22 | New §4.14 from the user's backlog (`cronus help` / `--help` for the command line, `/help` in the terminal UI, en/ru documentation of the commands): descriptor text becomes a message key with an English source, translated through the program tier's language packs shared with the desktop shell, locale from `app.json` or `--lang` / `CRONUS_LANG`, verb names and flags never translated; one help projection behind every spelling; the command reference generated in English and Russian into `docs/reference/` and guarded by a drift test. Related links to the new `update` / `shell` / `uninstall` and `log` verbs. All Pending. |
 | 1.10.0 | 2026-10-21 | §4.8.1: the core carries out every recomposing verb but the deletion of the running workspace (`is_carried_out_as`); the handler registered for each takes the work gate for its verb's scope by construction, so a surface that dispatches one unasked meets it; activating an extension owns its disclosure and acknowledgement; removing an extension is reported unsupported before anyone is asked. §5 step 9: realized for the terminal UI. |
 | 1.9.0 | 2026-10-21 | §4.8.1: a `Recompose` is applied through the work gate of `l2-engine-endpoint` §4.7, which the command line already applies; §5 step 9: the knowledge the terminal UI lacked exists, and carrying `Recompose` out there is what remains. |
 | 1.8.0 | 2026-10-21 | §4.8.1: a verb nobody can carry out in this build is reported before the person is asked (`blocked_reason`); skill import is the case, because its witness cannot yet be verified (`l2-extension-registry` 1.4.0). |

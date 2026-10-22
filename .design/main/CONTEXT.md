@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-09-19
+**Generated:** 2026-10-22
 
 ## Active Technologies
 
@@ -13,13 +13,20 @@
 .
 ├── .agents/
 │   ├── rules/
-│   ├── skills/
 │   └── workflows/
-├── .artifacts/
 ├── .cargo/
 │   └── config.toml
 ├── .claude/
+│   ├── commands/
+│   └── rules/
 ├── .codex/
+│   ├── prompts/
+│   └── rules/
+├── .cronus/
+│   ├── .gitignore
+│   ├── .version
+│   ├── README.md
+│   └── data/
 ├── .design/
 │   ├── .version
 │   ├── INDEX.md
@@ -29,16 +36,18 @@
 │   └── workspace.json
 ├── .drafts/
 │   ├── TODO.md
-│   ├── UX-UI - разбор 3 кейсов.md
-│   ├── UX-дизайн - 6 психологических принципов.md
+│   ├── analytics-gpt.md
+│   ├── anti-hallucination/
+│   ├── cronus_tui.af
 │   ├── heartbeat.md
 │   ├── project-names.md
-│   ├── qa-remediation-progress.md
 │   ├── references.md
 │   ├── release/
 │   ├── reverse-derivation-mechanism.md
-│   ├── technology-stack-research.md
-│   └── ui-ux.md
+│   ├── scratch/
+│   ├── swarm.md
+│   └── ui-ux/
+├── .editorconfig
 ├── .env.example
 ├── .fallowrc.jsonc
 ├── .gitattributes
@@ -47,8 +56,7 @@
 │   └── workflows/
 ├── .gitignore
 ├── .magic/
-├── .markdownlint.json
-├── .qwen/
+├── .markdownlint-cli2.jsonc
 ├── AGENTS.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -80,7 +88,6 @@
 │   ├── building.ru.md
 │   ├── simulation.md
 │   └── simulation.ru.md
-├── installer/
 ├── package.json
 ├── packages/
 │   └── ui/
@@ -104,7 +111,7 @@
 - T-30T01: full-workspace validation — `cargo check`/`clippy -D warnings`/`fmt --check`/`test` all green in one pass (87 test-result blocks, 0 failed, no `-j 2` retry needed); USM-1…USM-12 mapped to their discharging code/tests, with USM-4/USM-6 named as partially discharged and USM-10 as a process discipline this phase's code does not mechanically check; structural and reference containment both clean on inspection
 - Verify: `cargo test --workspace` green — 87 `test result: ok` blocks, 0 failed (37 of them new, in `cronus-simulation`); `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean
 
-## Phase 31 — Discovery Classification (2026-09-13)
+### Phase 31 — Discovery Classification (2026-09-13)
 
 - T-31A01: a closed five-name `DiscoveryClass` in `findings.rs` — `defect`/`friction`/`inefficiency`/`optimization-opportunity`/`improvement-idea`, reused verbatim from the improvement-loop's own IMP-1 taxonomy rather than inventing a sixth vocabulary; `parse`/`name`/`all_names_joined`, with a unit test asserting the parsed spelling and the serde form never drift apart
 - T-31A02: `RunState.notes` widened from `Vec<String>` to `Vec<Discovery>` (text + optional class + optional remedy, both new fields `#[serde(default)]`); `add_note(text, class, remedy)`; `FinishReport.notes` retyped to carry the same value straight through with no conversion

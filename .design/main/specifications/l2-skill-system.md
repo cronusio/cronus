@@ -1,6 +1,6 @@
 # Skill System (Two-Tier Stores & Canonical Stack)
 
-**Version:** 1.0.1
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-extensions.md, l1-storage-model.md
@@ -19,6 +19,7 @@ The concrete realization of the **skill** extension kind: where skills live on d
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - The tier roots (`<program>`, `<state>`) under which both stores live.
 - [l2-learning-loop.md](l2-learning-loop.md) - The review fork and curator that deposit generated skills into the mutable store.
 - [l1-security.md](l1-security.md) - Sandbox, least privilege, and default-deny egress governing skill execution.
+- [l1-artifact-reach.md](l1-artifact-reach.md) - [ADDED v1.1.0] RCH-10/RCH-11: the three origins of a skill (built-in, user, project) and the rule that a project shares source and each machine converts it; the project store of §4.1.
 
 ## 1. Motivation
 
@@ -40,7 +41,7 @@ Preset skills are part of the product: they must survive upgrades byte-identical
 | EXT-2 Lifecycle | Ingestion never activates: converted and synthesized skills land in the mutable store as `discovered` (inactive); activation follows the standard grant gate. |
 | EXT-3 Default-deny trust | A skill whose scripts could not be converted gains no execution capability — it runs instruction-only; nothing quarantined is ever executed. |
 | EXT-4 Sandboxed execution | The only executable path is the nodus runtime invoking built-in Rust commands inside the core sandbox; per-call grant checks apply. |
-| EXT-5 Preset + custom | Presets live read-only in `<program>/skills/`; custom and generated skills live in `<state>/skills/`. |
+| EXT-5 Preset + custom | Presets live read-only in `<program>/skills/`; custom and generated skills live in `<state>/skills/`; `[ADDED v1.1.0]` skills written for a project live in source form in `<project>/.cronus/skills/` and are converted per machine (§4.1, §4.4) — **Pending** in code. |
 | EXT-6 Scoped, minimal grants | The skill manifest declares minimal permissions; each built-in command validates the calling skill's grants before acting; network passes the egress gate. |
 | EXT-7 Skill generation | Prompt-synthesized and curator-distilled skills are written to `<state>/skills/` with `source: generated`, pending review. |
 | EXT-8 Provenance & audit | `source: preset \| custom \| generated` plus a persisted conversion report; originals of imported material are preserved verbatim for audit. |
@@ -62,13 +63,24 @@ Preset skills are part of the product: they must survive upgrades byte-identical
 └── .curator_state                #   curator persistence (per l2-learning-loop §4.4)
 ```
 
+`[ADDED v1.1.0]` A third store belongs to the **project** (`l1-artifact-reach` RCH-10/RCH-11):
+
+```plaintext
+<project>/.cronus/skills/         # PROJECT store: ordinary skills in SOURCE form, committed, shared with the team
+└── <pack>/<name>/                #   SKILL.md + references/templates/assets; scripts kept as written
+<project>/.cronus/local/skills/   # converted forms of the project store, per machine, never committed
+└── <pack>/<name>/                #   canonical packages + the source fingerprint they were converted from
+```
+
+The three stores differ by origin, not by importance. **Built-in** skills ship in the program tier. Skills a user **installs** (third-party) or **authors** (by prompt or by hand) live in the state tier, already converted to the canonical stack — plugins and modules on nodus — and are the user's personal set. Skills **written for a project** live in the project store in their ordinary source form, so a collaborator can read and review them in the repository; each machine converts them for itself (§4.4) after the workspace trust decision, and the converted form in `local/skills/` is a machine-local projection re-derived when the source fingerprint changes.
+
 Name-shadowing resolution follows the registry's override contract, re-rooted to these stores (first match wins):
 
 ```text
 [REFERENCE]
-1. workspace skills   <ws>/skills/<pack>/<name>          (highest precedence)
-2. state skills       <state>/skills/<pack>/<name>/       (user + generated)
-3. preset skills      <program>/skills/<pack>/<name>/     (shipped, read-only)
+1. project skills     <project>/.cronus/local/skills/<pack>/<name>/   (converted from the project store; highest precedence)
+2. state skills       <state>/skills/<pack>/<name>/                   (user-installed, user-authored, generated)
+3. preset skills      <program>/skills/<pack>/<name>/                 (shipped, read-only)
 ```
 
 Role-attached skills (`<state>/employees/<role>/skills/`) scope *activation* to a role; they do not participate in name shadowing. Upgrades replace the preset store wholesale and never touch user copies; an override semantically identical to its preset produces a warning, never an error.
@@ -141,6 +153,8 @@ graph TD
 
 The pipeline is atomic: a package that fails classification, transpilation validation, or manifest validation lands **nothing** in the store — no partial canonical packages exist.
 
+`[ADDED v1.1.0]` **Project-store conversion.** A skill in `<project>/.cronus/skills/` runs through the same pipeline with two differences. Its admission gate is the **workspace trust decision** (`l2-security` §4.8) rather than a vendor witness: the source is the team's, reviewed in the repository, and nothing in the project store is read for conversion before the project is trusted. Its output lands in `<project>/.cronus/local/skills/` stamped with the fingerprint of the source it came from; a changed fingerprint re-converts, and the converted package still enters as `discovered` and is activated only by the grant gate (EXT-2/EXT-3) — a skill a collaborator committed never activates itself on another machine.
+
 **Prompt synthesis** (prompt → canonical package): the office authors `SKILL.md` and, when the skill is procedural, a `workflow.nd` directly against the loaded nodus schema; the result is validated (WFL-5) and linted before landing. Synthesized skills enter as `source: generated`, `status: discovered`, and pass the same review gate as distilled skills (EXT-7). They do not auto-activate after validation, even for the person who asked for them: validation proves the package is well-formed, not that it does what was meant, and activation is the explicit grant of EXT-3 — the request that started synthesis is not that grant (`l2-extension-registry` §4.4).
 
 ### 4.5 Execution model
@@ -157,7 +171,7 @@ Extends the registry's `cronus skill` group; the library method is the source of
 | create from prompt | `cronus skill create --prompt "<text>"` | `/skill create <text>` | `ext.synthesizeSkill({prompt}) -> Extension` |
 | show conversion state | `cronus skill status [<id>]` | `/skill status` | `ext.skillStatus({id?}) -> SkillStatus[]` |
 
-`skill status` reports store origin (preset / state / workspace override), degradation flags, and pending-review state.
+`skill status` reports store origin (preset / state / project), degradation flags, pending-review state and, for a project skill, whether its converted form is current with its source.
 
 ## 5. Drawbacks & Alternatives
 
@@ -180,5 +194,6 @@ Extends the registry's `cronus skill` group; the library method is the source of
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Third store, decided by the user: the **project** store `<project>/.cronus/skills/` holds ordinary skills in source form, committed and shared with the team; each machine converts them through the pipeline after the workspace trust decision into `<project>/.cronus/local/skills/`, fingerprinted and re-converted on change, still activated only by the grant gate. Built-in skills stay in the program tier; installed and user-authored skills stay in the state tier, converted and personal (`l1-artifact-reach` RCH-10/RCH-11). Precedence becomes project, then state, then preset; `skill status` reports the project origin and conversion currency. Not built: no project store exists in code. |
 | 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): §4.4 TBD resolved: prompt-synthesized skills never auto-activate — validation proves form, not intent, and the synthesis request is not the EXT-3 grant. EXT-10 row added (not applicable to skills; connectors are their own kind). |
 | 1.0.0 | 2026-07-08 | Initial spec — two-tier skill stores (`<program>/skills/` preset read-only, `<state>/skills/` mutable), canonical execution stack (nodus workflows + built-in Rust command surface, no interpreted scripts), conversion pipeline for imported packages (verify → classify → retain → transpile → degrade → report), prompt synthesis path, precedence/override semantics, CLI/TUI/library command surface. |

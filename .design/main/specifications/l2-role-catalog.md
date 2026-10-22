@@ -1,6 +1,6 @@
 # Role Catalog
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-roles.md
@@ -17,6 +17,7 @@ The concrete realization of roles: the read-only preset catalog in the program t
 - [l2-cli.md](l2-cli.md) - Command grammar standard the `role` commands follow.
 - [l2-execution-workspace.md](l2-execution-workspace.md) - Workspaces allocated to agent runs.
 - [l2-budget-engine.md](l2-budget-engine.md) - Budget policies scoped to agent instances.
+- [l1-compute-acceleration.md](l1-compute-acceleration.md) - [ADDED v1.1.0] ACC-10: the accelerator specialty the `gpu-engineer` preset realizes.
 
 ## 1. Motivation
 
@@ -60,11 +61,13 @@ The model needs a concrete place for blueprints versus instances and a uniform d
 
 ### 4.2 Preset roles (v0.1.0)
 
-Engineering: architect, backend-engineer, frontend-engineer, api-designer, sql-expert.
+Engineering: architect, backend-engineer, frontend-engineer, api-designer, sql-expert, gpu-engineer `[ADDED v1.1.0]`.
 Quality: code-reviewer, test-writer, debugger, refactorer, performance-optimizer, security-auditor, accessibility-auditor.
 Ops & docs: devops-engineer, incident-responder, doc-writer, data-analyst, prompt-engineer.
 Memory: archivist.
 Business: finance, hr, marketing, support, game-dev.
+
+`[ADDED v1.1.0]` **`gpu-engineer`** — accelerator programming for client projects (compute kernels, renderers, simulations; Rust first, over the portable compute interface of `l2-technology-stack`). Justified on two axes (ROL-9): **expertise** — the device memory model, the shader and kernel toolchain and numerical tolerance are knowledge a general engineer does not carry; and **context isolation** — kernels, their reference paths and their verification lanes stay out of the general engineer's context. It works to `l1-compute-acceleration` ACC-7…ACC-9: verify on the reference and software lanes everywhere, on hardware where present, report *unverified* otherwise, and state device, input size and figures with every performance claim.
 
 ### 4.3 Custom role creation
 
@@ -162,5 +165,6 @@ Revision records are stored in `<state>/employees/<id>/config-revisions/` as app
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Core Team | `gpu-engineer` preset added (Engineering), from the user's backlog (Rust GPU programming, both directions): justified on expertise and context isolation (ROL-9), bound to `l1-compute-acceleration` ACC-7…ACC-10. The repository's visualization stub of the catalog does not list it yet. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ROL-9 (anti-sprawl justification gate, including its corpus-originality half added to the L1 in 1.2.0) was unmapped — Pending row added. A callable adapter could spend without bound because it "cannot enforce a budget mid-run" — it is bounded at dispatch (deadline plus a budget slice reserved and charged in full). Config revisions could be written by the instance itself, whose config carries its own model and budget — only the manager above it or the user writes them (SEC-10, budget cascade). |
 | 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

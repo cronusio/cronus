@@ -1,6 +1,6 @@
 # Telemetry
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** concept
 
@@ -15,6 +15,7 @@ The technology-agnostic model of improvement data: Cronus may collect anonymized
 - [l1-error-reporting.md](l1-error-reporting.md) - A separate, also consent-gated, diagnostic channel.
 - [l2-security.md](l2-security.md) - Realizes TEL-1…TEL-5: the telemetry data contract, its allowlist, and the opt-in default (§4.9).
 - [l1-artifact-derived-observation.md](l1-artifact-derived-observation.md) - [ADDED v1.0.1] The **uninstrumented-source** sibling and a deliberate boundary: telemetry is what the product emits about *itself* by design; artifact-derived observation is what is reconstructed about a *foreign* tool from the trail it wrote for its own purposes. Neither substitutes for the other, and anything derived from a foreign artifact crosses this same egress gate.
+- [l1-usage-analytics.md](l1-usage-analytics.md) - [ADDED v1.0.3] The local plane this contract stands in front of: what is recorded about product usage and agent behaviour on the device, and why (question-first, no content). Telemetry decides only whether any of it leaves (UAN-7).
 
 ## 1. Motivation
 
@@ -65,6 +66,7 @@ Examples of program metrics: operation latencies, error/repair counts, feature u
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.3 | 2026-10-22 | Core Team | Related Specifications extended with `l1-usage-analytics`, the on-device plane whose aggregates are the only usage data this contract could ever send. Link-only; no invariant changed. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The open §4 TBD (default-on vs default-off first-run prompt; exact allowlist) contradicted TEL-1 and §5 and is resolved: the first-run choice is an explicit opt-in whose default is off, and the allowlist is `l2-security` §4.9, now linked as the realizing L2. |
 | 1.0.1 | 2026-08-05 | Core Team | Related Specifications extended with `l1-artifact-derived-observation` — the uninstrumented-source sibling, drawing the boundary explicitly: telemetry is what the product emits about itself by design; artifact-derived observation is what is reconstructed about a foreign tool from the trail it wrote for its own purposes, and its derived output crosses this same consent-gated egress. Link-only; no invariant changed. |
 | 1.0.0 | — | Core Team | Initial spec — consent-gated, opt-in, on-device-first telemetry with data-vs-telemetry separation. |

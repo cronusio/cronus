@@ -1,6 +1,6 @@
 # Issue Reporting
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -47,6 +47,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **ISS-5 (Local-first, never lost):** every submitted report is recorded locally regardless of external filing. When filing is unavailable, declined, or fails (offline, tracker unconfigured, consent withheld), the report is retained locally — and MAY be queued for later — never silently dropped (consistent with ERR-5).
 - **ISS-6 (Shared pipeline & tracker, not a parallel path):** issue reports flow through the **same** reporting pipeline and tracker channel as error reports — sanitize, de-duplicate where meaningful, file or update — reusing that infrastructure rather than opening a second egress path (consistent with ERR-2/ERR-3 and the shared tracker channel).
 - **ISS-7 (Frontend parity):** the "Report Issue" capability is available across CLI, TUI, and graphical frontends with equivalent behavior and outcome; the graphical surface presents a button and a compose/preview dialog, the CLI and TUI a command — the same report, filed the same way (consistent with INV-3 command parity).
+- **ISS-8 (An unclear idea is clarified before it is sent, briefly, and never blocks the send):** `[ADDED v1.2.0]` when a report in the **idea** or **feedback** category admits two or more readings that would lead the makers to materially different changes, or leaves unsaid what the person wants to be different or why, the product asks before the preview — at most three short questions in plain words, each with the readings it found as options and a free-text answer, each skippable. The person's own text is never rewritten: the answers are attached beneath it, labeled as clarifications, and both appear in the preview (ISS-3). The check runs on the device, sends nothing, and the person may skip it entirely and send as written. A report that is already clear is not questioned.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -118,6 +119,7 @@ This keeps a single audited egress path (ISS-6) — there is never a second, unv
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-22 | Added ISS-8 from the user's backlog (when someone sends an idea for improving the product and it is not fully clear what they meant, ask before the feedback is sent): an unclear idea or feedback report is clarified on the device before the preview — at most three plain-language questions built from the readings found, each skippable, the whole step skippable; the person's text kept verbatim with the answers attached as labeled clarifications; a clear report is not questioned. Mirrors the intake survey the office uses for ideas given to it. |
 | 1.1.0 | 2026-07-09 | Reconciled with the new report-prompting layer: the user-initiated constraint now scopes to the *send* (a system invitation MAY precede and prefill the flow, per l1-report-prompting.md RP-1/RP-5); added the prefilled compose entry point (§4.2) and the Related Specifications link. Preview-before-send (ISS-3) unchanged and mandatory on every path. |
 | 1.0.0 | 2026-07-02 | Initial concept: user-initiated "Report Issue" action (ISS-1…7) — user-authored bug/feedback/idea with opt-in sanitized diagnostics, mandatory preview-before-send, cross-frontend parity; reuses the error-reporting pipeline and tracker channel rather than a parallel egress path. |
 

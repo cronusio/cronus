@@ -1,6 +1,6 @@
 # State Authority
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -27,6 +27,7 @@ The failure it closes is quiet. Two representations that both claim to know the 
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - The realization: the path-level authority map (§4.6).
 - [l1-knowledge-base.md](l1-knowledge-base.md) - [ADDED v1.1.0] KB-18: the collection vector index is the first projection SAU-8 governs — an embedding-model change is a new generation built beside the live one.
 - [l1-retrieval-evaluation.md](l1-retrieval-evaluation.md) - [ADDED v1.1.0] RE-7 variant comparison is the declared quality measure a retrieval projection's new generation is compared on before the switch (SAU-8).
+- [l1-artifact-reach.md](l1-artifact-reach.md) - [ADDED v1.1.1] The orthogonal axis: authority says which copy is the truth, reach says how far a copy may travel; a kind declares both, and neither is inferred from the other.
 - [l1-candidate-windows.md](l1-candidate-windows.md) - [ADDED v1.1.0] A candidate window presumes comparable items; SAU-8 refuses a window over vectors derived differently from the query before it is ever sized.
 
 ## 1. Motivation
@@ -184,5 +185,6 @@ A projection whose rebuild is cheap and whose derivation never changes (a render
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | Related Specifications extended with `l1-artifact-reach`, the travel axis beside the truth axis. Link-only; no invariant changed. |
 | 1.1.0 | 2026-10-21 | Added SAU-8 + §4.6 — **a projection names its derivation; a new derivation is a new generation built beside the live one.** A reader derived differently treats a projection as not comparable (a query embedded by one model is never scored against another model's vectors; equal size proves nothing); a derivation change is built beside the live generation, compared on the projection's declared quality measure, switched atomically per scope, and the predecessor kept until released so reverting is a switch. Motivated by a fourth occurrence found reading code against the corpus: the knowledge base and code index prescribed purge-then-rebuild on an embedding-model change, and the knowledge store recorded the vector dimension but not the model, so a same-dimension model swap would have mixed vector spaces silently. The migration discipline (two structures held side by side, a stable choice of which one answers, rollback without rebuilding, cleanup after) transfers from a published study of a large-scale load balancer's hash-ring replacement. §4.6 lists each projection's derivation identity and what is recorded today; Drawbacks gain the two-generation cost and the rejected backup-and-swap alternative. Related Specifications extended with `l1-knowledge-base`, `l1-retrieval-evaluation`, `l1-candidate-windows`. Additive — stays Stable after Post-Update Review (C9). |
 | 1.0.0 | 2026-10-03 | Initial concept — one authority per kind of state (SAU-1), every other representation a projection or a description of a different object (SAU-2), a closed authority-class vocabulary — text, store, record (SAU-3), recovery from authority to projection and never back (SAU-4), backup/restore/export/sync/repair deciding by declared class (SAU-5), the owning specification declares and the map only indexes (SAU-6), a move of authority explicit and swept (SAU-7). Motivated by two contradictions found reading the corpus against itself (a plan status and a board state each called the single source of execution truth; a blanket "databases are derived indices" surviving the move of learned memory to a database). |

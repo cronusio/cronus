@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Version:** 1.2.4
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -16,6 +16,9 @@ The validated technology stack for Cronus across all architectural layers, after
 - [l2-cli.md](l2-cli.md) - CLI built on this stack.
 - [l2-tui.md](l2-tui.md) - TUI built on this stack.
 - [l2-app-ui.md](l2-app-ui.md) - Application UI/UX built on this stack.
+- [l2-diagnostic-log.md](l2-diagnostic-log.md) - [ADDED v1.3.0] The logging realization the `tracing` row serves.
+- [l1-compute-acceleration.md](l1-compute-acceleration.md) - [ADDED v1.3.0] The rules the optional GPU compute row is held to.
+- [l2-program-lifecycle.md](l2-program-lifecycle.md) - [ADDED v1.3.0] Installation, command registration and update, which the updater row serves.
 
 ## 1. Motivation
 
@@ -63,6 +66,9 @@ A cross-platform autonomous product must pick technologies that (a) let one core
 | Components | shadcn/ui **or** DaisyUI | — | solid | Pick ONE, not both |
 | Rich-text | Lexical | 0.45.x | caveat (pre-1.0) | Pin version + adapter wrapper |
 | Local DB | SQLite + sqlite-vec | sqlite-vec 0.1.x | solid (alpha caveat) | **Replaces libSQL-vector**; pure C, prebuilt iOS/Android |
+| Logging `[ADDED v1.3.0]` | `tracing` + `tracing-subscriber` + `tracing-appender` | — | solid | One structured event model for every crate; only binaries install a sink (`l2-diagnostic-log`) |
+| GPU compute (optional) `[ADDED v1.3.0]` | `wgpu` — portable compute over Vulkan / Metal / Direct3D 12, WGSL kernels | — | solid | The general-purpose reference path is always kept; vendor-specific paths only as measured additions (`l1-compute-acceleration` ACC-5); no product path is adopted until one passes ACC-3 |
+| Updater `[ADDED v1.3.0]` | Tauri updater plugin (minisign signatures) for desktop bundles; rename-aside self-update for archive installs | — | solid | One signed manifest per channel for both (`l2-program-lifecycle`) |
 | Remote / sync DB | libSQL / PostgreSQL | — | optional | Sync only, not the vector engine |
 | Local LLM — desktop / server | The six loopback REST providers of §4.4, federated (`l2-model-runtime`) | — | solid | Cronus calls installed local servers; it does not embed an engine on these hosts |
 | Local LLM — mobile | llama.cpp via Rust FFI | — | caveat | **Replaces candle/mistral.rs** on mobile; foreground only; 1–3B Q4; iOS Metal, Android CPU |
@@ -343,3 +349,4 @@ Discipline:
 | 1.2.2 | 2026-07-29 | Completeness fix: extended the §3 Invariant-Compliance table to INV-8/INV-9/INV-10, which entered `l1-architecture` after this table (INV-1…INV-7) was written, restoring the L1 all-invariants-addressed gate. INV-8 — the stack realizes one deployable (single Rust/Tauri binary over file-based SQLite; no orchestrator/mesh/broker; anti-microservice by choice). INV-9 — the C-ABI/FFI contract is the single binding target, surface tooling derived from it. INV-10 — contract-crate seam types cross the trait boundary while `rusqlite`/`sqlite-vec`/keychain/remote-DB representations stay adapter-private and mapped, keeping DN-3's "same code, different providers" buildable. No new requirement; stays Stable. |
 | 1.2.3 | 2026-09-23 | Consistency pass (2026-09-23): The Local LLM row named llama.cpp FFI generally while §4.4 federates six loopback REST providers on desktop — split into desktop/server (REST, `l2-model-runtime`) and mobile (FFI). INV-7 said telemetry leaves the device, contradicting opt-in TEL-1. An endpoint override such as `OLLAMA_HOST` pointing off the machine is a remote, egress-gated endpoint, never a local one (MR-1); mobile push carries only a wake signal (SEC-3). The recording mute now restores the user's prior system mute state. The monorepo tool is recorded as not yet adopted; a build-plan phase reference removed; history reordered ascending. |
 | 1.2.4 | 2026-09-24 | Consistency pass (2026-09-24): A bare `LP-1` citation of the nodus portability contract now names it. |
+| 1.3.0 | 2026-10-22 | Three rows added to the stack table: logging (`tracing` family, `l2-diagnostic-log`), optional GPU compute (`wgpu`, portable first, held to `l1-compute-acceleration`), and the updater (Tauri updater for desktop bundles, rename-aside for archive installs, one signed manifest, `l2-program-lifecycle`). |
