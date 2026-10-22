@@ -1,0 +1,18 @@
+{
+  // https://github.com/DavidAnson/markdownlint-cli2#markdownlint-cli2jsonc
+  "ignores": [
+    "LICENSE",
+    "scratch/**",
+    "target/**",
+    "node_modules/**",
+    "docs/generated/**",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/lines"
+  ],
+  "config": {
+    "MD013": false, // Line length
+    "MD024": false, // Multiple headers with the same content
+    "MD028": false, // Blank line inside blockquote
+    "MD040": false // Fenced code blocks should have a language specified
+  }
+}

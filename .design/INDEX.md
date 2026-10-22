@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Status:** Active
-**Engine Version:** 2.1.142
+**Engine Version:** 2.1.144
 
 ## Overview
 
@@ -10,18 +10,19 @@ Global registry aggregating all project specifications across workspaces.
 
 ## System Files
 
-- [RULES.md](RULES.md) - Project constitution and standing conventions.
-- [workspace.json](workspace.json) - Workspace configuration registry.
+* [RULES.md](RULES.md) - Project constitution and standing conventions.
+* [workspace.json](workspace.json) - Workspace configuration registry.
 
 ## Workspaces
 
-| Workspace | Description |
-| --- | --- |
-| [main](main/INDEX.md) | Primary project workspace |
-| [nodus](nodus/INDEX.md) | Nodus DSL runtime — standalone workflow-language library |
+|Workspace|Description|
+|-|-|
+|[main](main/INDEX.md)|Primary project workspace|
+|[nodus](nodus/INDEX.md)|Nodus DSL runtime — standalone workflow-language library|
 
 ## Meta Information
 
-- **Maintainer**: Core Team
-- **License**: MIT
-- **Last Updated**: 2026-07-09
+* **Maintainer**: Core Team
+* **License**: MIT
+* **Last Updated**: 2026-07-09
+
