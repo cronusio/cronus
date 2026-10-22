@@ -61,6 +61,10 @@ Track F — Coverage, wiring and surface
 - [ ] [T-33F03] `cronus sandbox status` and `probe`
 - [ ] [T-33F04] Quality-gate runner behind a process port
 
+Track G — Specification reconciliation
+
+- [ ] [T-33G01] Reconcile the specs to what landed
+
 Track T — Validation
 
 - [ ] [T-33T01] Escape corpus on the Windows backend
@@ -70,7 +74,7 @@ Track T — Validation
 
 ### [T-33A01] Sandbox port and closed vocabularies in `cronus-contract`
 
-- **Spec:** l2-execution-sandbox.md §4.1, §4.8, §4.9; l1-execution-sandbox.md ES-1, ES-8 (cited in that spec's numbering)
+- **Spec:** l2-execution-sandbox.md §4.1, §4.8, §4.9; l1-execution-sandbox.md EXS-1, EXS-8 (cited in that spec's numbering)
 - **Status:** Todo
 - **Assignment:** Agent
 - **Verify:** `cargo test -p cronus-contract sandbox` with new unit tests: (a) `DenialAxis`, `LaunchPath` and `Confinement` are closed sets whose `ALL` arrays have the expected lengths (5, 7, 3) and are matched exhaustively; (b) a `compile_fail` doctest proves `SpawnSpec` has no constructor taking a single command string — `argv` is a `Vec<OsString>`; (c) `CoverageDeclaration::merge` keeps the *least confined* verdict per launch path. `cargo clippy -p cronus-contract --all-targets -- -D warnings` clean.
@@ -79,7 +83,7 @@ Track T — Validation
 
 ### [T-33A02] `ResolvedPolicy` — deny-by-default resolution
 
-- **Spec:** l2-execution-sandbox.md §4.1, §4.5, §4.6; l2-sandbox-policy.md §4.1–§4.6; ES-1
+- **Spec:** l2-execution-sandbox.md §4.1, §4.5, §4.6; l2-sandbox-policy.md §4.1–§4.6; EXS-1
 - **Status:** Todo
 - **Assignment:** Agent
 - **Verify:** `cargo test -p cronus-domain sandbox::resolved_policy`: an empty policy resolves to no writable roots and no network grants; adding one entry adds exactly that grant with its policy origin recorded; a relative root or an empty path is a typed refusal; a nested root is retained as declared (no silent merging); `isolation_compatibility: best_effort` with an empty `accept_unconfined` list changes nothing.
@@ -88,7 +92,7 @@ Track T — Validation
 
 ### [T-33A03] Backend selection, probing, refusal and `Unenforceable`
 
-- **Spec:** l2-execution-sandbox.md §4.1 (enforceability), §4.2; ES-8; l1-policy-governance.md PG-6
+- **Spec:** l2-execution-sandbox.md §4.1 (enforceability), §4.2; EXS-8; l1-policy-governance.md PG-6
 - **Status:** Todo
 - **Assignment:** Agent
 - **Verify:** `cargo test -p cronus-domain sandbox::select` with fake backends: (1) a configured backend is preferred over the platform default; (2) a failed probe falls through to the next and is listed in `tried` when all fail; (3) no available backend is a typed `SandboxUnavailable` — never a fallback to unconfined; (4) `sandbox.enabled = false` yields `Unconfined` with the persistent marker and an audit entry; (5) `prepare()` returning `Unenforceable { Net }` is refused unless `Net` is in the human's `accept_unconfined`, and an accepted axis is stamped on the selection and audited; (6) selection accepts settings only as a `HumanSandboxSettings` value whose sole public constructor is the policy-file loader (T-33F02) — a test proves an ad-hoc settings struct built by a caller cannot be passed to `select()`.
@@ -169,7 +173,7 @@ Track T — Validation
 
 ### [T-33D01] `compat` profile: restricted token, low integrity, labeled roots, Job Object, spawn
 
-- **Spec:** l2-execution-sandbox.md §4.1 (Windows `compat`), §4.3, §4.4; ES-1…ES-3, ES-5 of l1-execution-sandbox
+- **Spec:** l2-execution-sandbox.md §4.1 (Windows `compat`), §4.3, §4.4; EXS-1…EXS-3, EXS-5 of l1-execution-sandbox
 - **Status:** Todo
 - **Assignment:** Agent
 - **Verify:** `cargo test -p cronus-sandbox-os windows::compat -- --test-threads=1` (Windows host): a confined shell command runs and its output is captured; the child cannot create a file in a medium-integrity directory (typed `Denial { Fs }`) and can create one inside the labeled root; the child token reports low integrity and no enabled non-default privilege; a policy with a network grant makes `prepare()` return `Unenforceable { Net }`; the child's environment equals the `EnvPlan` (secret-shaped variable absent).
@@ -178,7 +182,7 @@ Track T — Validation
 
 ### [T-33D02] Resource bounds, deadline, output cap and child-tree kill
 
-- **Spec:** l2-execution-sandbox.md §4.7; ES-4 of l1-execution-sandbox
+- **Spec:** l2-execution-sandbox.md §4.7; EXS-4 of l1-execution-sandbox
 - **Status:** Todo
 - **Assignment:** Agent
 - **Verify:** `cargo test -p cronus-sandbox-os windows::bounds`: a child that spawns children until the limit returns `Denial { Resource(processes) }`; a memory hog under the per-process limit is terminated; an output flood is truncated at the cap with an explicit marker; a long sleep is killed at the deadline and the job reports no surviving member; the engine (test) process is untouched throughout.
@@ -275,6 +279,13 @@ Track T — Validation
 - **Handoff:** Depends on T-33A03, T-33B02, T-33D01 and T-33F02 (the real-runner test needs a working backend and the facade selection). `check run` still invokes no tools; enabling it is a separate product decision.
 - **Notes:** `quality::run_gate` in `crates/domain/src/quality.rs` is dormant (no caller) and is the workspace's one piece of domain-tier process I/O: it starts `cargo`, `pnpm`, `pytest`, `go` and the rest by bare name, in the project directory, with the engine's whole environment. This task takes a `ProcessRunner` port (contract tier) as an argument, deletes the `std::process` import from the domain, and implements the port in the facade over the selected backend (resolver, `EnvPlan`, `spawn`). Whoever later wires `check run` to execute gates inherits confinement instead of having to add it.
 
+### [T-33G01] Reconcile the specs to what landed
+
+- **Goal:** The specs this phase realizes say what the code does, not what the design hoped. Every main phase carries this task because three specification tables were found still reporting finished work as pending.
+- **Method:** Read the as-built behaviour first, then edit the table: `l2-execution-sandbox` (each section and compliance row marked built, partial or unverified for the platforms this phase could not run), `l2-sandbox-policy` (`accept_unconfined` and the retirement of `best_effort`), `l1-process-integrity` PI-1…PI-8 rows as realized, and `l2-tool-security` where the process port changed what it may assume. The coverage table (T-33F01) is the source for what is enforced. Bump versions and write Document History through `/magic.spec`.
+- **Verify:** `node .magic/scripts/executor.js check-prerequisites --json --workspace=main` reports no `VERSION_DRIFT` or `STATUS_DRIFT`; every touched spec has a Document History row naming this phase's work; a scan of the touched specs finds no "unbuilt" or "target design" on a section this phase built and still finds it on the Linux, macOS, container and remote backends and the egress proxy, which stay unverified; `npx markdownlint-cli2` is clean over the touched files.
+- **Status:** Todo
+
 ### [T-33T01] Escape corpus on the Windows backend
 
 - **Goal:** One corpus of attempts, run against both Windows profiles, as the acceptance evidence for the phase — because a sandbox nobody attacks proves nothing.
@@ -290,8 +301,8 @@ Track T — Validation
 
 ## Planning Audit and Instruction Review
 
-**Planner audit (optimism, hidden dependencies, cascade).** *Optimism:* 25 tasks for one L2 whose cost is dominated by Windows debugging (tokens, integrity labels, AppContainer, Job Objects); T-33D01 and T-33C01 are the two tasks most likely to outgrow a sitting and may split `.1` / `.2`; T-33B04 and T-33E03 cannot be verified on this host and say so. *Hidden dependencies:* every OS task shares `crates/sandbox-os` — resolved by T-33B01 declaring every module and the union of platform features up front; T-33A04's injection-vector constant is shared with T-33E01 and defined once; T-33F04's real-runner test needs D01 and F02. *Cascade:* T-33A01 blocks every track and T-33B01 blocks every OS task, so a wrong port shape reworks D, E and F — read the port adversarially before D01 starts.
+**Planner audit (optimism, hidden dependencies, cascade).** *Optimism:* 26 tasks (25, plus the spec-reconciliation task T-33G01 every main phase now carries) for one L2 whose cost is dominated by Windows debugging (tokens, integrity labels, AppContainer, Job Objects); T-33D01 and T-33C01 are the two tasks most likely to outgrow a sitting and may split `.1` / `.2`; T-33B04 and T-33E03 cannot be verified on this host and say so. *Hidden dependencies:* every OS task shares `crates/sandbox-os` — resolved by T-33B01 declaring every module and the union of platform features up front; T-33A04's injection-vector constant is shared with T-33E01 and defined once; T-33F04's real-runner test needs D01 and F02. *Cascade:* T-33A01 blocks every track and T-33B01 blocks every OS task, so a wrong port shape reworks D, E and F — read the port adversarially before D01 starts.
 
-**Coverage against the spec (what the phase deliberately does not build).** §4.6 the egress proxy and every non-Windows backend; the container backend and its image pin (ES-6); routing hook commands and tool-server launches through `spawn` (§4.9 rows stay honestly *unconfined-but-gated*); §4.13 unattended callers, because nothing unattended executes yet; `cronus sandbox explain`. Every other section of `l2-execution-sandbox` 1.0.1 is mapped to at least one task above.
+**Coverage against the spec (what the phase deliberately does not build).** §4.6 the egress proxy and every non-Windows backend; the container backend and its image pin (EXS-6); routing hook commands and tool-server launches through `spawn` (§4.9 rows stay honestly *unconfined-but-gated*); §4.13 unattended callers, because nothing unattended executes yet; `cronus sandbox explain`. Every other section of `l2-execution-sandbox` 1.0.1 is mapped to at least one task above.
 
 **Instruction quality (six dimensions).** Verdict: PASS-WITH-REWRITES, applied — T-33A03 (6) replaced a vague "loader stub" with a checkable construction rule; T-33B01 gained the file-independence mechanism; T-33F04 states its real handoff. No contradictions between Verify lines and the spec found; every Verify names a command or an assertable behaviour.

@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -329,7 +329,7 @@ Discipline:
 - **Two config formats (RON + JSON):** a split is cognitive and tooling overhead. Mitigated by the strict per-file criterion (§4.8) — RON is confined to hand-edited enum-heavy Rust config, JSON stays the default and the only boundary format; the split never reaches the TS side. Rejected alternatives: JSON-everywhere (loses tagged-enum legibility + comments for variant config), JSON5/JSONC (comments but still no faithful Rust enum shape and another parser), TOML-for-all (weak for deeply-nested tagged unions).
 - **sqlite-vec is pre-1.0:** breaking changes possible; mitigate by pinning and isolating the vector access behind a core repository interface.
 - **Tailwind v4 on system WebViews:** old Linux WebKitGTK / old Android WebView can fail to style; mitigate with a min-OS/WebView floor or a PostCSS downgrade, else fall back to Tailwind v3.4.
-- **moon/Nx learning curve:** heavier than Turborepo; acceptable given Turborepo leaves the Rust half unmanaged. <!-- TBD: final monorepo tool decision (moon vs Nx) pending a thin spike -->
+- **moon/Nx learning curve:** heavier than Turborepo; acceptable given Turborepo leaves the Rust half unmanaged. <!-- TBD: final monorepo tool decision (moon vs Nx). Trigger: take it when cross-language task ordering or CI time becomes a measured cost; until then the repository runs plain Cargo and pnpm workspaces with no orchestrator, and neither tool is adopted -->
 
 ## Canonical References
 
@@ -350,3 +350,4 @@ Discipline:
 | 1.2.3 | 2026-09-23 | Consistency pass (2026-09-23): The Local LLM row named llama.cpp FFI generally while §4.4 federates six loopback REST providers on desktop — split into desktop/server (REST, `l2-model-runtime`) and mobile (FFI). INV-7 said telemetry leaves the device, contradicting opt-in TEL-1. An endpoint override such as `OLLAMA_HOST` pointing off the machine is a remote, egress-gated endpoint, never a local one (MR-1); mobile push carries only a wake signal (SEC-3). The recording mute now restores the user's prior system mute state. The monorepo tool is recorded as not yet adopted; a build-plan phase reference removed; history reordered ascending. |
 | 1.2.4 | 2026-09-24 | Consistency pass (2026-09-24): A bare `LP-1` citation of the nodus portability contract now names it. |
 | 1.3.0 | 2026-10-22 | Three rows added to the stack table: logging (`tracing` family, `l2-diagnostic-log`), optional GPU compute (`wgpu`, portable first, held to `l1-compute-acceleration`), and the updater (Tauri updater for desktop bundles, rename-aside for archive installs, one signed manifest, `l2-program-lifecycle`). |
+| 1.3.1 | 2026-10-22 | The monorepo-tool TBD (moon vs Nx) now names its trigger: it is taken when cross-language task ordering or CI time becomes a measured cost; until then the repository runs plain Cargo and pnpm workspaces and neither tool is adopted (design-layer audit, 2026-10-22). |

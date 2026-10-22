@@ -1,6 +1,6 @@
 # Client Involvement
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -31,7 +31,7 @@ Two wrong fixes are easy. Letting the office decide per conversation whether the
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** four levels are enough — hands-off, informed, collaborative, expert. Runner-up: a continuous slider. Override: `/magic.spec amend l1-client-involvement "continuous scale"`. Reason: each level must change something observable; a slider has positions that change nothing.
+- **Confirmed (2026-10-22, the person's decision):** four levels are enough — hands-off, informed, collaborative, expert. Not taken: a continuous slider. Reason: each level must change something observable; a slider has positions that change nothing.
 - The level is set per office, with a building-wide default; the home office follows the building default.
 - Autonomy permissions (what the office may do without approval) and the effort scale are separate settings.
 
@@ -98,3 +98,4 @@ graph TD
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — CIV-1…CIV-10, from the user's backlog (involvement from a novice who should not be disturbed to a professional who is asked up front, technology included): a closed four-level ladder set by the client per office, hands-off by default; the level changes questions, explanations and review points only; technical questions only at expert and only at intake or a shaping decision; every question delegable; one attention budget; answers bind as client decisions; one record told in the level's register; prospective changes; the reason for a question shown; suggestions from evidence that never take effect alone. Amends OFF-6 and IR-2/IR-9 to admit the expert exception. Concept-only until an L2 is planned. |
+| 1.0.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

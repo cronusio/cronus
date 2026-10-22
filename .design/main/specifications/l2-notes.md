@@ -1,6 +1,6 @@
 # Notes (Implementation)
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-notes.md
@@ -67,52 +67,48 @@ persistence around the existing convergence proof, not replacing it.
 
 ### 4.1.1 Schema (target design, unbuilt)
 
-```sql
+```text
 [REFERENCE]
-CREATE TABLE note (
-    id          TEXT PRIMARY KEY,          -- nte-prefixed typed ID
-    owner_id    TEXT NOT NULL,
-    title       TEXT NOT NULL DEFAULT '',
-    content     TEXT NOT NULL DEFAULT '{}',  -- JSON document tree
-    author_type TEXT NOT NULL DEFAULT 'user',
-    agent_id    TEXT,
-    meta        TEXT,                        -- JSON
-    created_at  INTEGER NOT NULL,
-    updated_at  INTEGER NOT NULL,
-    deleted_at  INTEGER                      -- NULL = active
-);
-CREATE INDEX ix_note_owner    ON note(owner_id);
-CREATE INDEX ix_note_deleted  ON note(owner_id, deleted_at);
+table note
+  id  text, primary key   // nte-prefixed typed ID
+  owner_id  text, required
+  title  text, required, default ''
+  content  text, required, default '{}'   // JSON document tree
+  author_type  text, required, default 'user'
+  agent_id  text
+  meta  text   // JSON
+  created_at  integer, required
+  updated_at  integer, required
+  deleted_at  integer   // NULL = active
+index ix_note_owner on note(owner_id)
+index ix_note_deleted on note(owner_id, deleted_at)
 
--- Per-user pin table
-CREATE TABLE pinned_note (
-    id        TEXT PRIMARY KEY,
-    user_id   TEXT NOT NULL,
-    note_id   TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
-    pinned_at INTEGER NOT NULL,
-    UNIQUE (user_id, note_id)
-);
-CREATE INDEX ix_pinned_note_user ON pinned_note(user_id);
+// Per-user pin table
+table pinned_note
+  id  text, primary key
+  user_id  text, required
+  note_id  text, required, references note(id), on delete cascade
+  pinned_at  integer, required
+  unique (user_id, note_id)
+index ix_pinned_note_user on pinned_note(user_id)
 
--- Append-only version history (significant saves only)
-CREATE TABLE note_version (
-    id          TEXT PRIMARY KEY,          -- nver-prefixed typed ID
-    note_id     TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
-    content     TEXT NOT NULL,             -- JSON snapshot
-    saved_by    TEXT NOT NULL,             -- user_id or agent_id
-    created_at  INTEGER NOT NULL
-);
-CREATE INDEX ix_note_version_note ON note_version(note_id, created_at);
+// Append-only version history (significant saves only)
+table note_version
+  id  text, primary key   // nver-prefixed typed ID
+  note_id  text, required, references note(id), on delete cascade
+  content  text, required   // JSON snapshot
+  saved_by  text, required   // user_id or agent_id
+  created_at  integer, required
+index ix_note_version_note on note_version(note_id, created_at)
 
--- CRDT update log (for concurrent merge)
-CREATE TABLE note_crdt_update (
-    id          TEXT PRIMARY KEY,
-    note_id     TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
-    update_data BLOB NOT NULL,             -- binary Yjs update
-    origin_id   TEXT NOT NULL,             -- client session ID that sent the update
-    applied_at  INTEGER NOT NULL
-);
-CREATE INDEX ix_note_crdt_note ON note_crdt_update(note_id, applied_at);
+// CRDT update log (for concurrent merge)
+table note_crdt_update
+  id  text, primary key
+  note_id  text, required, references note(id), on delete cascade
+  update_data  blob, required   // binary Yjs update
+  origin_id  text, required   // client session ID that sent the update
+  applied_at  integer, required
+index ix_note_crdt_note on note_crdt_update(note_id, applied_at)
 ```
 
 ### 4.2 Content Format (target design, unbuilt — today's content is flat text fragments, see NOT-2)
@@ -212,6 +208,7 @@ crates/
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.2 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one SQL block (the note, pinned-note, note-version and CRDT-update tables) rewritten as a pseudo-schema. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): The CRDT was said to be chosen for a SvelteKit UI; the frontend is React — corrected. The target version policy dropped edits under 20 characters and pruned history after 90 days by default, contradicting NOT-6 (substantive changes versioned, history auditable) — size no longer decides substance, coalescing keeps each window's final state, and thinning is an opt-in stated horizon. References to a nonexistent `access-grants` crate, a third-party map crate, slash-separated ID prefixes, and a section-number gap corrected. |
 | 1.1.0 | 2026-09-12 | **Realization Status correction** (Retro L2 finding, `/magic.spec main`): this spec described a production mechanism (SQLite schema, ProseMirror rich-content tree, Yjs binary CRDT encoding, pinning, access control, agent authorship) that was never built, as though it were current — `crates/notes/` was never minted as a crate. What actually exists is a domain-tier CRDT algebra at `crates/domain/src/notes.rs`, faithfully proving NOT-6/NOT-7/NOT-8 and a structural (session-independent) reading of NOT-1; NOT-2 is realized only for its flat-content half, and NOT-3/NOT-4/NOT-5 are unbuilt entirely. Every §4 subsection describing the unbuilt mechanism is now explicitly labelled target design; §4.1 added as the disclosure table; Invariant Compliance (§3) rewritten against the real module; the dead `l2-source-layout.md` citation dropped (that spec never covered this placement). No L1 invariant added, removed, or reworded — `l1-notes.md` is unchanged. |
 | 1.0.0 | 2026-06-24 | Initial spec. |

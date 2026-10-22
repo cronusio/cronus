@@ -1,6 +1,6 @@
 # System Readout & Refresh
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -32,7 +32,7 @@ you do not write refresh logic again.
 - [l1-navigation-model.md](l1-navigation-model.md) — the status-bar/panel and tab surfaces where readouts render (the bottom system panel is a persistent readout host).
 - [l1-application-shell.md](l1-application-shell.md) — the frontend state authority and action dispatch this refresh core plugs into; readouts are shell-hosted state.
 - [l1-dashboard.md](l1-dashboard.md) — a readout surface (statistics tiles) that becomes one consumer of the core, not a bespoke refresher.
-- [l1-process-monitor.md](l1-process-monitor.md) — its live, configurable-cadence sampling (PM-6) is a readout on the **scheduled** trigger; observe-only (PM-1) parallels SR-7.
+- [l1-process-monitor.md](l1-process-monitor.md) — its live, configurable-cadence sampling (PMN-6) is a readout on the **scheduled** trigger; observe-only (PMN-1) parallels SR-7.
 - [l1-operational-health.md](l1-operational-health.md) — the health score/snapshot is a readout; measure-don't-act (OH-1/OH-7) parallels SR-7.
 - [l1-log-legibility.md](l1-log-legibility.md) — honest staleness (SR-5) and visibility-gated economy (SR-6) mirror LL-5 honest-reduction and the log economy discipline.
 
@@ -239,3 +239,4 @@ scheduler times; this core keeps displayed data honest and economical.
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-07-07 | Core Team | Initial spec — the unified system-readout refresh mechanism (the third convergence beside the one work board and the one event mesh): one source of truth per readout so surfaces never disagree (SR-1); a closed trigger taxonomy activation/manual/event/scheduled/dependency (SR-2); one shared refresh core with no per-surface fetch/poll/debounce logic (SR-3); coalescing & single-flight so N triggers/surfaces yield one fetch (SR-4); explicit freshness & honest staleness — fresh/refreshing/stale/error + last-updated, never a value pretending to be current (SR-5); visibility-gated economy — refresh only what a surface is showing or a panel polls, bounded cadence, never burn quota on unwatched data (SR-6); read-only projection, refresh observes never mutates (SR-7); cross-surface & cross-frontend consistency, only rendering differs (SR-8, INV-3). Consumes the event mesh (event trigger) and scheduler (scheduled trigger) rather than replacing them; the token-balance readout mapped end-to-end in the taxonomy. Main-only; no nodus angle (a host frontend/data-freshness mechanism). |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `PM-n` of `l1-process-monitor` is now `PMN-n`. No requirement was added, removed or reworded. |

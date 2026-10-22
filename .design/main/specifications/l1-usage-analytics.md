@@ -1,6 +1,6 @@
 # Usage Analytics
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -36,8 +36,8 @@ This spec takes a third path. It ships with a small set of declared questions wh
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** "what the user clicks" is recorded as the **semantic action** a click invokes and the **view** it opens — not as pointer coordinates, element identities or keystrokes. Every surface reaches the core through one dispatch door, so a semantic event is the same on the command line, the terminal interface and the desktop application; a raw click exists on one surface only and answers no question a semantic event cannot. Runner-up: element-level click capture on the desktop application. Override: `/magic.spec amend l1-usage-analytics "element-level capture"`.
-- **Assumption (forecast):** local recording is on by default and can be switched off entirely; sending anything stays off by default under telemetry. Local recording holds no content, is visible to the user and can be wiped, which is why its default differs from sending's. Runner-up: local recording off by default. Override: `/magic.spec amend l1-usage-analytics "local recording off by default"`.
+- **Confirmed (2026-10-22, the person's decision):** "what the user clicks" is recorded as the **semantic action** a click invokes and the **view** it opens — not as pointer coordinates, element identities or keystrokes. Every surface reaches the core through one dispatch door, so a semantic event is the same on the command line, the terminal interface and the desktop application; a raw click exists on one surface only and answers no question a semantic event cannot. Not taken: element-level click capture on the desktop application.
+- **Confirmed (2026-10-22, the person's decision):** local recording is on by default and can be switched off entirely; sending anything stays off by default under telemetry. Local recording holds no content, is visible to the user and can be wiped, which is why its default differs from sending's. Not taken: local recording off by default.
 - The user is one person on their own device; analytics never compares people.
 
 ## 3. Core Invariants
@@ -122,3 +122,4 @@ Question         { id, text, decision_it_informs, owner, measures: [MeasureId], 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — UAN-1…UAN-10: question-first recording with expiring questions; semantic events at the shared dispatch and navigation points instead of raw clicks; no content; derived from existing records where they exist; a separate agent-behaviour stream; aggregated with bounded retention and complete deletion; on the device, with sending left to telemetry; honest figures separating never-used from not-offered and not-measured; findings and views, never automatic changes or verdicts on people; visible and switchable. Seeded with eight questions and the decisions they inform. Motivated by a user request to collect usage and agent-action statistics while stating that the purpose is not yet clear — answered by making the purpose a declared part of every measure. |
+| 1.0.1 | 2026-10-22 | Core Team | The forecast assumptions are confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as decisions; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

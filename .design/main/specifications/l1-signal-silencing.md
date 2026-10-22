@@ -1,6 +1,6 @@
 # Signal Silencing
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -17,7 +17,7 @@ The failure this discipline exists to close is not noise. It is a silence that *
 - [l1-fault-lifecycle.md](l1-fault-lifecycle.md) — FL-9 names this layer and hands it off: archival is a judgement about *one fault* that travels with it forever; silencing withholds *a chosen rule's* output for a stated time. This spec owns the second act. FL-9's "suppresses notification, never recording" is the parent of SIL-1, and FL-8's escalation (a known fault whose rate rose is re-surfaced) is the one signal that must survive a silence.
 - [l1-error-reporting.md](l1-error-reporting.md) — ERR-3 de-duplicates *reports*; this spec withholds *deliveries*. A de-duplicated report is still delivered once; a silenced signal is delivered zero times and recorded anyway.
 - [l1-attention-steering.md](l1-attention-steering.md) — AST-6 meters an agent's *acquisition* of a person's attention. This spec governs the person's own standing refusal of it. Both treat attention as scarce and metered; they point in opposite directions and never overlap.
-- [l1-anomaly-consensus.md](l1-anomaly-consensus.md) — AC-2's unanimity gate and AC-5's assistance-not-paging exist so a detector does not manufacture the noise a person would then have to silence. This spec assumes that work failed sometimes anyway.
+- [l1-anomaly-consensus.md](l1-anomaly-consensus.md) — ANC-2's unanimity gate and ANC-5's assistance-not-paging exist so a detector does not manufacture the noise a person would then have to silence. This spec assumes that work failed sometimes anyway.
 - [l1-action-gating.md](l1-action-gating.md) — AG-5 names friction-fatigue as a first-class failure. A silence is what a person reaches for when fatigue wins; SIL-6 keeps it from becoming the answer to a problem that had a fix.
 - [l1-cooperative-status-projection.md](l1-cooperative-status-projection.md) — ASP governs how a status *reaches* a surface; this spec governs a standing decision that it must not. Silencing is a property of the signal and its subject, never of one renderer.
 - [l1-diagnostic-log.md](l1-diagnostic-log.md) — level scoping decides what is *written*; silencing decides what is *delivered*. A silenced signal is still written at full fidelity.
@@ -115,7 +115,7 @@ A silence is consulted **after** the signal is fully constructed, identified, re
 - **SIL-3 makes some silences feel heavy-handed.** Accepted. The alternative is a person who believes they muted one program and has muted a hundred, learning this from the failure that was not delivered.
 - **SIL-7 means some legitimate urgent senders are not admitted.** Accepted: a closed, small punch-through set is the only form of the rule that survives contact with a population of senders competing for attention.
 - **Alternative — silence as a per-renderer setting:** rejected. A signal silenced on one surface and delivered on another is not silenced, and the person's mental model is of the *thing* being quiet, not of one window.
-- **Alternative — sensitivity tuning instead of silencing:** rejected as a replacement (it is a complement). Tuning changes what is *detected*, which changes the record; silencing changes what is *delivered*, which must not. AC-1's per-series discipline covers the first; conflating them is how a delivery preference silently becomes a detection change nobody can audit.
+- **Alternative — sensitivity tuning instead of silencing:** rejected as a replacement (it is a complement). Tuning changes what is *detected*, which changes the record; silencing changes what is *delivered*, which must not. ANC-1's per-series discipline covers the first; conflating them is how a delivery preference silently becomes a detection change nobody can audit.
 
 ## Canonical References
 
@@ -132,3 +132,4 @@ A silence is consulted **after** the signal is fully constructed, identified, re
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-09-04 | Core Team | Initial concept — the alerting/suppression layer FL-9 names and hands off ("silencing withholds a chosen rule's output for a stated time and belongs to the alerting layer"), specified for the first time. Mined from an external desktop-environment distribution with an agent-facing control surface, whose crash-watcher mute is documented with its own traps: a key built from a truncated process name "matches nothing, forever, while looking like it worked", and a key that is a bare interpreter name silences every program run through it. Ten invariants: delivery withheld, observation never (SIL-1, the emitter-declared ephemeral class the only exception); the key resolved against real occurrences before acceptance, because a phantom silence is indistinguishable from a working one (SIL-2); breadth disclosed at set time in the person's own terms, never silently widened (SIL-3); every silence offered with its reversal and the active set listable (SIL-4); bounded by time or condition, unbounded explicit and attributed (SIL-5); never offered in place of a fix within reach, and never before the diagnosis it would suppress (SIL-6); punch-through decided on attributes the sender cannot profitably forge, since a self-declared urgency is a claim by the interested party and a shared channel converges on maximum severity (SIL-7); what was withheld is reviewable, or a delivery decision has become a data-loss decision (SIL-8); escalation survives silence unless the silence explicitly says otherwise, so being known is not a hiding place (SIL-9); instance/rule/global are three objects with three blast radii and are never one control (SIL-10). Concept-only; no L2 yet. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `AC-n` of `l1-anomaly-consensus` is now `ANC-n`. No requirement was added, removed or reworded. |

@@ -1,6 +1,6 @@
 # Onboarding
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -32,7 +32,7 @@ Each surface would also be tempted to grow its own wizard. Three wizards are thr
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** onboarding serves two arrivals — a fresh installation, and a developer opening a project that already carries Cronus artifacts — and both end at a first piece of work done. A product tour of features is not the goal. Runner-up: a feature tour shown once. Override: `/magic.spec amend l1-onboarding "feature tour"`.
+- **Confirmed (2026-10-22, the person's decision):** onboarding serves two arrivals — a fresh installation, and a developer opening a project that already carries Cronus artifacts — and both end at a first piece of work done. A product tour of features is not the goal. Not taken: a feature tour shown once.
 - The command line remains the guaranteed path: everything onboarding does is reachable without an interactive surface.
 - No step sends anything off the device unless the user names a destination in that step.
 
@@ -147,5 +147,6 @@ Studied against the onboarding of several agent tools: the most complete separat
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |
 | 1.1.0 | 2026-10-22 | Core Team | The §4.3 verb TBD resolved after studying how several agent tools onboard (the user's pointer to the agent references): new §4.4 binds `cronus onboard` (guided, `--non-interactive` with an answer file, `--flow quickstart \| manual \| import`), `cronus status` (readiness listing), `cronus doctor` (repair), `cronus init` (project-folder baseline only), the bare command opening the terminal interface with its onboarding view on a fresh install, and the TUI and desktop renderings. Added ONB-12 (a step is satisfied by a live check and a failed attempt persists nothing), ONB-13 (discovery offers choices and never acts), ONB-14 (import from another tool offered, staged, confirmed, skills through conversion, no implicit secrets). The bare command deliberately does not force onboarding, unlike the studied reference, because of ONB-3. |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — ONB-1…ONB-11: readiness observed by the core and never remembered as a flag; one model rendered by the command line, terminal interface and desktop application, inside the parity corpus; steps offered when a capability needs them; each consent at its own step, never bundled; skippable, resumable and idempotent with a closed outcome set; ending at a first real outcome; non-interactive equivalence; unavailable steps that explain themselves; private by default; a separate path for arriving at a shared project; drop-off measured locally. Motivated by a user request for CLI, TUI and GUI onboarding and by the observation that the first-run pieces already exist (init, doctor, activation consent, trust dialog, the embedding guidance suffix) and meet a new user only as successive failures. |

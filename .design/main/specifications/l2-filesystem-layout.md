@@ -1,6 +1,6 @@
 # Filesystem Layout (OS-native)
 
-**Version:** 1.6.0
+**Version:** 1.6.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-storage-model.md, l1-state-authority.md, l1-artifact-reach.md
@@ -285,7 +285,7 @@ The repository's visualization stub (§4.5) differs in three places, and this sp
 ## 5. Drawbacks & Alternatives
 
 - **Per-OS path variance:** four location classes per OS add packaging complexity; mitigated by the central path resolver.
-- **Strict XDG split (config/data/cache/state in four roots) vs consolidated state:** this spec consolidates mutable state under the data root for a simpler mental model, splitting only cache/logs. Strict XDG separation remains an option. <!-- TBD: confirm consolidated-state vs strict-XDG for Linux v0.1.0 -->
+- **Strict XDG split (config/data/cache/state in four roots) vs consolidated state:** this spec consolidates mutable state under the data root for a simpler mental model, splitting only cache/logs. Strict XDG separation remains an option. **Resolved as built (2026-10-22):** on Linux the state tier is `$XDG_DATA_HOME/cronus` (default `~/.local/share/cronus`), the cache `$XDG_CACHE_HOME/cronus` and the logs `$XDG_STATE_HOME/cronus` (`crates/domain/src/paths.rs`) — consolidated state with cache and logs split off; the strict four-root separation is not adopted.
 - **Alternative — portable-only:** simpler paths but poor OS integration; rejected as default, kept as a mode.
 
 ## Canonical References
@@ -310,3 +310,4 @@ The repository's visualization stub (§4.5) differs in three places, and this sp
 | 1.4.0 | 2026-10-22 | Realization of `l1-artifact-reach` (now also in Implements). New §4.7 reach map: each kind with its reach (project-shared, personal, machine-local, never-egress) and declaring source — most rows *proposed*, because owners declare authority classes but not reach; new §4.8 for the OS tier. §3 gains RCH-1…RCH-9 (RCH-4 portability check, RCH-7 generated exclusion and RCH-8 inspect listing **Pending**; RCH-1 and RCH-5 Partial — skills, agent definitions and workflows have no opt-in line and are not routed through the trust decision) and an SAU-8 row pointing at the projections' owners. Open: where project-shared skills, agent definitions and workflows live (TBD in §4.7). |
 | 1.5.0 | 2026-10-22 | The §4.7 TBD resolved by the user's decision: `.cronus/` in a project is the team's folder, committed as a whole, with `.cronus/local/` as the office's state root, excluded from version control. New §4.3.1 lays the folder out (readme for collaborators, `.version`, `.gitignore`, settings, commands, and source-form `skills/`, `agents/`, `workflows/`); the state-root convention points at `local/`; the shipped layout migrates once, backed up, keyed by `.version`. §4.7: project skills, agents and workflows declared project-shared in source form, their converted forms machine-local under `local/`, built-in artifacts part of the release, user-installed or authored ones personal. §3 gains RCH-10…RCH-12, all Pending against code. |
 | 1.6.0 | 2026-10-22 | From the user's backlog (the release folder structure, expected to be renamed often; an optional choice to keep Cronus's working files in the project folder for sync through the remote). §4.1: the program tier defaults to a per-user location so installation and updates need no administrator rights. §4.2: `extensions/`, `install.json`, `previous/`. §4.3: `extensions/` and `backups/`; §4.3.1's TBD resolved — `share.office_state` is the opt-in setting, the initial subset decision records, plan files and authored-memory exports; and a per-project `state.location` (`project` or `user`) with a one-time backed-up move. New §4.9: every written path is one resolver entry, a rename is a migration plus a sweep; a catalog of paths other specifications name and the trees did not, with two conflicts recorded (checkpoint files outside the workspace, two meanings of `snapshots`) and the stub's three stale differences. Pending: the setting, the move, the resolver entries. |
+| 1.6.1 | 2026-10-22 | The consolidated-state vs strict-XDG TBD is closed as built: on Linux the state tier is `$XDG_DATA_HOME/cronus`, the cache `$XDG_CACHE_HOME/cronus` and the logs `$XDG_STATE_HOME/cronus` (`crates/domain/src/paths.rs`); the four-root separation is not adopted (design-layer audit, 2026-10-22). |

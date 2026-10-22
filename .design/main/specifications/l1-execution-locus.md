@@ -1,6 +1,6 @@
 # Execution Locus
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** concept
 
@@ -143,7 +143,7 @@ The stale-index case is the one that bites hardest, because an index is *designe
 
 | Question | Owner |
 | --- | --- |
-| How confined is execution, on each axis? | `l1-execution-sandbox` (ES-1…ES-9) |
+| How confined is execution, on each axis? | `l1-execution-sandbox` (EXS-1…EXS-9) |
 | Does this environment instance exist, and what happens when it ends? | `l1-environment-lifecycle` (EL-1…EL-10) |
 | Which world does this capability act in, and what moves with it? | this spec |
 | Which locus does *this actor* use? | composed into the actor's world (`l1-scoped-capability-layers` SCL-8), per LOC-8 |
@@ -198,7 +198,7 @@ Nodus already carries the environment as an extension role; the locus rules shar
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[SANDBOX]` | `.design/main/specifications/l1-execution-sandbox.md` | ES-1…ES-9 — the orthogonal confinement axes LOC-7 composes with. |
+| `[SANDBOX]` | `.design/main/specifications/l1-execution-sandbox.md` | EXS-1…EXS-9 — the orthogonal confinement axes LOC-7 composes with. |
 | `[ENV-LIFECYCLE]` | `.design/main/specifications/l1-environment-lifecycle.md` | EL-1…EL-10 — instance existence over time; demarcated in §4.5. |
 | `[ARCHITECTURE]` | `.design/main/specifications/l1-architecture.md` | INV-4 hub-and-spoke, INV-8 sanctioned process boundaries. |
 | `[SCOPES]` | `.design/main/specifications/l1-scoped-capability-layers.md` | SCL-8 — where LOC-8's composition-time selection lands. |
@@ -210,6 +210,7 @@ Nodus already carries the environment as an extension role; the locus rules shar
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.2 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `ES-n` of `l1-execution-sandbox` is now `EXS-n`. No requirement was added, removed or reworded. |
 | 1.1.1 | 2026-09-01 | Core Team | Links-only — added `l1-remote-liveness-verdict` to Related Specifications: RLV-8 states the same-underlying-resource-one-registration rule this spec's substitution model assumes; RLV covers what a locus's liveness capability returns when its channel, not its capability set, becomes unavailable. No invariant changed. |
 | 1.1.0 | 2026-08-20 | Core Team | Amendment — LOC-11 one decider per application: the default locus is resolved in exactly one place and delivered to every surface, changed by exactly one gesture, because N surfaces deriving it from shared inputs drift the moment those inputs change at different times and the product develops several simultaneous, internally consistent opinions about where work runs (LOC-8 gave the *when*; this gives the *how many*). LOC-12 two declared binding disciplines: a **preference** resolves to its target while that target can serve and to the default while it cannot, so a surface auto-follows and returns on its own — safe precisely because a preference holds no locus-bound state; a **binding** is fixed for its container's lifetime because the container holds LOC-3 handles, and re-pointing it would reinterpret every handle against a different world rather than move it, so relocation is **clone-not-migrate** (a second container elsewhere, original intact), which also keeps LOC-5 stamping truthful. Availability for a binding is established at creation, not polled — continuous polling would tear down live work on transient unreachability, while LOC-6's visible refusal on the next operation surfaces it where the user can act. New §4.6. Additive: no existing invariant weakened; L1 stays Stable (C9). Distilled from an adoption pass over an external multi-provider agent-orchestration desktop client with several concurrently reachable execution hosts. |
 | 1.0.0 | 2026-08-19 | Core Team | Initial spec — the execution locus: one coherent world (filesystem, process table, network position, acting identity), with **the locus as the unit of substitution, never the individual capability**. Every world-touching capability declares its locus and none assumes the host (LOC-1); co-resident capabilities move as a set, since a shell in one world and a file reader in another produce tools that individually succeed and jointly describe an impossible world — a failure that errors nowhere, consumes the agent's turns, and yields a confidently wrong account (LOC-2); handles are locus-bound and crossing is an explicit transfer, never a reinterpretation of the same string against a different world (LOC-3); moving the locus must not fork the consumers, which is the leverage the model exists for — one substitution, whole-product effect (LOC-4); the active locus is observable and stamped onto every artifact that claims something about a world, an unstamped observation being evidence about nowhere (LOC-5); a capability absent from the active locus refuses visibly and never falls back, since a host fallback recreates the split world at the exact seam the locus was introduced to close (LOC-6); confinement composes with a locus and never defines one, conflating them producing the unmade claim that a remote world is inherently safe (LOC-7); locus selection is a composition decision rather than a per-call argument, because a per-call locus makes coherence unenforceable and hands the choice of where effects land to the least accountable participant (LOC-8); world-derived state is keyed by locus and invalidated or explicitly carried across a change, which is what stops a stale local index from answering confidently about a remote world (LOC-9); and a locus declares the operational properties that change how it must be used — sharing, persistence, round-trip cost, end-of-life disposition — since hiding them tunes every consumer to one locus and reintroduces the fork (LOC-10). Closes the previously-unmodeled execution-host dimension; demarcated from `l1-execution-sandbox` (how confined) and `l1-environment-lifecycle` (does the instance exist) in §4.5. Distilled from an adoption pass over an external plugin-framework-based agent-harness reference. Concept-only. |

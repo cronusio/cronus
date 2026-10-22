@@ -1,6 +1,6 @@
 # Office Deliberation
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** concept
 
@@ -16,7 +16,7 @@ The deliberation log is also the primary mechanism for inter-role communication 
 - [l1-orchestration.md](l1-orchestration.md) — delegation and budget protocol used to run deliberation rounds
 - [l1-navigation-model.md](l1-navigation-model.md) — Channels tab where the deliberation log surfaces
 - [l2-inbox.md](l2-inbox.md) — storage backing for deliberation log entries
-- [l1-competitive-execution.md](l1-competitive-execution.md) — [ADDED v1.1.0] the sibling that **selects** one of N whole attempts (CE-4); deliberation **synthesizes** independent arguments and, since v1.1.0, runs a blind cross-critique between them (DL-6).
+- [l1-competitive-execution.md](l1-competitive-execution.md) — [ADDED v1.1.0] the sibling that **selects** one of N whole attempts (CPE-4); deliberation **synthesizes** independent arguments and, since v1.1.0, runs a blind cross-critique between them (DL-6).
 - [l1-agent-coevaluation.md](l1-agent-coevaluation.md) — [ADDED v1.1.0] shares the anonymized-evaluation discipline; DL-7 anonymizes and position-randomizes arguments in the critique round to defeat authority/positional bias, exactly as blind evaluation does.
 - [l1-parallel-staffing.md](l1-parallel-staffing.md) — [ADDED v1.1.0] the throughput fan-out; the critique round (DL-6) is a second parallel fan-out over the anonymized argument set, reusing the same wave model.
 
@@ -145,6 +145,7 @@ This is the office's public reasoning surface — not private, not ephemeral.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.2 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CE-n` of `l1-competitive-execution` is now `CPE-n`. No requirement was added, removed or reworded. |
 | 1.1.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Implementation note placed the immutable deliberation log in inbox message rows, which the inbox deletes on delivery and prunes by age — it lives in the same database in an append-only table of its own (DL-4). |
 | 1.1.0 | 2026-07-26 | Core Team | Added DL-6…DL-9 + §4.4a — the **blind cross-critique round** between independent argument and synthesis, the step that makes deliberation more than "ask N times": each participant critiques the full set (strongest / biggest blind spot / what all missed), surfacing cross-argument flaws and panel-wide gaps no single independent argument contains (DL-6); the critique is on **anonymized, position-randomized** material so it evaluates the argument not who produced it or where it appeared, defeating deference and positional/primacy bias, with de-anonymization only at synthesis (DL-7); **full-stance arguments** — independence means leaning fully into the assigned specialty or deliberately-opposed stance, not hedging toward a balanced middle that collapses the diversity DL-2 selected for; the tension is the instrument and balancing is the orchestrator's job at synthesis not the participant's during argument (DL-8); synthesis MUST name convergence, name clashes without smoothing them, surface the critique-caught blind spots, and MAY side with a minority argument on merit — averaging into "it depends", hiding disagreement, and defaulting to the majority all forbidden (DL-9, sharpening DL-3 from "not a vote" to "disagreement preserved, minority can win"). §4.1 lifecycle gains an optional CRITIQUE step; §6 distinguishes the blind round from open group discussion (single anonymized pass after argument closes, not iterative cross-reading during it) and notes skipping it is valid only for low-stakes rounds. Related Specifications extended with l1-competitive-execution / l1-agent-coevaluation / l1-parallel-staffing. |
 | 1.0.0 | 2026-06-24 | Core Team | Initial spec — DL-1…DL-5, round lifecycle, participant selection, log format, communication visibility |

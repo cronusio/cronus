@@ -4,14 +4,14 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** nodus
-**Updated:** 2026-10-22 10:17
+**Updated:** 2026-10-22 14:57
 **Phase:** 34 — Command Seam & Labelled Simulation
 **Status:** Active
 
 ## Current Position
 
-- **Task:** `/magic.task nodus` (2026-10-22) — registry sync INDEX v1.0.105 → v1.0.106: the four Pending invariants of the last spec pass placed. Phase 37 Terminal Status Causes & Expected Outcomes (HO-21 + NT-12) and Phase 38 Admissible Sets on Name-Resolution Diagnostics (NL-29), both `Planned`, decomposed on entry; NL-30 parked in the Backlog beside NL-11 (no provenance on `Value` to carry — a `/magic.spec nodus` design item). Phase 34 untouched and current. Plan only — nothing landed in `crates/nodus`.
-- **Spec:** INDEX v1.0.106 / PLAN v1.54.0 / TASKS v2.47.0. RULES v1.7.1. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–38 Planned.
+- **Task:** design-layer audit remediation, nodus half (2026-10-22): `l2-nodus-testing` 1.6.0 (Motivation added, NT-1…NT-12 headings, Rust blocks rewritten as pseudo-code under RULES 1.8.0 §5), citation updates for the main workspace's renamed requirement-ID prefixes, INDEX hygiene. No phase, task or nodus invariant changed; nothing landed in `crates/nodus`. Phase 34 untouched and current.
+- **Spec:** INDEX v1.0.107 / PLAN v1.55.0 / TASKS v2.48.0. RULES v1.8.0. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–38 Planned.
 - **Next Action:** Run /magic.run nodus — T-34D01 first; Phase 34 order D01 → A01 → A02 → C01 → B01 → B02 → B03 → B04 → T01 → T02 → E01 → T03. Run `cargo` through PowerShell; retry with `-j 2` on a rustc crash.
 
 ## Progress

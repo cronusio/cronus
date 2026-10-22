@@ -58,7 +58,7 @@ Severity scale: **High** — breaks a gate, a stated user promise, or misreports
 | F-05 | Medium | Engine bug | `update-state.js:824` counts only linked `\| [Phase N](…)` rows: unlinked Planned/Held/Done rows and `10a`/`10b` are excluded. Real progress is 34 of 47 rows (main) and 33 of 38 (nodus), not 31/33 and 33/34. Engine bug report in §10 |
 | F-06 | Medium | Traceability | Thirteen requirement-ID prefixes are defined by 2–3 different specs each (28 specs). 227 citations in other specs name such an ID without saying which spec they mean; the open task files cite `DL-n` 30 times (phase 42) and `ES-n` 9 times (phase 33) |
 | F-07 | Medium | Stale status | Realization tables not updated after Done phases: `l2-simulation-suite` §3 still says USM-13 "Pending — no realization yet" though Phase 31 shipped `DiscoveryClass` and `note --class/--remedy`; `l2-surface-conformance` §4.7 still lists "structured output hand-built, unescaped" though Phase 32 shipped one `json_escape`. PLAN's Backlog note repeats the USM-13 claim. Main run phases carry no spec-reconciliation track (nodus phases do) |
-| F-08 | Medium | Unplanned debt | Pending invariant rows owned by no open phase and no Backlog entry: MR-15, MR-16 (`l2-model-runtime`), RTG-9, RTG-10 (`l2-model-router`), DL-6, DL-7 (`l2-deliberation`), AP-16 (`l2-automation-pipeline`), ERR-9 (`l2-github-issue`), plus a session row in `l2-application-shell` and a pending row in `l1-task-graph-model` |
+| F-08 | Medium | Unplanned debt | Pending invariant rows owned by no open phase and no Backlog entry: MR-15, MR-16 (`l2-model-runtime`), RTG-9, RTG-10 (`l2-model-router`), DL-6, DL-7 (`l2-deliberation`), AP-16 (`l2-automation-pipeline`), ERR-9 (`l2-github-issue`), plus Partial roadmap rows in `l2-codegraph` (7), `l2-deep-research` (2) and `l2-notes` (1). *Correction made during remediation:* the first scan also counted a row in `l2-application-shell`, one in `l1-task-graph-model`, one in `l1-automation-pipeline` and a "partial" in `l2-crate-topology` and six L1s; on reading them they are the word "pending" or "partial" in ordinary table cells, not compliance status, and were dropped |
 | F-09 | Medium | Contradiction | `l1-multi-device-sync` (Overview, Motivation, SY-2, §5) and `l1-architecture` §5 treat "an always-on phone acting as a personal server" as a supported hub. INV-4 makes constrained hosts spokes, and the project's own earlier decision was that phones are thin clients, never always-on servers |
 | F-10 | Medium | Spec describes intent as shipped | `l2-agent-session` compliance rows RTG-2 and RTG-7 say every model call in a turn is a router decision with fallback. The only shipped turn, `session say`, bypasses the router: hard-wired loopback endpoint (`CRONUS_CHAT_ENDPOINT`), `--model` required, no router reference in `invocable_bootstrap/session.rs` |
 | F-11 | Medium | Drift | `packages/ui/src/surfaces/office-view.tsx` still ships two built-in representations (`"graph" \| "floor"`). `l1-office-visualization` 2.0.0 OVZ-9 and `l2-office-view` 1.0.2 forbid any spatial view in core. The spec was rewritten to the target design on 2026-09-24 but no task removes the floor mode; PLAN still describes the spec as "graph + spatial projection" |
@@ -73,6 +73,7 @@ Severity scale: **High** — breaks a gate, a stated user promise, or misreports
 | F-20 | Low | Decision pending | Ten `Assumption (forecast)` premises await confirmation (A.5); one of them is F-03 |
 | F-21 | Low | Doc contradiction | `CLAUDE.md`, `AGENTS.md`, `CODEX.md` list `completion` among the verbs the TUI offers and, two lines later, among the verbs it leaves out; `l2-tui` 1.6.0 excludes it |
 | F-22 | Low | SDD containment | `scripts/check-domain-boundary.mjs:67` cites task ID `T-17D01`. Borderline: a `.design/` mention in a test comment at `crates/cli/src/installation.rs:808` |
+| F-23 | High | Spec describes intent as shipped | *Found during remediation.* `l2-crate-topology` §2/§4.3 and the PLAN call the domain tier I/O-free, but twenty-one of its 109 source files do filesystem or process I/O on a production path (`kanban`, `roles`, `backup`, `checkpoint`, `scheduler`, `state`, `store`, the session writer and journal, `extensions`, `secrets`, `quality` …). The boundary guard reads manifests only, so it cannot see `std::fs`. Disclosed in the spec (1.3.0); whether to make the tier I/O-free or to restate the rule is left as a marked TBD and asked of the person |
 
 ### Improvements observed (not defects)
 
@@ -252,7 +253,7 @@ Each material finding, six fields. Proposed fixes follow the project's own route
 - **Evidence:** RULES lines 77–80, 19–20, 39, 46, 124–126, 162–164; fence counts in §3.
 - **Impact:** every workflow reads a constitution it cannot obey literally.
 - **Proposed fix:** Q8 — one `/magic.rule` amendment.
-- **Risk:** a constitutional amendment (E4); needs the user.
+- **Risk:** a constitutional amendment (E4); the user approved all four parts (§11, Q8).
 
 ## 10. Engine bug report
 
@@ -284,6 +285,8 @@ Recorded via `record-diagnostic` (`STATE_OVERALL_UNDERCOUNTS_PHASES`), together 
 | Q6 | Colliding ID prefixes? | Rename the later-authored spec's prefix | R-16 with the mapping below; no product-code mentions exist, so the change is design-layer only |
 | Q7 | Concept growth? | `[DR]` mark the 30 unrealized L1s `concept-only`, no authoring freeze — the reversible option; C28 then reports the gap honestly. (Override: `/magic.task main "freeze new L1"`) | R-17 |
 | Q8 | RULES amendments? | All four: C6 aligned with C27; §2 allows a non-blocking TBD in Stable; §5 enforced (code → pseudo-code in 30 specs); engine-development conventions C1/C11/C14/C17/C20 removed | R-18 |
+| Q9 | Domain-tier I/O (asked after the first remediation pass)? | Make the tier I/O-free | R-25: decision in `l2-crate-topology`, I/O ratchet in the guard, Phase 50 |
+| Q10 | Eight forecast premises (asked as three questions)? | Confirm: local usage recording on by default; remote = own hub + project VCS remote; client-involvement, epistemic-status, onboarding, prompt-templates as forecast | R-20 |
 
 **R-16 prefix mapping** (the earliest-authored spec keeps its prefix; ties broken by INDEX row order):
 
@@ -336,11 +339,11 @@ Every finding has an entry. Proposing is not applying.
 | R-23 | Hygiene batch (appendix A.6) | appendix | debt | Low | INDEX, PLAN, specs | medium | none | — | audit scripts clean |
 | R-24 | Author the agent-runtime specification (tool-call loop, session runner, router-mediated turns — the composition Phase 37 waits on); schedule its build after Phases 33–34 | F-04, F-10 | spec-update | High | new L2 + PLAN | large | medium | Q5 ✔, R-10 | spec review; PLAN orders the build after 34 |
 
-**Tranche 0 — stop the bleeding:** R-01, R-02, R-03, R-04. Buys a CI that actually builds and tests, closes the one shipped security gap, and settles the update default before Phase 43.
-**Tranche 1 — conformance and direction:** R-05, R-07, R-08, R-09, R-10, R-11 (PLAN half), R-13, R-14, R-15, R-21, R-22, R-24. Buys a plan and spec set that say what is true, and a designed path to a working agent.
-**Tranche 2 — governance and traceability:** R-12, R-16, R-17, R-18. Buys unambiguous citations and a constitution the workflows can follow.
-**Tranche 3 — debt and polish:** R-19, R-20, R-23.
-**Deferred:** R-06 (upstream engine fix), R-11 code half (GUI hold).
+- **Tranche 0 — stop the bleeding:** R-01, R-02, R-03, R-04. Buys a CI that actually builds and tests, closes the one shipped security gap, and settles the update default before Phase 43.
+- **Tranche 1 — conformance and direction:** R-05, R-07, R-08, R-09, R-10, R-11 (PLAN half), R-13, R-14, R-15, R-21, R-22, R-24. Buys a plan and spec set that say what is true, and a designed path to a working agent.
+- **Tranche 2 — governance and traceability:** R-12, R-16, R-17, R-18. Buys unambiguous citations and a constitution the workflows can follow.
+- **Tranche 3 — debt and polish:** R-19, R-20, R-23.
+- **Deferred:** R-06 (upstream engine fix), R-11 code half (GUI hold).
 
 **Deliberately not proposed:**
 
@@ -348,6 +351,42 @@ Every finding has an entry. Proposing is not applying.
 - Renaming nodus `LP-n` — inside the nodus workspace the prefix is unambiguous; only main→nodus citations need qualifying (part of R-16).
 - Rewriting INDEX descriptions wholesale — R-23 trims only rows that contradict their spec.
 - Fixing the engine counter in `.magic/` — read-only in this project; reported instead.
+
+## 13. Remediation log (applied 2026-10-22, on the person's "everything")
+
+Nothing was committed. Everything below is in the working tree.
+
+| ID | Result | Evidence |
+| --- | --- | --- |
+| R-01 | **Done** | `l2-crate-topology` 1.3.1 (§2, §4.2, §4.3); guard allowlist and self-test amended; `node scripts/check-domain-boundary.mjs` and `--self-test` exit 0; T-42B03 unblocked |
+| R-02 | **Done, not run in CI** | `deps-gate.yml`: guard is its own job, `cargo` job no longer depends on it, code directories trigger the gate. The workflow was read, not executed (no CI run from here) |
+| R-03 | **Done** | interim address guard + response cap in `HttpUrlFetcher`; 19 unit tests in `knowledge_bootstrap` green; clippy clean; `l2-knowledge-store` §5 note 7, `l2-security` §4.4, Phase 35 consumer list. A consequence the person should know: loopback and private addresses now have **no off switch** for `knowledge add-url` until Phase 35's operator setting exists |
+| R-04 | **Done (spec)** | `l1-` and `l2-program-lifecycle` 1.2.0; new §4.1.1; Phase 43 text. No code existed to change |
+| R-05 | **Done** | RULES C31; `[/]` on ten L2 specs (`domain-only`; `l2-multi-user-auth` with a partial note) and `l2-security` (partial); PLAN legend |
+| R-06 | **Reported** | engine bug report §10, recorded as a diagnostic; `.magic/` untouched |
+| R-07 | **Done** | USM-13 row, `l2-surface-conformance` §4.7 status table; T-42E01 and T-33G01 added |
+| R-08 | **Done** | Phase 47 |
+| R-09 | **Done** | `l1-multi-device-sync` 1.1.1, `l1-architecture` 1.4.1 |
+| R-10 | **Done** | `l2-agent-session` 1.5.1 (RTG-2/RTG-7 Partial; §3 preamble) |
+| R-11 | **PLAN half done; code half held** | PLAN line corrected; floor-mode removal recorded in Phase 47, waits on the GUI hold |
+| R-12 | **Done in part** | two scenarios authored and accepted by `cronus-sim` (parse-time validator) and by the corpus guard test; the engine seat and `Recompose` gate recorded as QLY-8 debt in `l2-engine-endpoint` §5 note 6 — a refused change needs a genuinely running turn the harness cannot yet provide |
+| R-13 | **Done** | Phase 48 (`Held`) |
+| R-14 | **Done** | MI-13 row in Phase 34 |
+| R-15 | **Done** | T-42B01 pre-check; contingency to split the desktop half |
+| R-16 | **Done** | fourteen renames (table in §11); 56 specs bumped; INDEX, PLAN, TASKS, STATE and open task files updated; 0 colliding prefixes inside a workspace remain. **Not done:** cross-workspace citations still read `NL-n`/`LP-n` unqualified in a few main specs (the new §1 rule asks for `nodus LP-n`) |
+| R-17 | **Done** | thirty L1s marked `concept-only`; `l1-state-authority` loses the marker. Forty-one unmarked L1s that some L2 mentions without `Implements:` remain untracked |
+| R-18 | **Done** | RULES 1.8.0; 47 executable code blocks in 18 specs rewritten as pseudo-code (data-format fences kept); `C23` still names `/magic.simulate` |
+| R-19 | **Done for the stale ones** | five TBDs closed or given a trigger. **Not done:** the other ~60 TBDs do not yet all name an owner or trigger, which the amended §2 asks of a TBD in a Stable spec |
+| R-20 | **Done for seven of eight** | survey at the end of the session: the person confirmed local-only usage recording on by default, the two "remote" scopes, and four form forecasts (client-involvement, epistemic-status, onboarding, prompt-templates); each is now a *Confirmed* decision in its spec. `l1-scripted-surface-contract`'s forecast (a diagnostic with a stable code makes the code the contract) was not put to the person and is still a forecast |
+| R-25 | **Done** *(new, from the survey)* | F-23: the person chose to make the domain tier I/O-free. `l2-crate-topology` 1.3.2 records the decision; the boundary guard gained a shrink-only I/O ratchet (`scripts/domain-io-baseline.json`, 21 files; self-test covers both drift directions); Phase 50 plans the migration module by module |
+| R-21 | **Done** | `AGENTS.md`, and its two gitignored copies `CLAUDE.md`, `CODEX.md` |
+| R-22 | **Done** | |
+| R-23 | **Done in part** | 44 INDEX rows repaired (first attempt mis-split them; caught by markdownlint and redone), 66 stale invariant ranges refreshed in INDEX and PLAN, a Motivation added, stale paths fixed. **Not done:** history dates (62 cells), 21 mixed-order histories, 37 date regressions, the phase-journal gaps, the `RETROSPECTIVE` and `CONTEXT` regeneration, the nodus Backlog items kept in HTML comments |
+| R-24 | **Done as RFC** | `l2-agent-runtime` 1.0.0; Backlog entry; Phase 49 `Held` |
+
+**Verification run:** engine `check-prerequisites --verify-headers` ok for both workspaces (no version or status drift); `markdownlint-cli2` clean over all 104 touched Markdown files; `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean; the boundary guard and its self-test green; `finalize --workflow=spec` run for both workspaces (project version 0.1.627 → 0.1.629; root `CHANGELOG.md` entry checked for leaked references: none).
+
+**Not verified:** the CI workflow was not executed; the new spec's design was not reviewed by anyone but its author; the prefix renames were classified by a script, with sixty-two ambiguous lines decided by hand — a spot check of about seventy renamed citations found none wrong, but it is a sample.
 
 ## Appendix A — Detail lists
 
@@ -371,7 +410,7 @@ Every finding has an entry. Proposing is not applying.
 
 ### A.2 Unplanned Pending rows
 
-MR-15, MR-16 · RTG-9, RTG-10 · DL-6, DL-7 (deliberation) · AP-16 · ERR-9 · `l2-application-shell` session row · `l1-task-graph-model` pending row · `l1-automation-pipeline` digest-accumulation row. Partial rows without a phase: `l2-codegraph` (7), `l2-deep-research` (2), `l2-crate-topology`, `l2-notes`, and one partial row in each of six L1s (`l1-acp`, `l1-agent-framework-skeleton`, `l1-artifact-derived-observation`, `l1-capability-leveling`, `l1-reasoning-spend`, `l1-usage-simulation`).
+MR-15, MR-16 · RTG-9, RTG-10 · DL-6, DL-7 (deliberation) · AP-16 · ERR-9. Partial rows without a phase (roadmap): `l2-codegraph` CI-5, CI-8, CI-9, CI-13, CI-16, CI-18, CI-19; `l2-deep-research` DR-4, DR-7; `l2-notes` NOT-2. The earlier version of this list also named a row each in `l2-application-shell`, `l1-task-graph-model` and `l1-automation-pipeline` and a "partial" in `l2-crate-topology` and six L1s; those were word matches in ordinary table cells and are withdrawn.
 
 ### A.3 Stable L1s with no L2, no marker and no L2 mention
 

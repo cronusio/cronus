@@ -1,6 +1,6 @@
 # Developer (Self-Hosting) Office (Implementation)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-dev-office.md
@@ -104,37 +104,30 @@ the module loader and the auth-plane read.
 
 The gate is a pure function of two already-computed inputs plus the deploy flag:
 
-```rust
+```text
 [REFERENCE]
-pub enum RepoAuthenticity {
-    Genuine { upstream: String },
-    NotCanonical,
-    NotARepo,
+RepoAuthenticity =
+    Genuine { upstream: text }
+  | NotCanonical
+  | NotARepo
+
+AdmissionTier =
+    Absent       // nothing renders — the default for a normal install
+  | Feedback     // report/improve surface only (opt-in; default off)
+  | Elevated     // full self-maintenance dev office
+
+GateInputs {
+  repo: RepoAuthenticity
+  admitted: bool                    // read from the human-write-only plane
+  feedback_tier_enabled: bool       // deploy/build flag, default false
 }
 
-pub enum AdmissionTier {
-    Absent,    // nothing renders — the default for a normal install
-    Feedback,  // report/improve surface only (opt-in; default off)
-    Elevated,  // full self-maintenance dev office
-}
-
-pub struct GateInputs {
-    pub repo: RepoAuthenticity,
-    pub admitted: bool,           // read from the human-write-only plane
-    pub feedback_tier_enabled: bool, // deploy/build flag, default false
-}
-
-impl DevOfficeGate {
-    pub fn resolve(inp: &GateInputs) -> AdmissionTier {
-        match (&inp.repo, inp.admitted) {
-            (RepoAuthenticity::Genuine { .. }, true) => AdmissionTier::Elevated,
-            // Not admitted (or not in the canonical repo): the office is
-            // absent unless a deployment opted the feedback ceiling on.
-            _ if inp.feedback_tier_enabled && !inp.admitted => AdmissionTier::Feedback,
-            _ => AdmissionTier::Absent,
-        }
-    }
-}
+DevOfficeGate.resolve(inputs: GateInputs) -> AdmissionTier
+  if inputs.repo is Genuine and inputs.admitted             -> Elevated
+  // Not admitted (or not in the canonical repo): the office is
+  // absent unless a deployment opted the feedback ceiling on.
+  else if inputs.feedback_tier_enabled and not inputs.admitted -> Feedback
+  else                                                       -> Absent
 ```
 
 `Elevated` is reachable only through the `(Genuine, admitted)` arm — the
@@ -144,23 +137,18 @@ admission credential carried into a non-canonical tree resolves to `Absent`
 
 ### 4.3 Repository-authenticity check (DVO-2)
 
-```rust
+```text
 [REFERENCE]
 // Compiled into the product build — NOT user config, so a user cannot retarget
 // the dev office by editing a file.
-const CANONICAL_UPSTREAM: &str = "…canonical Cronus upstream identity…";
+constant CANONICAL_UPSTREAM = "…canonical Cronus upstream identity…"
 
-pub fn repo_authenticity(cwd: &Path) -> RepoAuthenticity {
-    let Some(git_dir) = find_worktree_marker(cwd) else {
-        return RepoAuthenticity::NotARepo;
-    };
-    match read_bound_upstream(&git_dir) {   // parse .git/config remotes, local read
-        Some(u) if upstream_matches_canonical(&u, CANONICAL_UPSTREAM) => {
-            RepoAuthenticity::Genuine { upstream: u }
-        }
-        _ => RepoAuthenticity::NotCanonical,
-    }
-}
+repo_authenticity(cwd: path) -> RepoAuthenticity
+  git_dir = find the worktree marker upward from cwd
+  if none                                                  -> NotARepo
+  upstream = read the bound upstream from git_dir          // parse .git/config remotes, local read
+  if upstream exists and matches CANONICAL_UPSTREAM        -> Genuine { upstream }
+  otherwise                                                -> NotCanonical
 ```
 
 Local and network-free — and, because a tree's own `.git/config` can name any remote, a heuristic rather than a verification (SEC-12, §2). An optional stronger binding composes `l1-attestation`:
@@ -176,11 +164,10 @@ exists.
 background-activation consent and other grants use); the domain gate reads it
 through a read-only port:
 
-```rust
+```text
 [REFERENCE]
-pub trait AdmissionReader {            // domain depends only on this (read-only)
-    fn is_admitted(&self) -> bool;
-}
+interface AdmissionReader            // domain depends only on this (read-only)
+  is_admitted() -> bool
 // The WRITE side (mint/revoke) is exposed only on the human-principal auth
 // surface, never on any agent-reachable API — structurally, not by convention.
 ```
@@ -284,5 +271,6 @@ runs over and the admission required to reach it.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-10-22 | Core Team | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): three Rust blocks (the admission gate, the authenticity check, the admission reader) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The repository-authenticity check (remote identity in `.git/config`) was presented as un-retargetable verification, but any tree can declare the canonical remote — labeled a scoping heuristic (SEC-12), with admission (DVO-3) and containment (DVO-7) as the boundary and attestation as what binds content. Section numbering corrected (5 → 6). |
 | 1.0.0 | 2026-07-19 | Core Team | Initial Stable — the concrete developer-office realization implementing DVO-1…DVO-8 as an orchestration layer over shipped subsystems: a conditional `WorkspaceKind::Developer` (DVO-1), a local network-free `repo_authenticity` check against a compiled-in `CANONICAL_UPSTREAM` (DVO-2), admission on the human-write-only auth plane read through a read-only `AdmissionReader` port so escalation is unrepresentable on the agent surface (DVO-3, the BA-4/OA-4 structural-enforcement pattern), trigger-loaded module gated on `DevOfficeGate::resolve == Elevated` with clean unload (DVO-4), a three-state `AdmissionTier` (Absent/Feedback/Elevated) with the feedback tier a default-off deploy opt-in routing to the shipped `l1-issue-reporting` pipeline (DVO-5, resolved), repository-scoped workspace isolation (DVO-6), confinement + audit composing `l2-sandbox-policy`/`l2-tool-security`/`l1-tool-receipts`/DW-8 (DVO-7), and the unchanged `l2-development-workflow` engine (DVO-8). Domain/facade tier split: pure gate + tier logic in `crates/domain`, the git/fs authenticity read + module wiring in the `crates/core` facade. No new authority mechanism, no new domain logic beyond the gate — the frontend surfacing is a thin conditional-floor binding over the already-built `l2-navigation`. |

@@ -1,6 +1,6 @@
 # Fault Identity & Lifecycle
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -21,7 +21,7 @@ This is upstream of reporting. Error reporting decides whether and how a failure
 - [l1-observation-retention.md](l1-observation-retention.md) - The retained record whose aggregates back a fault's counts and its escalation baseline.
 - [l1-anomaly-consensus.md](l1-anomaly-consensus.md) - Statistical unusualness of a *series*; escalation here is a rate change of a *named fault* against its own baseline — related discipline, different subject.
 - [l1-completion-verification.md](l1-completion-verification.md) - Evidence-backed completion claims; FL-7 applies the same honesty to a *fix* claim by checking it against later versions.
-- [l1-staged-rollout.md](l1-staged-rollout.md) - A changed identity rule or new detector is introduced under its shadow/exposure discipline (SR-12), never swapped in place.
+- [l1-staged-rollout.md](l1-staged-rollout.md) - A changed identity rule or new detector is introduced under its shadow/exposure discipline (SRO-12), never swapped in place.
 - [l1-diagnostic-log.md](l1-diagnostic-log.md) - The forensic plane a fault's retained occurrences may point into; separate lifecycle, not tiered here.
 - [../../nodus/specifications/l1-nodus-observability.md](../../nodus/specifications/l1-nodus-observability.md) - Supplies stable, message-independent identity contributions on error events (HO-19), composing cross-run step identity (HO-15).
 
@@ -143,7 +143,7 @@ Two errors this prevents, both common and both silent. A recurrence from an *old
 | Whether anyone is notified, at what severity, with what hysteresis and silencing | Operational health |
 | Repairing the underlying fault | The self-healing subsystem |
 | Statistical unusualness of a metric series | Anomaly consensus (a different subject: a series, not a named fault) |
-| Introducing a new identity rule or detector safely | Staged rollout (SR-12 shadow evaluation) |
+| Introducing a new identity rule or detector safely | Staged rollout (SRO-12 shadow evaluation) |
 
 ## 5. Drawbacks & Alternatives
 
@@ -163,7 +163,7 @@ Two errors this prevents, both common and both silent. A recurrence from an *old
 | --- | --- | --- |
 | `[REPORTING]` | `.design/main/specifications/l1-error-reporting.md` | Consent-gated outward filing whose ERR-3 equivalence this contract defines. |
 | `[HEALTH]` | `.design/main/specifications/l1-operational-health.md` | Sole alerting authority; escalation and digesting surface through it. |
-| `[ROLLOUT]` | `.design/main/specifications/l1-staged-rollout.md` | The discipline for introducing a new identity rule or detector without swapping it in place (SR-12). |
+| `[ROLLOUT]` | `.design/main/specifications/l1-staged-rollout.md` | The discipline for introducing a new identity rule or detector without swapping it in place (SRO-12). |
 | `[OBSERVABILITY]` | `.design/nodus/specifications/l1-nodus-observability.md` | Source of stable, message-independent identity contributions on error events (HO-19). |
 
 ## Document History
@@ -171,3 +171,4 @@ Two errors this prevents, both common and both silent. A recurrence from an *old
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-07-23 | Core Team | Initial spec — fault identity and lifecycle as the layer upstream of reporting: occurrences collapse into a fault that every surface addresses (FL-1); identity produced by a named, versioned rule set that is migrated rather than edited, because changing what "the same failure" means silently re-partitions all history while every number still looks valid (FL-2); a layered, explainable fallback ladder from most-specific evidence down to a normalized descriptor of last resort, with free text deliberately last since interpolated values shatter one fault into thousands (FL-3); declared identity outranking computed (FL-4); merges that keep the absorbed identity resolvable so no existing reference dangles (FL-5); status refined by substatus — new / ongoing / regressed / escalating, and archived until-escalating / until-condition / permanent — because a flat open-closed list renders every kind of open identically and is triaged once then ignored (FL-6); resolution as a version-anchored claim the system checks, a recurrence at or after the claimed version reading as *regressed* while an earlier-version recurrence is not, so a repeatedly-failing repair stays visible instead of appearing as unrelated strangers (FL-7); escalation re-surfacing a known fault whose rate rose above its own baseline, since being known must not be a hiding place (FL-8); conditional-by-default archival that suppresses notification but never recording (FL-9); bounded representative occurrence retention so cost scales with faults not occurrences (FL-10); the recording pipeline's own failures recorded as visible faults attributed to their source, since silently dropped data is the data whose absence nobody notices (FL-11). Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `SR-n` of `l1-staged-rollout` is now `SRO-n`. No requirement was added, removed or reworded. |

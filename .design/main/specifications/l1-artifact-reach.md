@@ -1,6 +1,6 @@
 # Artifact Reach
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -36,7 +36,7 @@ Each statement is right. Together they leave every other kind undecided: is a wo
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** "the remote repository (the cloud) for other developers" means the project's own version-control remote, which collaborators clone. A Cronus-hosted cloud service is not assumed and not required (`l1-deployment-neutrality`); a hosted backend for personal data remains an opt-in seam. Runner-up: a Cronus-operated sharing service. Override: `/magic.spec amend l1-artifact-reach "hosted sharing service"`.
+- **Confirmed (2026-10-22, the person's decision):** "the remote repository (the cloud) for other developers" means the project's own version-control remote, which collaborators clone. A Cronus-hosted cloud service is not assumed and not required (`l1-deployment-neutrality`); a hosted backend for personal data remains an opt-in seam. Not taken: a Cronus-operated sharing service.
 - Reach belongs to a **kind** of artifact, not to a file or a directory, exactly as authority does.
 - The reaches are closed. A kind that fits none is a design question for its owner, not a fifth reach.
 - The office commits locally at most; pushing is always the user's act or a standing consent they recorded (the no-remote-git contract).
@@ -151,5 +151,6 @@ graph LR
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |
 | 1.1.0 | 2026-10-22 | Core Team | Added RCH-10…RCH-12 and §4.5 from the user's decisions on the open storage question. RCH-10: three origins for skills, agent definitions and workflows — built-in (shipped, read-only), user (installed or authored, converted, personal), project (source form, project-shared) — resolved project, then user, then built-in, with the origin reported. RCH-11: a project shares source, never the converted executable form; each machine converts after the trust decision and keeps the result as a machine-local projection. RCH-12: the product's folder inside a project is the team's, shared as a whole except one declared local area holding the office's working state, excluded by a product-written rule; the folder carries a collaborator readme and a format version. §2 records the decision; §4.4's demarcation becomes §4.6. |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — RCH-1…RCH-9: a closed set of four reaches (project-shared, personal, machine-local, never-egress) declared per kind by the owning specification; undeclared means machine-local and proposed; reach independent of authority, with projections never committed as project content; a portability check before an artifact enters the tracked set; arriving project artifacts untrusted until the workspace trust decision; consented widening and honest narrowing; tools deciding by declared reach; one visible inspect listing; a reach change swept in one revision. Motivated by a user request to separate what a finished product's artifacts send to the shared remote for other developers from what stays local, and by four places in the corpus (the init exclusion, CI-18, DW-5, SY-10) that each made the split for one kind and left every other kind undecided. |

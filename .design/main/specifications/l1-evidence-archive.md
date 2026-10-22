@@ -1,6 +1,6 @@
 # Evidence Archive
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -19,7 +19,7 @@ The archive is deliberately *not* a memory system. Memory keeps what was **learn
 - [l1-hierarchical-summarization.md](l1-hierarchical-summarization.md) — the same discipline already endorsed one layer out: HS-4 carries provenance to the root (every summary node records the exact leaves it covers) and HS-6 makes a summary faithful-but-non-authoritative evidence derived from its children. EA-2 states for the live context what HS-4 states for a retrieval index; roll-up tiers are reduction artifacts that address the range beneath them rather than superseding it.
 - [l1-conversation-rewind.md](l1-conversation-rewind.md) — RW-3 fork-never-destroy is the user-initiated form of this contract; RW-1 restore points anchor to archived ranges so rewind depth is not limited by what compaction spared.
 - [l1-observation-retention.md](l1-observation-retention.md) — the sibling retention discipline for the *numeric* plane. OR-5 append-only immutability and OR-7 resolution honesty are reused here (EA-4, EA-8); this spec owns the non-numeric plane that OR explicitly excludes.
-- [l1-diagnostic-log.md](l1-diagnostic-log.md) — DL-1 separate-plane discipline and DL-5 bounded ephemerality; the diagnostic log records *how the machinery behaved* and is allowed to expire, this archive records *what the work was* and is not (EA-9).
+- [l1-diagnostic-log.md](l1-diagnostic-log.md) — DLG-1 separate-plane discipline and DLG-5 bounded ephemerality; the diagnostic log records *how the machinery behaved* and is allowed to expire, this archive records *what the work was* and is not (EA-9).
 - [l1-memory-model.md](l1-memory-model.md) — MEM-5 decay-and-prune is correct for distilled memory and wrong for evidence; EA-9 keeps the two planes from being conflated, and EA-10 keeps the archive off the recall path.
 - [l1-operational-ledger.md](l1-operational-ledger.md) — OL-6 confines chronological narrative to an append-only session log kept out of the predicate body; that log is a *curated* projection, this archive is its uncurated substrate.
 - [l1-search.md](l1-search.md) — SRCH-1 scope set extended with the archive; search is the query surface, this spec owns durability and addressing (EA-8).
@@ -49,7 +49,7 @@ That is the wrong way round. The deliberate act is reversible and the automatic 
 
 The neighbouring planes do not cover it either, each for a good reason of its own:
 
-- the diagnostic log is ephemeral by contract (DL-5) — it is a forensic sink, not a record of work;
+- the diagnostic log is ephemeral by contract (DLG-5) — it is a forensic sink, not a record of work;
 - durable memory is a distillate that decays and is pruned (MEM-5), which is what makes it useful and what makes it unusable as evidence;
 - observation retention solves this exact problem — multi-resolution tiers under a declared budget — but scopes itself to uniformly-sampled numeric series and states that events, log lines, and traces are out;
 - tool receipts prove an action occurred and need not survive the session (TR-5).
@@ -94,7 +94,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 
 - **EA-8 (Queryable, with an honest horizon):** the archive is retrievable by content, not only by handle, and is available to the application-wide find surface as its own scope. Every answer states the horizon and the coverage it actually had. A query whose range exceeds the retained horizon returns what exists **plus an explicit statement of what does not** — it never silently narrows the range, and it never reconstructs an answer for a period it no longer holds. (OR-7's discipline on the non-numeric plane.)
 
-- **EA-9 (Plane separation — evidence is not memory, ledger, or diagnostics):** the archive holds what was **said and done**, verbatim. Durable memory holds what was **learned** (distilled, scoped, decaying — MEM-5). The operational ledger holds what was **decided** (curated atomic predicates — OL-1). The diagnostic log holds how the **machinery behaved** (ephemeral — DL-5). None of the four substitutes for another; in particular the archive MUST NOT be repurposed as a memory store, and memory MUST NOT be treated as a record of what happened.
+- **EA-9 (Plane separation — evidence is not memory, ledger, or diagnostics):** the archive holds what was **said and done**, verbatim. Durable memory holds what was **learned** (distilled, scoped, decaying — MEM-5). The operational ledger holds what was **decided** (curated atomic predicates — OL-1). The diagnostic log holds how the **machinery behaved** (ephemeral — DLG-5). None of the four substitutes for another; in particular the archive MUST NOT be repurposed as a memory store, and memory MUST NOT be treated as a record of what happened.
 
 - **EA-10 (Evidence, never ambient context):** archived content is never auto-injected, never ranked into recall, and never enters a prompt because it exists. It re-enters context only through an explicit expansion (EA-3) or an explicit retrieval (EA-8), attributed as such. The existence of an archive is not a licence to keep more in context — it is what makes keeping less **safe**.
 
@@ -171,7 +171,7 @@ The four planes answer four different questions, and the most common design erro
 | Evidence archive | What was said and done? | Bounded by storage budget; append-only | No — raw |
 | Durable memory | What was learned? | Decays, prunes, consolidates (MEM-5/MEM-6) | Yes — distilled |
 | Operational ledger | What was decided? | Superseded, never mutated (OL-2) | Yes — atomic predicates |
-| Diagnostic log | How did the machinery behave? | Ephemeral, rotated (DL-5) | No — but disposable |
+| Diagnostic log | How did the machinery behave? | Ephemeral, rotated (DLG-5) | No — but disposable |
 
 Two consequences are worth stating explicitly. First, memory's decay is a **feature** and the archive must not be used to defeat it — an expired memory is expired, even though the session that produced it may still be archived. Second, the archive is not a recall path (EA-10): an agent that starts searching its archive for context on every turn has rebuilt an unranked, unbounded memory system with none of memory's scoping guarantees.
 
@@ -218,3 +218,4 @@ The archive is a foundation, not a feature; its value shows up in what other spe
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-20 | Core Team | Initial concept — the durable, immutable, device-local record of what was said and done, kept beneath every reduction. Resolves the asymmetry in which a user's deliberate rewind is non-destructive (RW-3) while the system's automatic compaction is not: **archive before reduce** as a precondition, not a side effect (EA-1); reduction artifacts become **addresses** into the archive rather than replacements for it, converting compaction from a lossy transform into an indexing operation (EA-2); expansion on demand as an ordinary capability, not a recovery procedure (EA-3); append-only immutability with supersession instead of edits (EA-4); removal only by explicit user act or declared budget, always reported, never a silent thinning or a plausible partial (EA-5); device-local and never a source for any outbound path (EA-6); **secret-safe on the way out, not on the way in** — a redacting write destroys the fidelity the record exists for without un-happening the secret (EA-7); queryable with an honest horizon, reusing OR-7's discipline on the non-numeric plane (EA-8); four-plane separation keeping evidence distinct from memory (learned), ledger (decided), and diagnostics (machinery behaviour) (EA-9); evidence never ambient — the archive is what makes keeping *less* in context safe, not a licence to keep more (EA-10); provenance survives the round trip so storage is not laundering (EA-11); cheap, bounded, and non-fatal — an archive failure fails the reduction, never the turn (EA-12). Claims the non-numeric retention plane that l1-observation-retention explicitly scopes out and that no other plane owned. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `DL-n` of `l1-diagnostic-log` is now `DLG-n`. No requirement was added, removed or reworded. |

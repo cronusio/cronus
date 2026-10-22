@@ -8,7 +8,7 @@
 //! `loop_bootstrap` facade-wiring precedent.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,14 +41,167 @@ const IO_TIMEOUT: Duration = Duration::from_secs(30);
 /// compliance, and rate-limiting are deferred,
 /// separately-scoped follow-ups — this proves the fetch mechanics are real
 /// against a hermetic local server, not simulated.
-#[derive(Debug, Default)]
-pub struct HttpUrlFetcher;
+///
+/// **Interim address guard.** The URL is the person's input (and, once an
+/// agent or an automation can call the verb, a model's), so the fetcher
+/// refuses to connect to the address ranges a fetched URL must never reach:
+/// loopback, link-local (the cloud metadata address included), private
+/// (RFC 1918), carrier-grade NAT, the unspecified and "this network" ranges and
+/// IPv6 unique-local — with an IPv4-mapped or IPv4-compatible IPv6 address
+/// unwrapped first, and named metadata hostnames refused by name. The host is
+/// resolved here and the address that passed the check is the address
+/// connected to, so a name cannot resolve to one answer for the check and
+/// another for the connection. The response is capped. This is deliberately a
+/// small, self-contained stand-in for the fuller request guard the security
+/// work will build (an operator setting for private ranges, redirect
+/// re-validation, one shared URL parser, audit entries): until that guard
+/// exists the private and loopback ranges have no off switch, which is the
+/// safe default.
+#[derive(Debug, Clone, Copy)]
+pub struct HttpUrlFetcher {
+    allow_loopback: bool,
+    max_response_bytes: u64,
+}
+
+impl Default for HttpUrlFetcher {
+    fn default() -> Self {
+        HttpUrlFetcher {
+            allow_loopback: false,
+            max_response_bytes: MAX_RESPONSE_BYTES,
+        }
+    }
+}
+
+/// The most a single fetched page may weigh. A page larger than this is
+/// refused rather than truncated: ingesting a silently cut-off document would
+/// index something the source never said.
+const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Hostnames that name a cloud metadata service. Refused by name, before any
+/// resolution, in addition to the resolved-address check.
+const METADATA_HOSTNAMES: &[&str] = &[
+    "metadata",
+    "metadata.goog",
+    "metadata.google.internal",
+    "instance-data",
+    "instance-data.ec2.internal",
+];
+
+/// Why `ip` must not be fetched from, or `None` when it may be. The reason
+/// strings (`loopback`, `link_local`, `private_ip`) are the vocabulary of the
+/// blocked-request error. Link-local is refused whatever the policy; `allow_loopback` exists only so
+/// the in-process tests can reach their hermetic server.
+fn blocked_reason(ip: IpAddr, allow_loopback: bool) -> Option<&'static str> {
+    match ip {
+        IpAddr::V4(v4) => blocked_v4(v4, allow_loopback),
+        IpAddr::V6(v6) => blocked_v6(v6, allow_loopback),
+    }
+}
+
+fn blocked_v4(ip: Ipv4Addr, allow_loopback: bool) -> Option<&'static str> {
+    let [first, second, ..] = ip.octets();
+    if ip.is_loopback() {
+        return (!allow_loopback).then_some("loopback");
+    }
+    if ip.is_link_local() {
+        return Some("link_local");
+    }
+    // 0.0.0.0/8, RFC 1918, carrier-grade NAT 100.64.0.0/10, broadcast, multicast.
+    let carrier_grade_nat = first == 100 && (second & 0xc0) == 64;
+    if first == 0 || ip.is_private() || carrier_grade_nat || ip.is_broadcast() || ip.is_multicast()
+    {
+        return Some("private_ip");
+    }
+    None
+}
+
+fn blocked_v6(ip: Ipv6Addr, allow_loopback: bool) -> Option<&'static str> {
+    if ip.is_loopback() {
+        return (!allow_loopback).then_some("loopback");
+    }
+    if ip.is_unspecified() {
+        return Some("private_ip");
+    }
+    // `::ffff:a.b.c.d` and the deprecated `::a.b.c.d` carry an IPv4 address:
+    // judge that address, not the wrapper.
+    if let Some(v4) = ip.to_ipv4() {
+        return blocked_v4(v4, allow_loopback);
+    }
+    let first = ip.segments()[0];
+    if first & 0xffc0 == 0xfe80 {
+        return Some("link_local");
+    }
+    if first & 0xfe00 == 0xfc00 {
+        return Some("private_ip");
+    }
+    None
+}
+
+impl HttpUrlFetcher {
+    /// Resolve `host`, refuse every blocked answer, and connect to an address
+    /// that passed the check.
+    fn connect_checked(&self, host: &str, port: u16) -> Result<TcpStream, String> {
+        let bare = host.trim_end_matches('.').to_ascii_lowercase();
+        if METADATA_HOSTNAMES.contains(&bare.as_str()) {
+            return Err(format!(
+                "ssrf blocked (link_local): {host} names a cloud metadata service"
+            ));
+        }
+        let addrs: Vec<SocketAddr> = (host, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("connect to {host}:{port} failed: cannot resolve host: {e}"))?
+            .collect();
+        if addrs.is_empty() {
+            return Err(format!(
+                "connect to {host}:{port} failed: host resolved to no address"
+            ));
+        }
+        // Every answer must pass: a name that resolves to one public and one
+        // internal address is refused outright rather than raced.
+        for addr in &addrs {
+            if let Some(reason) = blocked_reason(addr.ip(), self.allow_loopback) {
+                return Err(format!(
+                    "ssrf blocked ({reason}): {host} resolves to {}",
+                    addr.ip()
+                ));
+            }
+        }
+        let mut last_error = String::new();
+        for addr in &addrs {
+            match TcpStream::connect_timeout(addr, CONNECT_TIMEOUT) {
+                Ok(stream) => return Ok(stream),
+                Err(e) => last_error = e.to_string(),
+            }
+        }
+        Err(format!("connect to {host}:{port} failed: {last_error}"))
+    }
+}
+
+#[cfg(test)]
+impl HttpUrlFetcher {
+    /// A fetcher that may reach the in-process hermetic server on `127.0.0.1`.
+    /// Test-only: the shipped fetcher has no loopback exemption.
+    fn for_loopback_tests() -> Self {
+        HttpUrlFetcher {
+            allow_loopback: true,
+            ..HttpUrlFetcher::default()
+        }
+    }
+
+    fn with_max_response_bytes(self, max_response_bytes: u64) -> Self {
+        HttpUrlFetcher {
+            max_response_bytes,
+            ..self
+        }
+    }
+}
 
 impl UrlFetcher for HttpUrlFetcher {
     fn fetch(&self, url: &str) -> Result<String, String> {
         let (host, port, path) = parse_http_url(url)?;
-        let mut stream = TcpStream::connect((host.as_str(), port))
-            .map_err(|e| format!("connect to {host}:{port} failed: {e}"))?;
+        let mut stream = self.connect_checked(&host, port)?;
         stream
             .set_read_timeout(Some(IO_TIMEOUT))
             .map_err(|e| e.to_string())?;
@@ -63,10 +216,19 @@ impl UrlFetcher for HttpUrlFetcher {
             .write_all(request.as_bytes())
             .map_err(|e| format!("write failed: {e}"))?;
 
+        // Read one byte past the cap so an oversized response is detected
+        // instead of silently truncated at the boundary.
         let mut raw = Vec::new();
-        stream
+        (&stream)
+            .take(self.max_response_bytes.saturating_add(1))
             .read_to_end(&mut raw)
             .map_err(|e| format!("read failed: {e}"))?;
+        if raw.len() as u64 > self.max_response_bytes {
+            return Err(format!(
+                "response from {url} exceeds {} bytes",
+                self.max_response_bytes
+            ));
+        }
 
         let response = String::from_utf8_lossy(&raw);
         let (head, body) = response
@@ -218,7 +380,7 @@ impl KnowledgeService {
         Ok(KnowledgeService {
             store,
             embedder,
-            fetcher: HttpUrlFetcher,
+            fetcher: HttpUrlFetcher::default(),
         })
     }
 
@@ -247,7 +409,8 @@ impl KnowledgeService {
     }
 
     /// Ingest a web page (`UrlIngester`) via the real `HttpUrlFetcher`
-    /// (`http://` only — see [`HttpUrlFetcher`]'s disclosed scope).
+    /// (`http://` only, public addresses only — see [`HttpUrlFetcher`]'s
+    /// disclosed scope and its interim address guard).
     pub fn ingest_url(
         &self,
         document: Document,
@@ -325,6 +488,10 @@ mod tests {
     /// and replies with the fixed `response`, then closes. Returns the base
     /// URL to fetch.
     fn spawn_mock_server(response: &'static str) -> String {
+        spawn_mock_server_with(response.as_bytes().to_vec())
+    }
+
+    fn spawn_mock_server_with(response: Vec<u8>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("local_addr");
         thread::spawn(move || {
@@ -340,7 +507,7 @@ mod tests {
                     }
                 }
                 let mut stream = stream;
-                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.write_all(&response);
                 let _ = stream.shutdown(Shutdown::Write);
             }
         });
@@ -352,21 +519,25 @@ mod tests {
         let base = spawn_mock_server(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><body><p>Hello world.</p></body></html>",
         );
-        let body = HttpUrlFetcher.fetch(&base).expect("fetch");
+        let body = HttpUrlFetcher::for_loopback_tests()
+            .fetch(&base)
+            .expect("fetch");
         assert!(body.contains("Hello world."));
     }
 
     #[test]
     fn a_non_2xx_status_is_reported_as_an_error() {
         let base = spawn_mock_server("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\nnope");
-        let err = HttpUrlFetcher.fetch(&base).expect_err("404 must error");
+        let err = HttpUrlFetcher::for_loopback_tests()
+            .fetch(&base)
+            .expect_err("404 must error");
         assert!(err.contains("404"));
     }
 
     #[test]
     fn a_connection_refused_is_a_clear_error_not_a_panic() {
         // Port 0 never accepts connections — a deterministic refusal target.
-        let err = HttpUrlFetcher
+        let err = HttpUrlFetcher::for_loopback_tests()
             .fetch("http://127.0.0.1:1")
             .expect_err("nothing listens on port 1");
         assert!(err.contains("connect"));
@@ -374,10 +545,167 @@ mod tests {
 
     #[test]
     fn https_urls_are_refused_with_a_clear_message() {
-        let err = HttpUrlFetcher
+        let err = HttpUrlFetcher::default()
             .fetch("https://example.test/")
             .expect_err("https refused");
         assert!(err.contains("TLS"));
+    }
+
+    fn ip(text: &str) -> IpAddr {
+        text.parse().expect("test address parses")
+    }
+
+    #[test]
+    fn every_range_a_fetched_url_must_never_reach_is_refused() {
+        let blocked = [
+            ("127.0.0.1", "loopback"),
+            ("127.255.255.254", "loopback"),
+            ("::1", "loopback"),
+            ("169.254.169.254", "link_local"),
+            ("169.254.0.1", "link_local"),
+            ("fe80::1", "link_local"),
+            ("febf::1", "link_local"),
+            ("10.0.0.1", "private_ip"),
+            ("172.16.0.1", "private_ip"),
+            ("172.31.255.255", "private_ip"),
+            ("192.168.1.1", "private_ip"),
+            ("100.64.0.1", "private_ip"),
+            ("100.127.255.255", "private_ip"),
+            ("0.0.0.0", "private_ip"),
+            ("0.1.2.3", "private_ip"),
+            ("::", "private_ip"),
+            ("fc00::1", "private_ip"),
+            ("fd12:3456::1", "private_ip"),
+            // Wrapped IPv4 is judged as IPv4, not waved through as "IPv6".
+            ("::ffff:127.0.0.1", "loopback"),
+            ("::ffff:169.254.169.254", "link_local"),
+            ("::ffff:10.0.0.1", "private_ip"),
+            ("::127.0.0.1", "loopback"),
+        ];
+        for (text, reason) in blocked {
+            assert_eq!(
+                blocked_reason(ip(text), false),
+                Some(reason),
+                "{text} must be refused as {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_addresses_and_the_edges_of_blocked_ranges_are_allowed() {
+        for text in [
+            "93.184.216.34",
+            "8.8.8.8",
+            "2606:4700:4700::1111",
+            "::ffff:8.8.8.8",
+            // Just outside 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16.
+            "100.63.255.255",
+            "100.128.0.1",
+            "172.15.255.255",
+            "172.32.0.1",
+            "192.169.0.1",
+            "169.253.255.255",
+            "169.255.0.1",
+        ] {
+            assert_eq!(blocked_reason(ip(text), false), None, "{text} is public");
+        }
+    }
+
+    #[test]
+    fn the_loopback_exemption_never_covers_link_local_or_private_ranges() {
+        assert_eq!(blocked_reason(ip("127.0.0.1"), true), None);
+        assert_eq!(blocked_reason(ip("::1"), true), None);
+        assert_eq!(
+            blocked_reason(ip("169.254.169.254"), true),
+            Some("link_local")
+        );
+        assert_eq!(blocked_reason(ip("10.0.0.1"), true), Some("private_ip"));
+    }
+
+    #[test]
+    fn the_shipped_fetcher_refuses_loopback_without_connecting() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.set_nonblocking(true).expect("nonblocking");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let err = HttpUrlFetcher::default()
+            .fetch(&format!("http://{addr}/"))
+            .expect_err("a default fetcher must refuse loopback");
+
+        assert!(err.contains("ssrf blocked (loopback)"), "got: {err}");
+        assert_eq!(
+            listener
+                .accept()
+                .expect_err("no connection was attempted")
+                .kind(),
+            std::io::ErrorKind::WouldBlock,
+            "the refusal must happen before any connection is opened"
+        );
+    }
+
+    #[test]
+    fn the_cloud_metadata_address_and_names_are_refused() {
+        let by_address = HttpUrlFetcher::default()
+            .fetch("http://169.254.169.254/latest/meta-data/")
+            .expect_err("link-local literal refused");
+        assert!(by_address.contains("link_local"), "got: {by_address}");
+
+        // Refused by name before any DNS lookup, so this needs no network.
+        for name in [
+            "http://metadata.google.internal/computeMetadata/v1/",
+            "http://METADATA.GOOG./",
+            "http://instance-data/latest/",
+        ] {
+            let by_name = HttpUrlFetcher::default()
+                .fetch(name)
+                .expect_err("metadata hostname refused");
+            assert!(by_name.contains("metadata service"), "{name}: {by_name}");
+        }
+    }
+
+    #[test]
+    fn non_canonical_loopback_literals_never_yield_a_connection() {
+        // Whether the system resolver reads these as 127.0.0.1 (then the
+        // address check refuses them) or rejects them as names, no fetch may
+        // succeed: the address checked is the address connected to.
+        for url in ["http://2130706433/", "http://0x7f.1/", "http://0177.0.0.1/"] {
+            let err = HttpUrlFetcher::default()
+                .fetch(url)
+                .expect_err("a loopback spelling must not be fetched");
+            assert!(
+                err.contains("ssrf blocked") || err.contains("cannot resolve"),
+                "{url}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_oversized_response_is_refused_not_truncated() {
+        let mut response = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+        response.extend(std::iter::repeat_n(b'x', 4096));
+        let base = spawn_mock_server_with(response);
+
+        let err = HttpUrlFetcher::for_loopback_tests()
+            .with_max_response_bytes(1024)
+            .fetch(&base)
+            .expect_err("a response over the cap must be refused");
+        assert!(err.contains("exceeds 1024 bytes"), "got: {err}");
+    }
+
+    #[test]
+    fn a_response_exactly_at_the_cap_is_accepted() {
+        let head = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n";
+        let body = "y".repeat(256);
+        let mut response = head.as_bytes().to_vec();
+        response.extend_from_slice(body.as_bytes());
+        let cap = response.len() as u64;
+        let base = spawn_mock_server_with(response);
+
+        let fetched = HttpUrlFetcher::for_loopback_tests()
+            .with_max_response_bytes(cap)
+            .fetch(&base)
+            .expect("exactly at the cap is within it");
+        assert_eq!(fetched, body);
     }
 
     struct DeterministicEmbedder;

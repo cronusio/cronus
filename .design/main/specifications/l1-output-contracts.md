@@ -1,6 +1,6 @@
 # Output Contracts
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -38,15 +38,15 @@ Post-task gates (linters, tests) catch these failures late, after the artifact i
 
 Rules every Layer 2 implementation MUST NOT violate:
 
-- **OC-1 (Schema contract):** a node may declare a typed output schema. The executor MUST validate that the node's output conforms to the schema before committing it to channels. Schema mismatch is a validation failure and triggers a retry.
-- **OC-2 (Callable validator):** a node may declare one or more callable validators. Each callable receives the output and returns a verdict: `(valid: bool, reason: string | None)`. `valid=false` is a validation failure; `reason` is injected into the node's retry context so the producing agent can correct the specific issue.
-- **OC-3 (Criteria validator):** a node may declare one or more criteria expressed in natural language. A criteria validator is evaluated against the output using the system's reasoning capability (not a hard-coded rule). `valid=false` with a generated reason triggers a retry identical to a callable validator failure.
-- **OC-4 (Retry budget):** each node declares a maximum number of validation retries. On each retry, the executor re-invokes the node with the original input plus all accumulated validation verdicts as additional context. The retry budget is consumed independently of the step budget (EG-8); budget exhaustion escalates the failure.
-- **OC-5 (Verdict injection):** on retry, the executor MUST supply the accumulated validation verdicts to the node's context. Verdicts include: which validator failed, the reason string, and the attempt number. This ensures the node can progressively correct its output rather than repeating the same mistake.
-- **OC-6 (Escalation on budget exhaustion):** when the retry budget is exhausted without a passing verdict, the failure is classified per ORC-11: retryable (if the cause is transient), fatal-isolated (if the node repeatedly produces invalid output), or escalation (if the criteria cannot be mechanically verified). The executor MUST NOT silently commit a contract-failing output.
+- **OCT-1 (Schema contract):** a node may declare a typed output schema. The executor MUST validate that the node's output conforms to the schema before committing it to channels. Schema mismatch is a validation failure and triggers a retry.
+- **OCT-2 (Callable validator):** a node may declare one or more callable validators. Each callable receives the output and returns a verdict: `(valid: bool, reason: string | None)`. `valid=false` is a validation failure; `reason` is injected into the node's retry context so the producing agent can correct the specific issue.
+- **OCT-3 (Criteria validator):** a node may declare one or more criteria expressed in natural language. A criteria validator is evaluated against the output using the system's reasoning capability (not a hard-coded rule). `valid=false` with a generated reason triggers a retry identical to a callable validator failure.
+- **OCT-4 (Retry budget):** each node declares a maximum number of validation retries. On each retry, the executor re-invokes the node with the original input plus all accumulated validation verdicts as additional context. The retry budget is consumed independently of the step budget (EG-8); budget exhaustion escalates the failure.
+- **OCT-5 (Verdict injection):** on retry, the executor MUST supply the accumulated validation verdicts to the node's context. Verdicts include: which validator failed, the reason string, and the attempt number. This ensures the node can progressively correct its output rather than repeating the same mistake.
+- **OCT-6 (Escalation on budget exhaustion):** when the retry budget is exhausted without a passing verdict, the failure is classified per ORC-11: retryable (if the cause is transient), fatal-isolated (if the node repeatedly produces invalid output), or escalation (if the criteria cannot be mechanically verified). The executor MUST NOT silently commit a contract-failing output.
 
-- **OC-8 (Exhaustion resolves to a named disposition, never to a loop):** [ADDED v1.1.0] an escalation raised under OC-6 MUST terminate in **exactly one disposition drawn from a closed set** — *retry with a different producer*, *decompose the unit into smaller units*, *revise the approach or the contract itself*, *accept the current output with its limitations recorded*, or *defer the unit*. A sixth option — "try again the same way" — does not exist at this point, because the budget it would consume has already been spent proving it does not work. The escalation carries the material the choice requires: the **full attempt history** (what each attempt produced and which verdict it failed on), the **root-cause reading** of why the attempts converged on failure, and the **blast radius** (what downstream work is blocked). *Accept with limitations* is a legitimate outcome and is the one that most needs recording: the limitation travels with the artifact, so a knowingly-accepted gap is never later mistaken for a passing result. An escalation that ends without a recorded disposition is an unresolved failure wearing the appearance of a handled one.
-- **OC-7 (Non-blocking absence):** if a node declares no output contract, the executor proceeds without validation. Contracts are always opt-in; their absence never blocks execution.
+- **OCT-8 (Exhaustion resolves to a named disposition, never to a loop):** [ADDED v1.1.0] an escalation raised under OCT-6 MUST terminate in **exactly one disposition drawn from a closed set** — *retry with a different producer*, *decompose the unit into smaller units*, *revise the approach or the contract itself*, *accept the current output with its limitations recorded*, or *defer the unit*. A sixth option — "try again the same way" — does not exist at this point, because the budget it would consume has already been spent proving it does not work. The escalation carries the material the choice requires: the **full attempt history** (what each attempt produced and which verdict it failed on), the **root-cause reading** of why the attempts converged on failure, and the **blast radius** (what downstream work is blocked). *Accept with limitations* is a legitimate outcome and is the one that most needs recording: the limitation travels with the artifact, so a knowingly-accepted gap is never later mistaken for a passing result. An escalation that ends without a recorded disposition is an unresolved failure wearing the appearance of a handled one.
+- **OCT-7 (Non-blocking absence):** if a node declares no output contract, the executor proceeds without validation. Contracts are always opt-in; their absence never blocks execution.
 
 ## 4. Detailed Design
 
@@ -56,9 +56,9 @@ Rules every Layer 2 implementation MUST NOT violate:
 [REFERENCE]
 
 OutputContract:
-  schema      : TypeSchema | None        -- structural shape (OC-1)
-  validators  : [Validator]              -- ordered list (OC-2 / OC-3)
-  max_retries : int                      -- default 3; 0 disables retry (OC-4)
+  schema      : TypeSchema | None        -- structural shape (OCT-1)
+  validators  : [Validator]              -- ordered list (OCT-2 / OCT-3)
+  max_retries : int                      -- default 3; 0 disables retry (OCT-4)
 
 Validator =
   | CallableValidator { fn: (output) → (bool, string | None) }
@@ -111,7 +111,7 @@ Implementations MUST pass `ValidationContext` to the node so the node's reasonin
 
 ### 4.5 Failure Escalation
 
-When the retry budget is exhausted, the executor classifies the failure (OC-6) and surfaces it to the delegation boundary. The canonical ORC-11 classification applies:
+When the retry budget is exhausted, the executor classifies the failure (OCT-6) and surfaces it to the delegation boundary. The canonical ORC-11 classification applies:
 
 - **Retryable**: validator raised an infrastructure error (e.g., LLM timeout during criteria evaluation) — the delegation boundary may schedule a fresh attempt.
 - **Fatal-isolated**: the node consistently produces invalid output — the card moves to Blocked; other delegations continue.
@@ -156,6 +156,7 @@ A task should use an output contract when its correctness can be evaluated from 
 
 | Version | Date | Summary |
 | --- | --- | --- |
-| 1.1.0 | 2026-08-06 | OC-8 added — **exhaustion resolves to a named disposition, never to a loop**. OC-6 classified the failure but left open what happens next, and the observed default in that gap is an unbounded re-attempt cycle or a quiet abandonment that reads downstream as success. The escalation now terminates in exactly one of a **closed** set — different producer / decompose / revise approach or contract / accept-with-recorded-limitations / defer — with "try again the same way" structurally absent, since that budget was already spent proving it fails. The escalation carries the full attempt history, the root-cause reading, and the blast radius, because a disposition chosen without them is a guess. *Accept with limitations* is explicitly legitimate **and** explicitly recorded, so a knowingly-accepted gap never later passes for a clean result. Additive to OC-6; no existing classification changed. |
+| 1.1.1 | 2026-10-22 | Requirement-ID prefix renamed `OC` → `OCT` so that it names one specification in the workspace (the person's decision, design-layer audit 2026-10-22; RULES §1 as amended in 1.8.0): every definition of this spec's invariants and every citation of them across the corpus now reads `OCT-n`. No requirement was added, removed or reworded. |
+| 1.1.0 | 2026-08-06 | OCT-8 added — **exhaustion resolves to a named disposition, never to a loop**. OCT-6 classified the failure but left open what happens next, and the observed default in that gap is an unbounded re-attempt cycle or a quiet abandonment that reads downstream as success. The escalation now terminates in exactly one of a **closed** set — different producer / decompose / revise approach or contract / accept-with-recorded-limitations / defer — with "try again the same way" structurally absent, since that budget was already spent proving it fails. The escalation carries the full attempt history, the root-cause reading, and the blast radius, because a disposition chosen without them is a guess. *Accept with limitations* is explicitly legitimate **and** explicitly recorded, so a knowingly-accepted gap never later passes for a clean result. Additive to OCT-6; no existing classification changed. |
 | 1.0.1 | 2026-08-05 | Related Specifications extended with `l1-input-binding`, the consumer-side twin closing the input/output asymmetry: same unit, opposite machinery (producer retries with verdicts, consumer rejects without retry). Link-only; no invariant changed. |
 | 1.0.0 | 2026-06-24 | Initial stable spec — schema + callable + criteria validators, retry budget, verdict injection, escalation model, interaction with quality gates |

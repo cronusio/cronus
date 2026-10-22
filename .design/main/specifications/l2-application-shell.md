@@ -1,6 +1,6 @@
 # Application Shell Runtime (React 19 · Tauri v2)
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-application-shell.md
@@ -492,13 +492,14 @@ point.
 | `[TOPOLOGY]` | `.design/main/specifications/l2-ui-module-topology.md` | The tier partition and the single-seam rule every module placement obeys |
 | `[APP-UI]` | `.design/main/specifications/l2-app-ui.md` | Settings persistence (§4.7) and OS-global shortcuts (§4.9) — the host-side halves this runtime defers to |
 | `[NAV]` | `.design/main/specifications/l2-navigation.md` | The navigation catalog and four-layer surface model this runtime hosts |
-| `[BRIDGE]` | `packages/ui/src/bridge.ts` | The current seam — the exact surface the admission rule widens |
+| `[BRIDGE]` | `packages/ui/src/shared/bridge.ts` | The current seam — the exact surface the admission rule widens |
 | `[ROOT]` | `apps/desktop/src/main.tsx` | The host mount point the root collapse targets |
 
 ## Document History
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | The `[BRIDGE]` reference points at the bridge's current path, `packages/ui/src/shared/bridge.ts` (design-layer audit, 2026-10-22). |
 | 1.2.0 | 2026-09-06 | Seam-boundary amendment. §4.3.1 states that `catalog()` carries **descriptors only** and that the executable face has no serialized form at all — not a rule the bridge applies per call but a property of the type, serializable outbound only, so no handle can travel this seam and no inbound path can synthesize a descriptor the core did not author (SP-12); this is the boundary where a forgotten omission would be least visible, so the omission is made impossible rather than mandated. §4.3.2 makes this surface's catalog an explicit **copy** and `Unknown` the signal that it is stale: dispatching an identity the registry no longer knows refreshes the catalog instead of rendering a failure, because a stale-copy problem reported as a generic failure reaches the user as a broken feature and the developer as an unreproducible bug — the catalog having refreshed by the time anyone looks (SP-13). The registry's own change announcement normally drives the refresh; `Unknown` is the backstop for the delivery window. |
 | 1.0.0 | 2026-09-03 | Initial implementation spec — the L2 realization `l1-application-shell` had never received. One composition root (§4.1), projection/view/session stores over a scoped external-store subscription (§4.2), the single seam's event direction plus the capability-admission rule (§4.3), namespaced actions with context-stack keymap resolution and three-layer merge (§4.4), the workbench vocabulary and versioned layout record (§4.5), delegated selection surfaces (§4.6), cancellation-owned async (§4.7), and a verification table naming one failable check per contract plus the two obligations that stay judgment (§5). Maps AS-1…AS-13, stating explicitly where the stack lacks the L1's mechanism (AS-2, AS-11) and how the intent is met instead. Post-Update Review added §4.3 channel liveness (a dead push edge moves dependent projections to *unavailable* rather than leaving stale values on screen) and the §5 verification table. |
 | 1.0.1 | 2026-09-03 | §4.3 admission rule reconciled to the principle it states. The old text made *"the capability the corresponding command-line verb reaches"* the necessary condition for adding a seam method; the stated purpose was only *"incapable of growing a frontend-only feature"*. §4.5's layout record and the theming axes are written by the host settings store — reached by no CLI verb and no other frontend, yet not a frontend invention — so the old letter forbade what §4.5 requires. Now: admissibility = the bound capability exists in the core **or the host** and is **not frontend-only**; two admissible classes named (a core capability another surface binds; a host-owned facility), CLI/TUI parity demoted from necessary condition to sufficient signal. No new requirement — a self-contradiction repaired. |

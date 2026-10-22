@@ -1,6 +1,6 @@
 # Invocable Registry & Dispatch Contract
 
-**Version:** 1.11.0
+**Version:** 1.11.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -95,16 +95,16 @@ Descriptor and envelope types live in the ports tier because all three surfaces 
 
 `[REFERENCE]` — shape, not implementation:
 
-```rust
-pub struct Invocable {
-    pub id: InvocableId,        // qualified: "core:board.list", "<ext-id>:verb"
-    pub name: &'static str,     // human-readable, catalog-facing
-    pub summary: &'static str,  // one line; feeds help, slash discovery, completion
-    pub group: &'static str,    // noun namespace, per the project command grammar
-    pub locus: Locus,           // Semantic | ClientLocal | HostOnly | Installation
-    pub binders: Vec<Binder>,   // ordered, typed; the single schema source (IB-1)
-    pub stability: Stability,   // Shipped | Retired { superseded_by }
-    pub reach: Reach,           // AgentReachable | HumanOnly (REA-1 of l1-capability-reachability)
+```text
+Invocable {
+  id: InvocableId           // qualified: "core:board.list", "<ext-id>:verb"
+  name: text                // human-readable, catalog-facing
+  summary: text             // one line; feeds help, slash discovery, completion
+  group: text               // noun namespace, per the project command grammar
+  locus: Locus              // Semantic | ClientLocal | HostOnly | Installation
+  binders: list of Binder   // ordered, typed; the single schema source (IB-1)
+  stability: Stability      // Shipped | Retired { superseded_by }
+  reach: Reach              // AgentReachable | HumanOnly (REA-1 of l1-capability-reachability)
 }
 ```
 
@@ -153,19 +153,18 @@ Collisions on an unqualified verb are resolved by a **declared rule**, never by 
 
 `[REFERENCE]`:
 
-```rust
-pub struct Invocation { pub id: InvocableId, pub args: ArgValues, pub caller: Surface }
+```text
+Invocation { id: InvocableId, args: ArgValues, caller: Surface }
 
 // Resolution comes first and is a separate question (SP-13).
-pub enum Resolved<'a> { Found(&'a Invocable), Unknown }
+Resolved = Found(Invocable) | Unknown
 
 // An Outcome exists only for an invocation that resolved.
-pub enum Outcome {
-    Value(OutcomeValue),
-    Stream(StreamHandle),
-    Rejected(Rejection),            // a declared binder failed; body never ran
-    Unavailable { reason: String }, // resolved, ran, could not answer
-}
+Outcome =
+    Value(OutcomeValue)
+  | Stream(StreamHandle)
+  | Rejected(Rejection)              // a declared binder failed; body never ran
+  | Unavailable { reason: text }     // resolved, ran, could not answer
 ```
 
 `[ADDED v1.1.0]` **Resolution is asked and answered before dispatch, and its negative answer is not an `Outcome`** (SP-13). An invocation naming nothing the registry knows has no outcome at all, because nothing ran — and the surfaces need that distinction to behave correctly, in opposite directions:
@@ -277,21 +276,19 @@ The desktop's settings commands are the standing worked example: they are host-o
 
 `[REFERENCE]` — shape, not implementation:
 
-```rust
-pub enum Locus {
-    Semantic,
-    ClientLocal,
-    HostOnly { reason: &'static str },
-    Installation { effect: LiveEffect },
-}
+```text
+Locus =
+    Semantic
+  | ClientLocal
+  | HostOnly { reason: text }
+  | Installation { effect: LiveEffect }
 
-pub enum LiveEffect {
-    Inspect,                       // reads installation state; changes nothing
-    Install,                       // changes installation state the live composition does not hold
-    Recompose { apply: Apply },    // changes what the live composition is built from
-}
+LiveEffect =
+    Inspect                          // reads installation state; changes nothing
+  | Install                          // changes installation state the live composition does not hold
+  | Recompose { apply: Apply }       // changes what the live composition is built from
 
-pub enum Apply { InPlace, Relaunch }
+Apply = InPlace | Relaunch
 ```
 
 | Class | Examples | On a composed surface |
@@ -423,6 +420,7 @@ Ordering is constrained by SP-9 — the primitive precedes the second consumer �
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.11.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): three Rust blocks (the descriptor, the invocation and outcome, the locus and live effect) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.11.0 | 2026-10-22 | New §4.14 from the user's backlog (`cronus help` / `--help` for the command line, `/help` in the terminal UI, en/ru documentation of the commands): descriptor text becomes a message key with an English source, translated through the program tier's language packs shared with the desktop shell, locale from `app.json` or `--lang` / `CRONUS_LANG`, verb names and flags never translated; one help projection behind every spelling; the command reference generated in English and Russian into `docs/reference/` and guarded by a drift test. Related links to the new `update` / `shell` / `uninstall` and `log` verbs. All Pending. |
 | 1.10.0 | 2026-10-21 | §4.8.1: the core carries out every recomposing verb but the deletion of the running workspace (`is_carried_out_as`); the handler registered for each takes the work gate for its verb's scope by construction, so a surface that dispatches one unasked meets it; activating an extension owns its disclosure and acknowledgement; removing an extension is reported unsupported before anyone is asked. §5 step 9: realized for the terminal UI. |
 | 1.9.0 | 2026-10-21 | §4.8.1: a `Recompose` is applied through the work gate of `l2-engine-endpoint` §4.7, which the command line already applies; §5 step 9: the knowledge the terminal UI lacked exists, and carrying `Recompose` out there is what remains. |

@@ -1,6 +1,6 @@
 # Conversation Rewind
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** concept
 
@@ -17,7 +17,7 @@ Rewind is the user's direct control over conversation history — a steering act
 - [l1-crash-recovery.md](l1-crash-recovery.md) - The snapshot/restore + work-reconciliation + honest-accounting machinery (CR-2/CR-6/CR-7) rewind reuses; distinct trigger — rewind is *user-initiated* and targets a *chosen* point, crash recovery is *involuntary* and restores the *newest valid* state. The "resurrection risk" CR-6/CR-7 handle for crashes is rewind's central case.
 - [l2-session-checkpoint.md](l2-session-checkpoint.md) - Session context-window checkpoints; a per-turn rewind point captures the conversation context like any checkpointed session state.
 - [l2-agent-session.md](l2-agent-session.md) - The turn lifecycle whose user-message boundaries are the rewind points (RW-1).
-- [l1-conversational-control.md](l1-conversational-control.md) - The chat surface rewind operates on; a reused message re-enters as an intent-resolved turn (CC-3).
+- [l1-conversational-control.md](l1-conversational-control.md) - The chat surface rewind operates on; a reused message re-enters as an intent-resolved turn (CVC-3).
 - [l1-directability.md](l1-directability.md) - Rewind is a first-class steer on the chat lens (DIR-1); surfacing irreversible effects rather than faking their undo is DIR-9 honest-control applied to history.
 - [l1-office-control.md](l1-office-control.md) - OC-1 safe-checkpoint-before-freeze is how a rewind quiesces an actively-working office before restoring (RW-6).
 - [l1-work-liveness.md](l1-work-liveness.md) / [l1-work-convergence.md](l1-work-convergence.md) - Rewound-away board cards are reconciled through the liveness sweep (WL-5) onto the one board (CONV-1), never silently deleted (RW-4).
@@ -51,7 +51,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 
 - **RW-1 (Message-anchored rewind points):** the conversation maintains a restore point at each user-message boundary, capturing both the conversation context and the office's derived state as of that boundary (composing the checkpoint/snapshot mechanism, CR-2 / session checkpoints). A user MAY select any prior user message as a rewind target. [AMENDED v1.2.0] Rewind points anchor to **archived ranges** (`l1-evidence-archive` EA-1/EA-2), not to whatever survives in the live context — so rewind depth is bounded by the archive's retention horizon (EA-5/EA-8) and never by an automatic compaction that ran in between. A target inside a compacted region is restored by expanding its archived range (EA-3); a target outside the retained horizon is **refused with the horizon named**, never silently re-pointed at the nearest surviving message. Without this anchoring RW-3's fork-never-destroy guarantee is one-sided: the user's deliberate rewind preserves history while the system's automatic reduction destroys it, and the invariant then protects only the branch the user could already see.
 
-- **RW-2 (Reuse — verbatim or edited):** rewinding to a message lets the user **reuse** it — re-run it unchanged or edit it and run the revised version — and the reused message re-enters as a fresh, intent-resolved turn (CC-3). Rewind restores the *starting state*; the office re-derives from it, so the re-run MAY produce a different result and MUST NOT be presented as a guaranteed replay of the prior outcome.
+- **RW-2 (Reuse — verbatim or edited):** rewinding to a message lets the user **reuse** it — re-run it unchanged or edit it and run the revised version — and the reused message re-enters as a fresh, intent-resolved turn (CVC-3). Rewind restores the *starting state*; the office re-derives from it, so the re-run MAY produce a different result and MUST NOT be presented as a guaranteed replay of the prior outcome.
 
 - **RW-3 (Fork, never destroy — rewind is reversible):** rewinding MUST NOT delete the rewound-away turns; it **forks** them into a preserved, inspectable branch so the rewind can itself be undone. Conversation history is a tree of branches, not a mutable line; no turn is silently lost (non-destructive, consistent with CR-9 and the versioning fork discipline).
 
@@ -61,7 +61,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 
 - **RW-6 (Safe quiesce before restore):** if the office is actively working when a rewind is requested, it completes or safely checkpoints the current atomic step before restoring — a rewind MUST NOT tear an in-progress step (composing OC-1). In-flight work belonging to the rewound-away turns is drained and reconciled (CR-6/WL-5), not killed mid-step.
 
-- **RW-7 (Legible, attributed, auditable):** a rewind is a first-class recorded action — the target point, what was restored, what was surfaced as irreversible, and which branch was forked — on the same audit/event path as any office action (composing CC-5, EXT-8). The user can always see what a rewind did, and undo it (RW-3).
+- **RW-7 (Legible, attributed, auditable):** a rewind is a first-class recorded action — the target point, what was restored, what was surfaced as irreversible, and which branch was forked — on the same audit/event path as any office action (composing CVC-5, EXT-8). The user can always see what a rewind did, and undo it (RW-3).
 
 - **RW-8 (Isolation & access scope):** a rewind operates only within its own conversation's office (OFF-1) and reconciles side effects only within that office's scope. It MUST NOT reach across offices, nor restore or expose state the user is not entitled to (inherits office isolation and access scope).
 
@@ -101,7 +101,7 @@ IRREVERSIBLE / EXTERNALLY-OBSERVABLE (surface, do not pretend to undo):
 The boundary is "has this effect left the office's control?" — if no, restore it; if yes, name it.
 ```
 
-An effect's reversibility is a property the office already tracks for its actions (reversible-where-the-operation-is, per CC-5/DIR-7); rewind consumes that classification rather than re-deciding it.
+An effect's reversibility is a property the office already tracks for its actions (reversible-where-the-operation-is, per CVC-5/DIR-7); rewind consumes that classification rather than re-deciding it.
 
 ### 4.3 Fork, not destroy (RW-3)
 
@@ -156,6 +156,7 @@ Primarily a main-workspace host mechanic. The runtime participates where a rewou
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CC-n` of `l1-conversational-control` is now `CVC-n`. No requirement was added, removed or reworded. |
 | 1.2.0 | 2026-08-20 | Core Team | Amended RW-1 — rewind points anchor to **archived ranges** (`l1-evidence-archive` EA-1/EA-2) rather than to whatever survives in the live context, so rewind depth is bounded by the archive retention horizon and never by an automatic compaction that ran in between; a target inside a compacted region is restored by expanding its archived range (EA-3), and a target beyond the horizon is refused with the horizon named rather than silently re-pointed at the nearest surviving message. Closes the one-sidedness in RW-3: without it the user's deliberate rewind preserves history while the system's automatic reduction destroys it, leaving fork-never-destroy protecting only the branch the user could already see. Related Specifications extended with l1-evidence-archive. |
 | 1.1.0 | 2026-07-26 | Core Team | Amended RW-5 — surfacing the irreversible is the honest **floor**, not the ceiling: where a surfaced effect has a **declared compensating action** (l1-compensation CO-2), the rewind MAY **offer to compensate** it (execute the business inverse) rather than only naming and orphaning it; where compensation is unavailable or fails, RW-5 honest surfacing still holds and a scope with an un-compensated live effect is never reported cleanly rewound (CO-10). Compensation is the remediation path this invariant otherwise lacked. Related Specifications extended with l1-compensation. |
 | 1.0.0 | 2026-07-24 | Core Team | Initial spec — conversation rewind: message-anchored rewind points (RW-1); reuse a message verbatim or edited, restoring state not replaying an outcome (RW-2); fork-not-destroy so rewind is itself reversible (RW-3); reversible derived state restored atomically-or-reported and board work reconciled via the liveness sweep (RW-4); irreversible/external side effects surfaced honestly, never pretended-away (RW-5); safe-quiesce before restore (RW-6); legible/attributed/auditable (RW-7); office-isolation and access-scope bounded (RW-8); user-initiated, optional, never an autonomous behavior (RW-9). Reuses the crash-recovery restore/reconcile/honesty machinery under a user-selected, message-anchored trigger; composes directability (steer + honest control), office-control (safe quiesce), work-liveness/convergence (board reconciliation), and version-control (fork discipline). Main-only host mechanic. |

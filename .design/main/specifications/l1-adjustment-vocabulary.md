@@ -1,6 +1,6 @@
 # Adjustment Vocabulary
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -28,9 +28,9 @@ system.
 
 ## Related Specifications
 
-- [l1-iterative-refinement.md](l1-iterative-refinement.md) — the **automated** sibling: a grader-driven revise loop against a frozen rubric (IR-2/IR-3/IR-6). An adjustment is the *human-directed* single step — one axis, one move, no grader, no convergence criterion — and IR-10's human-grader arm is where the two meet.
+- [l1-iterative-refinement.md](l1-iterative-refinement.md) — the **automated** sibling: a grader-driven revise loop against a frozen rubric (ITR-2/ITR-3/ITR-6). An adjustment is the *human-directed* single step — one axis, one move, no grader, no convergence criterion — and ITR-10's human-grader arm is where the two meet.
 - [l1-directability.md](l1-directability.md) — **different subject**: DIR steers *operations on the office substrate* (move a card, reassign a worker, rewire an automation) and re-projects the lens. An adjustment steers a **produced artifact's own dimensions**. DIR-5's accepted-steer-as-standing-constraint is the property ADJ-10 feeds.
-- [l1-generation-shaping.md](l1-generation-shaping.md) — the same *shape* of mechanism on the office's own output economy: GS's verbosity and effort are named levels on named axes, set by policy. An adjustment vocabulary is the client-facing generalization over a produced artifact, and GS-4's correctness floor applies unchanged.
+- [l1-generation-shaping.md](l1-generation-shaping.md) — the same *shape* of mechanism on the office's own output economy: GS's verbosity and effort are named levels on named axes, set by policy. An adjustment vocabulary is the client-facing generalization over a produced artifact, and GSH-4's correctness floor applies unchanged.
 - [l1-design-identity.md](l1-design-identity.md) — the domain where the vocabulary is richest: a visual surface's axes (weight, density, colour, motion) are exactly the adjustment axes, and the craft bar remains the floor no adjustment may cross.
 - [l1-conversational-control.md](l1-conversational-control.md) — the channel an adjustment arrives on; ADJ-2's closed names are what keep a conversational steer from being re-interpreted per turn.
 - [l1-pattern-codification.md](l1-pattern-codification.md) — the ratification pathway ADJ-9 uses to promote a repeatedly-used free-form direction into a named axis.
@@ -267,3 +267,4 @@ No new language primitive is required:
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-05 | Core Team | Initial spec — an adjustment vocabulary as the client's cheap, named handle on a produced artifact's own dimensions, replacing free-form revision (expensive at both ends, ambiguous in both directions, and reliably answered with a regeneration that discards accumulated agreement): an adjustment **edits** the existing artifact and never regenerates it (ADJ-1); the vocabulary is closed, named, and bound to the same meaning by client and producer, since re-interpretation per turn is free-form revision with ceremony (ADJ-2); every axis is **bidirectional**, because a one-way verb is a ratchet whose only remedy for overshoot is the rewrite ADJ-1 forbids (ADJ-3); one axis per adjustment, or the move is unattributable (ADJ-4); re-applicable and bounded with the producer **saying so at the limit** rather than moving something else to appear responsive (ADJ-5); reversible along the axis, an "opposite" that yields a third unrelated result being no axis at all (ADJ-6); axes declared per artifact kind, since a universal set collapses into *more*/*less* (ADJ-7); an adjustment carries **no verdict** on the previous version, so steering is not read as failure and answered with defence or over-correction (ADJ-8); free-form direction always available with a promotion path into the vocabulary (ADJ-9); and the trail recorded as axis+direction+version — replayable, truncatable, and readable as revealed preference feeding the user model (ADJ-10). Nodus projection needs no new primitive — an adjustment is a revise step with a declared axis, the human-in-the-loop dialog channel carries it, the memoizable-decision path turns a repeated steer into a standing preference, and per-step trace annotations hold the trail. Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `GS-n` of `l1-generation-shaping` is now `GSH-n`; `IR-n` of `l1-iterative-refinement` is now `ITR-n`. No requirement was added, removed or reworded. |

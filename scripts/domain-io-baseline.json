@@ -1,0 +1,23 @@
+[
+  "agent_registry.rs",
+  "archetype/catalog.rs",
+  "backup.rs",
+  "checkpoint.rs",
+  "constitution.rs",
+  "context_router.rs",
+  "exec_workspace.rs",
+  "extensions/mod.rs",
+  "kanban/mod.rs",
+  "mission.rs",
+  "quality.rs",
+  "roles/instance.rs",
+  "roles/mod.rs",
+  "roles/revision.rs",
+  "scheduler.rs",
+  "secrets.rs",
+  "session/journal.rs",
+  "session/writer.rs",
+  "state.rs",
+  "store.rs",
+  "tool_security.rs"
+]

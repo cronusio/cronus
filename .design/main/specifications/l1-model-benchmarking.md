@@ -1,6 +1,6 @@
 # Model Benchmarking
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** concept
 
@@ -24,7 +24,7 @@ This closes a measurement gap the evaluation family leaves open: [l1-evaluations
 - [l1-security.md](l1-security.md) - Probes contain no user data; benchmark traffic respects secret isolation and no-exfiltration (INV-7, SEC-2).
 - [l2-budget-engine.md](l2-budget-engine.md) - Budget caps that bound benchmark runs on metered credentials (MB-8).
 - [l1-reasoning-spend.md](l1-reasoning-spend.md) - [ADDED v1.1.0] RSN-7 requires the reasoning class to be reported as its own figure inside MB-3's token dimension: two candidates producing the same answer with a tenfold deliberation gap are economically different, and a combined total hides it at exactly the moment the comparison exists to expose it.
-- [l1-output-contracts.md](l1-output-contracts.md) - [ADDED v1.1.0] OC-4's retry budget is the production value MB-10 requires an output-validity retry to be measured at; raising it for a benchmark measures the harness's persistence, not the model's compliance.
+- [l1-output-contracts.md](l1-output-contracts.md) - [ADDED v1.1.0] OCT-4's retry budget is the production value MB-10 requires an output-validity retry to be measured at; raising it for a benchmark measures the harness's persistence, not the model's compliance.
 - [l1-outcome-attributed-cost.md](l1-outcome-attributed-cost.md) - [ADDED v1.2.0] Cost attributed to accepted outcomes, the cost column of the in-service record (MB-11).
 - [l1-evaluations.md](l1-evaluations.md) - [ADDED v1.2.0] The client's evaluations, the third labeled source of the internal rating (MB-12).
 
@@ -201,6 +201,7 @@ None substitutes for another; this spec is the only member that measures the mod
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `OC-n` of `l1-output-contracts` is now `OCT-n`. No requirement was added, removed or reworded. |
 | 1.2.0 | 2026-10-22 | Added MB-11 and MB-12 from the user's backlog (an internal rating of AI models): the in-service record of real work per (model, task class) — first-attempt gate acceptance, rework, judge verdicts, cost per accepted outcome — kept as a second source beside the probes and never merged with them; the internal rating ranks models per task class on each labeled source separately, with sample counts, evidence age and hardware, *not enough evidence* below the minimum sample, rebuilt locally and never published. |
 | 1.1.0 | 2026-08-06 | MB-10 added — **retry policy is part of the measured unit, and it is asymmetric**. MB-5 fixed the harness across candidates and MB-9 forbade silently retrying a failure until it passes, but neither said which retries are legitimate. The split: **availability retries** (rate limiting, throttling, service unavailability) measure the provider's queue on the day rather than the candidate, so they MAY be relaxed generously to keep a quota event from destroying a long run; **output-validity retries** (malformed or contract-failing output re-requested until it passes) **are the measured property** and MUST stay at the production value across candidates, because a candidate that produces valid output on the third attempt is not a candidate that produces valid output, and a suite that retries until it passes publishes a first-attempt compliance rate no user will ever experience. Attempts are counted and reported in both classes — a score with a hidden retry count is unreproducible, and the count is itself a result. The configuration joins MB-7 provenance and MB-5 comparability: runs under different output-retry allowances MUST NOT be pooled. |
 | 1.0.0 | 2026-07-02 | Initial concept: hardcoded three-class micro-benchmark (code / content / instruction-compliance probes) measuring base-model fitness per task class on quality + time + tokens/cost (MB-1…MB-9); fitness profiles feed the model router as a signal, never an override; deterministic-first grading composing the evaluation-suite grader taxonomy. |

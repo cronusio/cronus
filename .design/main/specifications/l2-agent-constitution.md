@@ -1,6 +1,6 @@
 # Agent Constitution
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-memory-model.md
@@ -581,10 +581,10 @@ Multiple hooks registered for the same point run in declaration order (profile h
 
 #### Hook environment
 
-```bash
-CRONUS_WORKSPACE=<path>      # current workspace root
-CRONUS_MODE=<lite|full|ultra>
-CRONUS_HOOK_POINT=<name>     # e.g. "after_spec"
+```text
+CRONUS_WORKSPACE  = <path>                // current workspace root
+CRONUS_MODE       = lite | full | ultra
+CRONUS_HOOK_POINT = <name>                 // e.g. "after_spec"
 ```
 
 Hooks MUST NOT write to `.design/` unless they are engine-improvement tools with explicit write permission.
@@ -979,6 +979,7 @@ Acceptance of a staged write is a human act on **that exact content** (CB-1): it
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one shell block (the hook environment variables) rewritten as a plain listing. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.2.0 | 2026-10-03 | §4.5: what a heartbeat item may produce is now stated — an item drives an existing card or surfaces a finding to the manager's inbox and never creates a card itself (SCH-4, CONV-4); work a finding implies enters the board through ordinary intake, and an outcome that must be tracked as work is a `routine` schedule, not a heartbeat item, so the file stays a list of checks and never a second work queue (CONV-1). Access to a mailbox, calendar or messenger goes through the connector grants and default-deny egress of every tool call; the file cannot widen them. The agent's lack of a write path to the file (SEC-10) is restated beside it. §4.24: the per-task question budget is named as the blocking-question class of `l1-intent-resolution` IR-9, a ceiling that draws on the client's one attention budget. Related Specifications extended with `l1-work-convergence` and `l1-intent-resolution`. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Compliance cited a nonexistent `MOD-1` — now OFF-1, with OFF-9 added. §4.10 named a reference framework's own config path — replaced by the workspace configuration. §4.13 let the agent append to SOUL.md, contradicting §4.25 (human-only). §4.21 question tuning auto-applied an answer after three identical replies, which for approvals would be an inferred standing grant (SEC-9(a)) — approvals, consents and authority decisions are excluded. MEMORY.md `read_when` was "bootstrapping" only, so the cheat sheet never loaded — now session start. Project-tier customization layers and persistent facts load only in a trusted workspace (`l2-security` §4.8). |
 | 1.1.0 | 2026-09-19 | New §4.25 — standing-instruction files are a persistence sink. These files are loaded as the agent's own principles at every session start, so a sentence saved into one outlives the conversation and the source that induced it; a write to one is a privileged sink under `l1-action-gating` AG-10. SOUL.md and HEARTBEAT.md are human-written only (no agent write path, SEC-10; a wanted change is a request, which is data); an agent write to PROFILE.md or MEMORY.md derived from untrusted content is staged under `.pending/` for human acceptance of that exact content, unattended callers stage without asking (AG-9), and clean-provenance updates are unchanged. Rule distribution into other tools' files (§4.13) and managed-marker injection (§4.16) recorded as human-initiated installation actions the agent cannot call. §2 and §3 updated; SEC-10 and AG-10 rows added. Distilled from a cross-check of eight external agent command-line tools: protecting the files that carry standing instructions from agent writes, as a prompt-injection persistence vector, was found in the most security-mature of them. |

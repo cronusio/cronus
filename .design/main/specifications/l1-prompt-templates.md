@@ -1,6 +1,6 @@
 # Prompt Templates
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -30,7 +30,7 @@ The project already has half the mechanism — a command definition is a markdow
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** templates serve both the person and the office's agents; one definition, three callers. Runner-up: person-invoked only. Override: `/magic.spec amend l1-prompt-templates "person-invoked only"`.
+- **Confirmed (2026-10-22, the person's decision):** templates serve both the person and the office's agents; one definition, three callers. Not taken: person-invoked only.
 - The existing command definition format is the template format; nothing here introduces a second one.
 - A small curated set ships with the program; most templates come from the person and from projects.
 
@@ -93,3 +93,4 @@ A workflow reaches a template by name through the host's registry; its rendered 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — PTM-1…PTM-9, from the user's backlog (templates for frequently used agent prompts, "probably a nodus idea"): a named, versioned definition with an origin and resolution order; one definition rendered by the core for the person, the office's agents and workflows; typed parameters whose arguments stay untrusted content; deterministic cache-stable rendering; instructions without authority; discovery by descriptor; proposed from repetition and adopted only on ratification; use and effect measured locally; bounded composition by name. Realized by the existing command definition format (`l2-extension-registry` §4.11, amended); the nodus side needs no language change, a first-class fragment declaration is a recorded candidate. |
+| 1.0.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

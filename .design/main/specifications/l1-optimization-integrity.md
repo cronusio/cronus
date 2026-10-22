@@ -1,6 +1,6 @@
 # Optimization Integrity
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** concept
 
@@ -27,7 +27,7 @@ shrink*, `l1-cache-stable-context` decides *where mutation is allowed*, this dec
 - [l1-operational-health.md](l1-operational-health.md) — the measurement/alerting surface these integrity signals feed; operational health scores the *trend* of the runtime, this asserts the *invariant-level integrity* of specific silently-degradable optimizations. OI-7 hands remediation onward exactly as OH-7 does.
 - [l1-cache-stable-context.md](l1-cache-stable-context.md) — the canonical silent-failure case (CSC: "correct answers at 10× cost, nothing throws, the only symptom is the bill"). CSC-4 byte-faithful passthrough is the contract OI-2 realizes as a *runtime* violation sensor; CSC-11 cache-cost observability is the per-surface instance of OI-4.
 - [l1-context-compression.md](l1-context-compression.md) — CC-2 fidelity bound and CC-6 accounting are the compression-surface instances of OI-3 (correctness) and OI-4 (efficacy); this spec generalizes them into a cross-cutting discipline.
-- [l1-generation-shaping.md](l1-generation-shaping.md) — GS-6 counterfactual measurement honesty (estimate+CI or held-out control) is the output-side instance of OI-4; OI-4 states it as the general rule for any counterfactual saving.
+- [l1-generation-shaping.md](l1-generation-shaping.md) — GSH-6 counterfactual measurement honesty (estimate+CI or held-out control) is the output-side instance of OI-4; OI-4 states it as the general rule for any counterfactual saving.
 - [l1-retrieval-evaluation.md](l1-retrieval-evaluation.md) — RE-6 regression gate ("a silent recall regression must not ship") is the ranked-recall instance of OI-5; OI-5 generalizes it to guard the *tail* of any distribution-shaped quality/economy metric, not just a central metric.
 - [l1-inference-cache.md](l1-inference-cache.md) — IC-7 observability and its "silent warmth regression" risk are the storage-cache instance of OI-1/OI-4.
 - [l1-model-benchmarking.md](l1-model-benchmarking.md) — MB-3 three-dimensional scorecard and MB-9 honest failure accounting are precedent disciplines OI-3/OI-4 reuse; benchmarking measures *model fitness*, this measures *optimization integrity* — different subject, shared honesty rules.
@@ -55,7 +55,7 @@ and today that discipline is **reinvented per surface with gaps**: cache stabili
 byte-faithful *rule* (CSC-4) and a suggested *test*, but a test cannot reproduce a bust
 that only emerges from live per-instance state; retrieval has a regression *gate*
 (RE-6), but on a single central metric that a tail-only regression slips past; shaping
-has *counterfactual honesty* (GS-6), but nothing states it as the rule for every
+has *counterfactual honesty* (GSH-6), but nothing states it as the rule for every
 counterfactual saving; and none of them bounds the cost or trustworthiness of the
 observation layer itself, so a malicious client posting a fresh label per request could
 blow up the very signal meant to catch the regression.
@@ -234,7 +234,7 @@ host that verifies nothing behaves exactly as today).
 | --- | --- | --- |
 | `[OPS-HEALTH]` | `.design/main/specifications/l1-operational-health.md` | The surface integrity signals feed; OH-7 measure-don't-act precedent for OI-7. |
 | `[CACHE-STABLE]` | `.design/main/specifications/l1-cache-stable-context.md` | CSC-4/CSC-10/CSC-11 — the archetypal silent-failure contract OI-2 senses at runtime. |
-| `[SHAPING]` | `.design/main/specifications/l1-generation-shaping.md` | GS-6 counterfactual honesty — the output-side instance of OI-4. |
+| `[SHAPING]` | `.design/main/specifications/l1-generation-shaping.md` | GSH-6 counterfactual honesty — the output-side instance of OI-4. |
 | `[RETRIEVAL-EVAL]` | `.design/main/specifications/l1-retrieval-evaluation.md` | RE-6 regression gate OI-5 generalizes to the distribution tail. |
 | `[LOG-LEGIBILITY]` | `.design/main/specifications/l1-log-legibility.md` | LL-6 stable attribution — the substrate OI-6 constrains to a closed vocabulary. |
 
@@ -242,5 +242,6 @@ host that verifies nothing behaves exactly as today).
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `GS-n` of `l1-generation-shaping` is now `GSH-n`. No requirement was added, removed or reworded. |
 | 1.0.1 | 2026-09-24 | Core Team | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
-| 1.0.0 | 2026-07-15 | Core Team | Initial spec — optimization integrity as the cross-cutting verification discipline for silently-degradable optimizations: named silent-failure class with mandatory coverage (OI-1), runtime violation sensor for byte-exact/emergent contracts rather than a test alone (OI-2), measured-not-asserted correctness parity via fixture or held-out control (OI-3), honestly-measured per-stage efficacy with counterfactual estimate+range or holdout (OI-4), tail-aware distribution parity/regression gate rather than a central-statistic check (OI-5), bounded-cardinality code-closed observation dimensions with untrusted input never a label (OI-6), verify-don't-repair-or-hide measure-and-surface boundary (OI-7), fail-visible unverified-is-never-trusted coverage honesty (OI-8); §4.3 must-stay-zero passthrough sensor, §4.4 p50/p95/p99/mean parity gate, §4.5 closed-vocabulary label discipline; nodus-relevance mapping needing no new NL invariant (host-side over AuditProvider HO-8/HO-9 + `!!` + `RUN(@macro)` reuse gating). Distilled from an adoption pass over an external agent context-optimization reference whose *transform* mechanics (content-routed reversible compression, cache-aligned live-zone compression, output-side character/effort shaping, cross-agent memory, failure-mining) were already realized by l1-context-compression (CC-1…11 + §4.5 CCR), l1-cache-stable-context, l1-generation-shaping (GS-1…9), the memory cluster, and l2-learning-loop — OI captures the one remaining delta those transform-focused passes left open: the *verification layer* that proves a silently-degradable optimization stays correct-and-effective (runtime passthrough-integrity alarm, full-distribution parity gate, bounded-cardinality observation), generalizing the per-surface guards CSC-4/CSC-11, IC-7, RE-6, and GS-6 into one contract. |
+| 1.0.0 | 2026-07-15 | Core Team | Initial spec — optimization integrity as the cross-cutting verification discipline for silently-degradable optimizations: named silent-failure class with mandatory coverage (OI-1), runtime violation sensor for byte-exact/emergent contracts rather than a test alone (OI-2), measured-not-asserted correctness parity via fixture or held-out control (OI-3), honestly-measured per-stage efficacy with counterfactual estimate+range or holdout (OI-4), tail-aware distribution parity/regression gate rather than a central-statistic check (OI-5), bounded-cardinality code-closed observation dimensions with untrusted input never a label (OI-6), verify-don't-repair-or-hide measure-and-surface boundary (OI-7), fail-visible unverified-is-never-trusted coverage honesty (OI-8); §4.3 must-stay-zero passthrough sensor, §4.4 p50/p95/p99/mean parity gate, §4.5 closed-vocabulary label discipline; nodus-relevance mapping needing no new NL invariant (host-side over AuditProvider HO-8/HO-9 + `!!` + `RUN(@macro)` reuse gating). Distilled from an adoption pass over an external agent context-optimization reference whose *transform* mechanics (content-routed reversible compression, cache-aligned live-zone compression, output-side character/effort shaping, cross-agent memory, failure-mining) were already realized by l1-context-compression (CC-1…11 + §4.5 CCR), l1-cache-stable-context, l1-generation-shaping (GSH-1…9), the memory cluster, and l2-learning-loop — OI captures the one remaining delta those transform-focused passes left open: the *verification layer* that proves a silently-degradable optimization stays correct-and-effective (runtime passthrough-integrity alarm, full-distribution parity gate, bounded-cardinality observation), generalizing the per-surface guards CSC-4/CSC-11, IC-7, RE-6, and GSH-6 into one contract. |

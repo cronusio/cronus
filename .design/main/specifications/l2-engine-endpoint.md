@@ -1,6 +1,6 @@
 # Engine Endpoint & Work Lock
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-background-activation.md
@@ -213,6 +213,7 @@ The gate does not attach, claim the seat or depend on there being an engine: the
 3. The terminal UI takes a role at start (`join_composition`) and holds it until it exits; the command line attaches for a semantic verb (`attach_or_stand_alone`) and gates a recomposing installation verb (§4.7) before applying it.
 4. The desktop shell joins when its composition does; it embeds the core today and takes no seat. Until it does, a desktop running beside a terminal UI is two engines over one root — the pre-existing condition, now detected on the terminal side only. Its work already holds the work lock when it begins through `begin_work`, so the gate sees it.
 5. A background-activated engine (BA-2) is this same code started without a frontend; making it so is a launch mode, not a second implementation.
+6. **Scenario debt (QLY-8, recorded 2026-10-22).** The seat, the endpoint, the spoke attach and the `Recompose` gate are user-observable — a second terminal that joins the running office, a change refused with the name of the work that stopped it — and no usage-simulation scenario covers them yet (`l1-usage-simulation` USM-10, RULES C30). The chat turn and the terminal UI's conversation, sessions and board screens, built over the same period, now have scenarios (`talk-to-a-local-model-and-find-the-conversation-again`, `have-a-conversation-from-inside-the-terminal-ui`). This item is discharged when a scenario for the seat and the gate is authored; the difficulty is real — a refused change needs a turn that is genuinely running, which the harness's worlds cannot yet provide on demand — and is a reason to record the debt, not to omit it.
 
 ## 6. Drawbacks & Alternatives
 
@@ -243,5 +244,6 @@ The gate does not attach, claim the seat or depend on there being an engine: the
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | §5 note 6 records the scenario debt (QLY-8; RULES C30, USM-10) for the seat, the endpoint, the spoke attach and the `Recompose` gate: no usage-simulation scenario covers them yet. The chat turn and the terminal UI's conversation, sessions and board screens, built over the same period, now have scenarios (design-layer audit, 2026-10-22). |
 | 1.1.0 | 2026-10-21 | §4.7: the gate is asked in three places — by the handler of every recomposing verb (the floor), by a surface before it asks the person, and by the producers of work, over the workspace's state root and the machine's according to the verb's scope. A relaunch is the engine's to make: the engine lets go of its role and takes it again; a spoke leaves those verbs to the session that owns the engine. §4.8: the relaunching engine's spokes are cut off as on exit. |
 | 1.0.0 | 2026-10-21 | Initial spec. Realizes BA-11: the seat (an operating-system advisory lock plus a separately published record — no process-liveness probe), the loopback token-guarded endpoint with its one-request-per-connection line protocol, stream relay and the caller's directory carried with every invocation, spokes that re-point the engine-run loci's handlers under an exact catalog release, short-lived processes that attach when an engine exists and otherwise stand alone; the work lock (shared by work, exclusive for a recomposing change — the operating system's, so it sees processes that never attached) and the per-process ledger that names the work; and the `Recompose` gate built on them. States the producers that exist, the gap for those not yet wired, and the desktop shell's pending adoption. |

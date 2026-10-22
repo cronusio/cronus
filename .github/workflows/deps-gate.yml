@@ -1,9 +1,15 @@
 name: Dependency Build Gate
 
-# Compile-checks the workspace whenever a dependency manifest or lockfile
-# changes — the guard that turns a silent "manifest bumped, code no longer
-# builds against the new API" into a red check. Triggered by dependency-bump
-# PRs (Dependabot) and by any direct edit to a manifest/lockfile.
+# Compile-checks the workspace whenever a dependency manifest, lockfile or
+# source file changes — the guard that turns a silent "manifest bumped, code no
+# longer builds against the new API" into a red check. Triggered by
+# dependency-bump PRs (Dependabot), by any direct edit to a manifest/lockfile,
+# and by changes under the code directories: a gate that only watched manifests
+# never built the workspace for an ordinary code change.
+#
+# The structural boundary guard is its own job. It used to be the first step of
+# the build job, so one red guard skipped build, lint and test entirely and the
+# workspace went unverified in CI for six weeks without anyone noticing.
 
 on:
   push:
@@ -14,8 +20,12 @@ on:
       - "rust-toolchain.toml"
       - "**/package.json"
       - "pnpm-lock.yaml"
+      - "crates/**"
+      - "apps/**"
+      - "packages/**"
       - ".github/workflows/deps-gate.yml"
       - "scripts/check-domain-boundary.mjs"
+      - "scripts/domain-io-baseline.json"
   pull_request:
     paths:
       - "**/Cargo.toml"
@@ -23,8 +33,12 @@ on:
       - "rust-toolchain.toml"
       - "**/package.json"
       - "pnpm-lock.yaml"
+      - "crates/**"
+      - "apps/**"
+      - "packages/**"
       - ".github/workflows/deps-gate.yml"
       - "scripts/check-domain-boundary.mjs"
+      - "scripts/domain-io-baseline.json"
 
 permissions:
   contents: read
@@ -38,8 +52,12 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  cargo:
-    name: cargo build (workspace, all targets)
+  # Structural gate: cronus-domain must never gain a dependency outside its
+  # allowlist (the allowlist and `l2-crate-topology` §4.3 are one fact). Cheap
+  # and manifest-only. A separate job on purpose: a red guard must be visible
+  # as its own failure without hiding whether the workspace still builds.
+  boundary:
+    name: domain dependency boundary
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -49,10 +67,6 @@ jobs:
       - name: Show pinned toolchain
         run: rustup show
 
-      # Structural gate: cronus-domain (the no-I/O tier) must never gain a
-      # dependency outside its allowlist. Cheap and manifest-only, so it runs
-      # before the build — the layout drifted before because nothing failed
-      # a build when it did.
       - name: Domain dependency boundary guard
         run: node scripts/check-domain-boundary.mjs
 
@@ -61,6 +75,15 @@ jobs:
       # fail protects nothing.
       - name: Boundary guard self-test
         run: node scripts/check-domain-boundary.mjs --self-test
+
+  cargo:
+    name: cargo build (workspace, all targets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show pinned toolchain
+        run: rustup show
 
       - uses: Swatinem/rust-cache@v2
 

@@ -1,6 +1,6 @@
 # Directability
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ This is the direct-manipulation twin of [l1-conversational-control.md](l1-conver
 ## Related Specifications
 
 - [l1-office-fabric.md](l1-office-fabric.md) - The coordinated lenses a steer acts through; an accepted steer lands on the shared substrate and re-projects coherently across every lens (OFA-5).
-- [l1-conversational-control.md](l1-conversational-control.md) - The natural-language control plane this mirrors; a steer is a binding over the same operation (CC-2), under the same gates (CC-4), legible/reversible/traceable (CC-5), scope-respecting (CC-6), and distinct from work (CC-7).
+- [l1-conversational-control.md](l1-conversational-control.md) - The natural-language control plane this mirrors; a steer is a binding over the same operation (CVC-2), under the same gates (CVC-4), legible/reversible/traceable (CVC-5), scope-respecting (CVC-6), and distinct from work (CVC-7).
 - [l1-office-visualization.md](l1-office-visualization.md) - OVZ-4 observational-with-inspection; directability extends the office view from observe-and-drill-down to observe-and-steer, without making steering required.
 - [l1-generative-surface.md](l1-generative-surface.md) - GS-6 "edits flow back as explicit changes to the underlying data, never a hidden second source" and GS-4 user-control; directability applies the same edit-as-intent discipline to the product's fixed lenses.
 - [l1-office-model.md](l1-office-model.md) - OFF-5 client-as-client / OFF-8 autonomous operation; DIR-6 keeps steering optional so the automation foundation is never demoted.
@@ -33,7 +33,7 @@ Cronus's whole stance is that the office does the work and the client need not c
 Three failures appear without that contract:
 
 - **Illusory control.** If a lens exposes editable-looking affordances whose edits the next automation cycle silently discards, the client's control is fake — the worst outcome, because it erodes trust precisely when the client tried to engage.
-- **A safety gap through direct manipulation.** If dragging a card or deleting a branch on a lens takes a path that skips the confirmation a button or a prompt enforces, direct manipulation becomes an escalation route around the gates — the same boundary conversational control (CC-4) had to close for natural language.
+- **A safety gap through direct manipulation.** If dragging a card or deleting a branch on a lens takes a path that skips the confirmation a button or a prompt enforces, direct manipulation becomes an escalation route around the gates — the same boundary conversational control (CVC-4) had to close for natural language.
 - **A false choice between control and automation.** Framing it as "either the office is autonomous or the client is in charge" is a trap. The resolving idea is a layered one: **autonomy is the foundation; steering is an optional override that, once accepted, binds.** The client gets a genuine wheel; the office keeps the autopilot.
 
 Directability names that contract. It reuses the binding-over-one-operation discipline conversational control already established (a steer is the visual sibling of "just ask"), adds the reconciliation-with-autonomy semantics that make an accepted steer a standing constraint, and forbids dead controls so control is never faked.
@@ -44,28 +44,28 @@ Directability names that contract. It reuses the binding-over-one-operation disc
 - The set of *directly steerable* affordances is defined by **each lens's own authority contract**; directability provides a uniform steering model but grants no write authority a lens's spec withholds.
 - Every authority, autonomy, and confirmation rule that applies to an operation from any surface applies **identically** to the same operation reached by manipulation.
 - Steering is **optional in every case**; the office completes work with zero client manipulation (the automation foundation, OFF-5/OFF-8).
-- A steer is a **control/steering act**, distinct from a *work request* (which enters the board, CC-7). Manipulating a lens steers the office; it does not itself perform the specialist work.
+- A steer is a **control/steering act**, distinct from a *work request* (which enters the board, CVC-7). Manipulating a lens steers the office; it does not itself perform the specialist work.
 - The client may be **non-technical**; a steer's meaning and its acceptance/refusal must be legible without systems knowledge.
 
 ## 3. Core Invariants
 
 Rules every Layer 2 implementation MUST NOT violate:
 
-- **DIR-1 (Direct manipulation is a first-class control binding):** a direct manipulation on any fabric lens (move/relabel a card, reassign/hire a worker, enable/disable or rewire an automation, edit/pin a wiki node, cut a branch or commit) is a first-class control act — a binding over the *same* source-of-truth operation the UI, CLI, TUI, and chat invoke (composing CC-2, INV-3). It MUST NOT be a lens-local edit that mutates only the projection. Direct manipulation joins conversational control as a second hands-on control plane over the same operations.
+- **DIR-1 (Direct manipulation is a first-class control binding):** a direct manipulation on any fabric lens (move/relabel a card, reassign/hire a worker, enable/disable or rewire an automation, edit/pin a wiki node, cut a branch or commit) is a first-class control act — a binding over the *same* source-of-truth operation the UI, CLI, TUI, and chat invoke (composing CVC-2, INV-3). It MUST NOT be a lens-local edit that mutates only the projection. Direct manipulation joins conversational control as a second hands-on control plane over the same operations.
 
 - **DIR-2 (Edit-as-intent — projection stays derived):** a client manipulation is applied to the lens's authoritative substrate through that operation, and the lens re-projects from the changed substrate; the manipulation is an *intent against the source*, never a write to the projection itself (composing OVZ-1, PW-3, AC-1, GS-6). A lens MUST NOT become an independent source of truth because the client manipulated it.
 
 - **DIR-3 (Per-lens steerability — authority-respecting):** the steerable affordances of a lens are those its own authority contract permits. Directability supplies a uniform steering *model* but MUST NOT grant the client a write authority a lens withholds. Where a lens reserves authorship to the office — office-authored, grounded wiki content (PW-2/PW-4), a pinned automation re-run (AC-7) — a client steer is a **request the office reconciles**, not a direct overwrite; where a lens permits client intervention — board card placement, worker assignment, automation enable/disable, branching — the steer applies directly. Every steer is one or the other; none silently exceeds its lens's authority.
 
-- **DIR-4 (Same gates and authority as any surface):** a steer passes the identical authority, autonomy, and confirmation gates as the same operation from any other surface. A destructive or irreversible steer (delete a workspace, drop a branch, disband a role) requires the same human confirmation whether it arrives as a button-press, a prompt, or a direct manipulation (composing CC-4, SEC-9/SEC-10). Direct manipulation MUST NOT become a bypass around a gate another surface enforces.
+- **DIR-4 (Same gates and authority as any surface):** a steer passes the identical authority, autonomy, and confirmation gates as the same operation from any other surface. A destructive or irreversible steer (delete a workspace, drop a branch, disband a role) requires the same human confirmation whether it arrives as a button-press, a prompt, or a direct manipulation (composing CVC-4, SEC-9/SEC-10). Direct manipulation MUST NOT become a bypass around a gate another surface enforces.
 
 - **DIR-5 (Steering reconciled with autonomy — an accepted steer is a standing constraint):** where a client steer and the office's autonomous decision touch the same entity, an *accepted* steer is a standing constraint the office honors going forward — **not** a one-shot hint the next autonomous cycle silently reverts. The office MAY later act against a client steer only by surfacing the conflict and its reason to the client (never silently) — an escalated, disclosed necessity, not a quiet override. This persistence is the operational meaning of "the client is in control": their steers bind until they, or a disclosed necessity, change them.
 
 - **DIR-6 (Directable, not co-driven — steering is optional):** every steer is optional; the office runs to completion with no client manipulation at all, because full automation is the foundation and the default driver (OFF-5/OFF-8). Directability MUST NOT introduce any step that *requires* the client to manipulate a lens for work to proceed. It adds a steering wheel; it MUST NOT demote the autopilot to a manual transmission.
 
-- **DIR-7 (Legible, reversible, traceable steers):** a steer's effect is narrated back legibly (what changed), recorded on the same audit/event path as any control action, and reversible wherever the operation is (composing CC-5). A steer MUST NOT change office state silently; the client can always see what a manipulation did and undo it wherever the operation permits.
+- **DIR-7 (Legible, reversible, traceable steers):** a steer's effect is narrated back legibly (what changed), recorded on the same audit/event path as any control action, and reversible wherever the operation is (composing CVC-5). A steer MUST NOT change office state silently; the client can always see what a manipulation did and undo it wherever the operation permits.
 
-- **DIR-8 (Scope-respecting):** a steer executes in the scope of the lens it is issued in — a manipulation inside a project office acts on that office; a manipulation on the home building-overview may act across offices only within the home manager's cross-workspace authority (composing CC-6, WSL-2, OVZ-6) — and never crosses an isolation boundary the same operation would respect from another surface.
+- **DIR-8 (Scope-respecting):** a steer executes in the scope of the lens it is issued in — a manipulation inside a project office acts on that office; a manipulation on the home building-overview may act across offices only within the home manager's cross-workspace authority (composing CVC-6, WSL-2, OVZ-6) — and never crosses an isolation boundary the same operation would respect from another surface.
 
 - **DIR-9 (Honest control — no dead controls, no faked agency):** the client's control is *genuine*. A steer the system cannot or will not honor MUST be refused or surfaced as a conflict at the moment it is attempted — never accepted-then-ignored. A lens MUST NOT present an editable affordance for something that is not actually steerable (no controls that imply agency the office will not deliver). Honest control means: an accepted steer binds (DIR-5), a request-steer is acknowledged as a request (DIR-3), and an impossible steer is declined visibly.
 
@@ -93,7 +93,7 @@ graph TD
     EXEC --> RECON[standing constraint on autonomy — DIR-5]
 ```
 
-From the operation onward — gate, execute, audit — every binding is identical (parity with CC-2/CC-4/CC-5). The manipulation adds only the front-edge interpretation of the gesture and the DIR-3 fork between a direct-steer and a request-steer.
+From the operation onward — gate, execute, audit — every binding is identical (parity with CVC-2/CVC-4/CVC-5). The manipulation adds only the front-edge interpretation of the gesture and the DIR-3 fork between a direct-steer and a request-steer.
 
 ### 4.2 Steer → substrate → re-project (never edit the projection)
 
@@ -147,7 +147,7 @@ Three control concepts sit side by side without overlap:
 - **Directability** (this spec) — steer by *manipulating a lens* (drag the card onto the security reviewer). Gesture front edge, same operation.
 - **Office control** — start/pause/resume/hibernate the office as a whole (lifecycle *states*, not content steering).
 
-The first two are the same control plane reached two ways and MUST produce identical results for the same operation (DIR-1, CC-2); the third is a different axis entirely.
+The first two are the same control plane reached two ways and MUST produce identical results for the same operation (DIR-1, CVC-2); the third is a different axis entirely.
 
 ## 5. Drawbacks & Alternatives
 
@@ -173,7 +173,7 @@ Primarily a main-workspace host control concept. The portable runtime participat
 | Alias | Path | Purpose |
 | --- | --- | --- |
 | `[FABRIC]` | `.design/main/specifications/l1-office-fabric.md` | The lenses a steer acts through; coherent re-projection of an accepted steer (DIR-2, OFA-5) |
-| `[CONV-CTRL]` | `.design/main/specifications/l1-conversational-control.md` | The NL control-plane sibling; one operation, same gates (DIR-1/DIR-4, CC-2/CC-4) |
+| `[CONV-CTRL]` | `.design/main/specifications/l1-conversational-control.md` | The NL control-plane sibling; one operation, same gates (DIR-1/DIR-4, CVC-2/CVC-4) |
 | `[OVZ]` | `.design/main/specifications/l1-office-visualization.md` | Observational stance directability extends to observe-and-steer (OVZ-4) |
 | `[GEN-SURFACE]` | `.design/main/specifications/l1-generative-surface.md` | Edit-as-intent, projection-not-source discipline (GS-6) reused for fixed lenses (DIR-2) |
 | `[OFFICE]` | `.design/main/specifications/l1-office-model.md` | Automation foundation kept intact by optional steering (DIR-6, OFF-5/OFF-8) |
@@ -183,5 +183,6 @@ Primarily a main-workspace host control concept. The portable runtime participat
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CC-n` of `l1-conversational-control` is now `CVC-n`. No requirement was added, removed or reworded. |
 | 1.0.1 | 2026-08-05 | Core Team | Related Specifications extended with `l1-adjustment-vocabulary` — the same steering instinct on a different subject: DIR steers substrate operations and re-projects the lens, an adjustment moves a produced artifact along one of its own named bidirectional axes; DIR-5 standing-constraint reconciliation is what the ADJ-10 trail feeds. Link-only; no invariant changed. |
 | 1.0.0 | 2026-07-24 | Core Team | Initial spec — directability: the office is directable, not co-driven. Direct manipulation on any fabric lens is a first-class control binding over the one operation (DIR-1), applied to the substrate not the projection (DIR-2), respecting each lens's own authority via a direct/request-steer spectrum (DIR-3), under identical gates to any surface (DIR-4); an accepted steer becomes a standing constraint reconciled with autonomy, never silently reverted (DIR-5); steering is always optional so full automation stays the foundation (DIR-6); legible/reversible/traceable (DIR-7); scope-respecting (DIR-8); honest control — no dead controls, no faked agency (DIR-9). The direct-manipulation sibling of conversational-control; rides on l1-office-fabric; the steering half of the office-integration pair. Main-only host control concept. |

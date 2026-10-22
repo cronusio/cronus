@@ -1,6 +1,6 @@
 # Agent Session Loop
 
-**Version:** 1.5.0
+**Version:** 1.5.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-routing.md
@@ -36,13 +36,15 @@ An agent turn drives prompt construction, the tool-calling loop, error recovery,
 
 ## 3. Invariant Compliance (Layer 2 only)
 
+`[ADDED v1.5.1]` **Read these rows as the design of the full session runner, not as a description of what runs today.** The only runner shipped is the chat turn (§4, *The chat turn*): one model call named by the caller, no tools, no subagents, no goal loop, no iteration budget. The rows below that depend on those parts (ORC-5, ORC-6, ORC-7, RTG-2, RTG-7) are design targets; the runtime that realizes them is the composition `l2-agent-runtime` specifies. RTG-2 and RTG-7 say so on their own rows because the chat turn visibly departs from them.
+
 | L1 Invariant | Implementation |
 | --- | --- |
 | ORC-5 Context-isolated execution | Each subagent gets its own `TurnContext`; no shared mutable turn state crosses delegation boundaries. |
 | ORC-6 Judged autonomous termination | A goal-driven turn (§4.9) ends as satisfied only on the independent judge's verdict — `goal.evaluate` is the judge call of `l2-orchestration` §4.3, never the acting model's own claim; `MAX_GOAL_REACT` is the hard stop. |
 | ORC-7 Budget circuit-breaker | `IterationBudget.consume()` runs before each tool-call loop iteration and every model call's tokens count against the turn's ceiling (§4.2); exhaustion ends the turn with a user-visible message and leaves the session resumable. Autonomous re-entry (§4.9, §4.14) draws on the same budget. Subagent budgets are independent, but each spawn consumes a parent iteration and spawn depth is capped (`l2-orchestration` §4.6), so the total stays bounded. Cost is reported per model call (§4.7), so the budget engine's hard stop sees spend before the next call. |
-| RTG-2 Graceful fallback | A failed provider call is classified per iteration (`l2-model-error-recovery`) and advances the router's cascade over eligible candidates; the loop exits only when no fallback remains (§4.5). |
-| RTG-7 Bounded & traceable | Every model call in a turn — including a `prepareNextTurn` model switch (§4.14) — is a router decision, recorded with its reason and bounded by the turn's budget. |
+| RTG-2 Graceful fallback | `[MODIFIED v1.5.1]` **Partial — design target; the shipped chat turn (§ *The chat turn*) does not do this.** `session say` talks to one loopback model server named by the caller and consults no router and no error-recovery classifier: a failed reply is recorded with its stop reason, and nothing falls back. The target below applies when the turn runs through the router. A failed provider call is classified per iteration (`l2-model-error-recovery`) and advances the router's cascade over eligible candidates; the loop exits only when no fallback remains (§4.5). |
+| RTG-7 Bounded & traceable | `[MODIFIED v1.5.1]` **Partial — design target.** The chat turn's one model call is named by the caller (`--model`) and recorded in the journal, but it is not a router decision, carries no recorded routing reason and is bounded by no turn budget. Every model call in a turn — including a `prepareNextTurn` model switch (§4.14) — is a router decision, recorded with its reason and bounded by the turn's budget. |
 
 ## 4. Detailed Design
 
@@ -940,6 +942,7 @@ A session that exists is continued (an unanswered earlier turn is closed first);
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.5.1 | 2026-10-22 | Core Team | Compliance honesty (design-layer audit 2026-10-22): §3 now says its rows describe the full session runner design and that the only runner shipped is the chat turn (one caller-named model call, no tools, subagents, goal loop or budget); RTG-2 and RTG-7 are marked Partial on their own rows because the chat turn consults no router and no error-recovery classifier. The runtime that realizes the design-target rows is specified in `l2-agent-runtime`. |
 | 1.5.0 | 2026-10-16 | Core Team | `session say` streams: it answers with a stream at once, publishes each token as it arrives, and ends with the settled record; the turn is registered for `session stop` before the verb returns. The journal is unchanged — the reply is still recorded whole, with its stop reason. |
 | 1.4.0 | 2026-10-16 | Core Team | `session stop <id>`: cuts short the turn running in a session in the same process; the turn is recorded as an `aborted` reply with what had arrived. In-memory registration, removed when the turn ends however it ends. |
 | 1.3.0 | 2026-10-16 | Core Team | The write side learns what the surveyed agents taught: a journal comes into being with its first reply (no empty sessions; a racing second writer is refused), a turn always ends in an assistant entry carrying a stop reason (a failed or aborted reply is recorded, not lost), and an unanswered turn is closed when the journal is reopened, never truncated. New subsection *The chat turn*: the smallest runner — one turn against a local model through the inference port, no tools, history read back from the journal, every outcome recorded — and the `session say` verb (model named explicitly, loopback only, text kept out of the dispatch journal). |

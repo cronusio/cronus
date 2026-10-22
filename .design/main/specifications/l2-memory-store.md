@@ -1,6 +1,6 @@
 # Memory Store
 
-**Version:** 1.5.0
+**Version:** 1.5.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -50,37 +50,38 @@ The model demands cheap, multi-signal, local recall with clean forgetting and co
 
 ### 4.1 Schema (per-scope SQLite, conceptual)
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE memory_item (
-  id TEXT PRIMARY KEY,
-  scope TEXT, type TEXT, content TEXT,
-  validity_scope TEXT,                  -- Forever|Domain|Project|Workaround
-  verification TEXT,                    -- Untested|TestsPass|Merged|StableNoRevert|ValidatedCrossProject
-  utility REAL,
-  trust_score REAL DEFAULT 0.5,         -- reliability in [0,1]; see §4.6
-  helpful_count INTEGER DEFAULT 0,      -- accumulated positive feedback
-  retrieval_count INTEGER DEFAULT 0,    -- auto-incremented on each recall hit
-  created_at INTEGER, valid_at INTEGER, invalid_at INTEGER,
-  provenance TEXT,
-  hrr_phases BLOB                       -- optional phase vector; see §4.8
-);
-CREATE TABLE memory_tag (item_id TEXT, tag TEXT);                          -- MEM-8
-CREATE TABLE memory_entity (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  entity_type TEXT DEFAULT 'unknown',
-  aliases TEXT DEFAULT ''
-);                                                                          -- §4.7
-CREATE TABLE memory_fact_entity (
-  fact_id TEXT REFERENCES memory_item(id),
-  entity_id TEXT REFERENCES memory_entity(id),
-  PRIMARY KEY (fact_id, entity_id)
-);                                                                          -- §4.7
-CREATE INDEX idx_memory_trust ON memory_item(trust_score DESC);
-CREATE INDEX idx_memory_entity_name ON memory_entity(name);
-CREATE VIRTUAL TABLE memory_fts USING fts5(content, content=memory_item);  -- MEM-3 lexical
-CREATE VIRTUAL TABLE memory_vec USING vec0(embedding FLOAT[768]);           -- MEM-3 semantic
+```text
+[REFERENCE] illustrative, not final DDL
+table memory_item
+  id  text, primary key
+  scope  text
+  type  text
+  content  text
+  validity_scope  text   // Forever|Domain|Project|Workaround
+  verification  text   // Untested|TestsPass|Merged|StableNoRevert|ValidatedCrossProject
+  utility  real
+  trust_score  real, default 0.5   // reliability in [0,1]; see §4.6
+  helpful_count  integer, default 0   // accumulated positive feedback
+  retrieval_count  integer, default 0   // auto-incremented on each recall hit
+  created_at  integer
+  valid_at  integer
+  invalid_at  integer
+  provenance  text
+  hrr_phases  blob   // optional phase vector; see §4.8
+table memory_tag(item_id text; tag text)   // MEM-8
+table memory_entity
+  id  text, primary key
+  name  text, required
+  entity_type  text, default 'unknown'
+  aliases  text, default ''
+table memory_fact_entity
+  fact_id  text, references memory_item(id)
+  entity_id  text, references memory_entity(id)
+  primary key (fact_id, entity_id)
+index idx_memory_trust on memory_item(trust_score descending)
+index idx_memory_entity_name on memory_entity(name)
+full-text table memory_fts (fts5: content, content=memory_item)   // MEM-3 lexical
+vector table memory_vec (vec0: embedding float[768])   // MEM-3 semantic
 ```
 
 ### 4.2 Recall fusion
@@ -133,17 +134,17 @@ The default FTS5 tokenizer splits on whitespace and ASCII punctuation, so it und
 1. **Primary** — `memory_fts MATCH ?` (BM25-ranked), with the query's whitespace-separated terms OR-combined.
 2. **Fallback** — only when the `MATCH` pass yields zero rows, run a substring scan, preserving the same trust and category filters and ordering by trust:
 
-```sql
--- [REFERENCE] fallback when FTS5 MATCH returns no rows
-SELECT … FROM memory_item
-WHERE content LIKE '%' || ? || '%'
-  AND trust_score >= ?           -- TRUST_MIN_SEARCH (§4.6)
-  AND superseded_at IS NULL      -- [ADDED v1.5.0] the same eligibility as the primary leg (CW-1):
-  AND lifecycle_state = 'Active' --   supersession, lifecycle and expiry, not only trust
-  AND (expiry IS NULL OR expiry > ?)
-  [AND type = ?]                 -- optional category filter
-ORDER BY trust_score DESC
-LIMIT ?;
+```text
+[REFERENCE] fallback when the full-text match returns no rows
+select … from memory_item
+  where content contains <query text>
+    and trust_score >= <minimum>              // TRUST_MIN_SEARCH (§4.6)
+    and superseded_at is null                 // [ADDED v1.5.0] the same eligibility as the primary leg (CW-1):
+    and lifecycle_state = 'Active'            //   supersession, lifecycle and expiry, not only trust
+    and (expiry is null or expiry > <now>)
+    [and type = <category>]                   // optional category filter
+  order by trust_score descending
+  limit <limit>
 ```
 
 The fallback keeps lexical recall functional for any script without bundling a language-specific tokenizer (e.g. an ICU build). It is lexical-only and engages just on empty `MATCH` results, so it adds no cost to the common path; semantic recall (`vec0`) and HRR similarity (§4.8) are unaffected and continue to supply cross-lingual signal. The same `MATCH`→`LIKE` degradation pattern is reusable by any FTS5 surface in the system (knowledge store, code index).
@@ -789,19 +790,18 @@ preserves the full history for audit and rollback.
 The §4.1 schema already carries `valid_at` and `invalid_at`. Add `created_at` (auto-set on
 insert) and `superseded_at` (nullable, set by reconcile):
 
-```sql
--- [REFERENCE] additions to memory_item
-ALTER TABLE memory_item ADD COLUMN created_at INTEGER NOT NULL DEFAULT (unixepoch());
-ALTER TABLE memory_item ADD COLUMN superseded_at INTEGER;
-ALTER TABLE memory_item ADD COLUMN commit_hash TEXT;
-ALTER TABLE memory_item ADD COLUMN version_tag TEXT;
+```text
+[REFERENCE] additions to memory_item
+add column to memory_item: created_at integer, required default (unixepoch())
+add column to memory_item: superseded_at integer
+add column to memory_item: commit_hash text
+add column to memory_item: version_tag text
 ```
 
 The `superseded_at` index accelerates the common "current version only" filter:
 
-```sql
-CREATE INDEX idx_memory_superseded ON memory_item(superseded_at)
-  WHERE superseded_at IS NULL;
+```text
+index idx_memory_superseded on memory_item(superseded_at) where superseded_at is null
 ```
 
 ### 4.15 Typed memory kind taxonomy
@@ -903,17 +903,16 @@ Multiple links = spans several nodes (e.g. "the interaction between auth() and s
 
 Schema:
 
-```sql
--- [REFERENCE]
-CREATE TABLE memory_code_link (
-  memory_id  TEXT REFERENCES memory_item(id),
-  node_id    TEXT NOT NULL,
-  node_type  TEXT NOT NULL,
-  relevance  REAL NOT NULL DEFAULT 1.0,
-  line_start INTEGER,
-  line_end   INTEGER,
-  PRIMARY KEY (memory_id, node_id)
-);
+```text
+[REFERENCE]
+table memory_code_link
+  memory_id  text, references memory_item(id)
+  node_id  text, required
+  node_type  text, required
+  relevance  real, required, default 1.0
+  line_start  integer
+  line_end  integer
+  primary key (memory_id, node_id)
 ```
 
 Graph proximity recall: when the agent is focused on a specific code node (e.g. editing a
@@ -966,6 +965,7 @@ The archivist's `reconcile` stage reads the pending review queue and either:
 
 | Version | Change |
 | --- | --- |
+| 1.5.1 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): five SQL blocks (the item, tag, entity and index tables; the fallback query; the supersession columns and index; the code-link table) rewritten as pseudo-schema and a described query. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.5.0 | Candidate windows and vector generations (2026-10-21). §4.2: the recall filter (trust floor, supersession, lifecycle, expiry, tags) runs inside each leg's search before its `LIMIT` (`l1-candidate-windows` CW-1), and each leg and each scope contributes `leg_depth` candidates, deeper than the budgeted count, to the fuse and the cross-scope merge (CW-4); `leg_depth` and the vector leg's miss target are labelled estimates (CW-5). §4.2.1's fallback scan gains the supersession, lifecycle and expiry predicates it lacked. §2: `memory_vec` records its embedding identity and changes model through a new generation (`l1-state-authority` SAU-8). MEM-3 row records the gap as **Pending**: shipped lexical and ranked recall cut at the requested count and filter afterwards, and ranked recall re-orders only that window. |
 | 1.4.3 | Patch (2026-10-03): MEM-4's compliance row now names the authority classes it declares (`l1-state-authority` SAU-3 — the learned corpus store-authoritative, authored quick-memory text-authoritative) and the repair direction (`l2-doctor` re-derives the indices from the row, never the corpus from an export). The storage model's and the filesystem layout's blanket "databases are derived indices" had outlived this declaration; both are corrected in the same pass. No behaviour changed. |
 | 1.4.2 | Consistency pass (2026-09-23): One recall fusion formula defined in §4.2 (it had four incompatible forms across §4.2.2, §4.6, §4.15, §4.16); the other sections now name their term. §4.3 no longer writes `notes/*.md` (the dual write v1.4.0 removed). The HRR capacity guard bounded the wrong quantity and deleted real memories to relieve a fallback encoding — the SNR limit applies to components bundled into one vector, and the guard never prunes (MEM-6). `MEMORY.md` had three incompatible definitions (§-delimited 2200-char file, consolidation output, 25 KB link index): the topic index is now `INDEX.md` with `topics/` files, `MEMORY.md` stays the small always-injected file. Quick-memory files are a standing-instruction sink like the constitution's (§4.25 there, AG-10): untrusted-provenance machine writes are staged under `.pending/`. Phase 2 no longer removes human-authored entries and lists every removal. `/forget` confirms the model-selected target before deleting. |

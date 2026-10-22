@@ -1,6 +1,6 @@
 # Convergence Gate
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -19,7 +19,7 @@ Three further disciplines make such a gate usable rather than merely present: it
 - [l1-change-merge.md](l1-change-merge.md) - The point a concurrent change becomes shared is a natural convergence boundary; the gate fires there.
 - [l1-quality-standards.md](l1-quality-standards.md) - Definition-of-done gates on a work item; a convergence gate is the *source-independent* complement — the DoD gate covers work the office produced, the convergence gate covers everything that crosses the boundary however it arrived.
 - [l1-completion-verification.md](l1-completion-verification.md) - Evidence over report; a gate's verdict is evidence gathered at the boundary, and CG-5 obligation discharge is recognized on completion, never on an attempt.
-- [l1-policy-governance.md](l1-policy-governance.md) - Managed tiers select gate strictness; a newly introduced gate ratchets (SR-10 / PG-10) rather than blocking on first contact.
+- [l1-policy-governance.md](l1-policy-governance.md) - Managed tiers select gate strictness; a newly introduced gate ratchets (SRO-10 / PG-10) rather than blocking on first contact.
 - [l1-fault-lifecycle.md](l1-fault-lifecycle.md) - "New vs pre-existing" is the delta the gate judges (CG-3); a regression at the boundary is a blockable event, accumulated debt is not.
 - [l1-automation-pipeline.md](l1-automation-pipeline.md) - Automation-written changes are a producer the gate covers by placement, not by trusting the automation.
 - [l1-security.md](l1-security.md) - Authority the agent cannot rewrite (SEC-10); a convergence gate applies to work the agent spawns and to work it did not, and the gate's own definition is authority-protected against silent rewrite (CG-9).
@@ -154,3 +154,4 @@ These are the *same policy's* deterministic gate, and it belongs at **one** of t
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-07-23 | Core Team | Initial spec — put the deterministic check where all paths converge, not on each path: guard the single boundary every change must cross to become real, so coverage is source-independent by construction and catches the agent, a human's manual edit, an automation, an import, or a paste identically, closing the class INT-8 can only name (CG-1); the gate is deterministic code that always runs at its boundary, never an instruction a producer may skip, with an advisory layer allowed on top for legibility but never mistaken for the guarantee (CG-2); it judges the **delta** a change introduces rather than accumulated state, since an absolute-state gate blocks every change on pre-existing debt and is rationally disabled wholesale — a regression is blockable, standing debt is surfaced (CG-3); the enforcement moment is one deliberate choice, not the same policy stacked at many moments returning conflicting verdicts (CG-4); a deferred obligation lets an earlier event gate a later dependent effect, discharged only on genuine completion (CG-5) and surfaced when left outstanding at scope end (CG-6); a recorded, attributed bypass — never none, since a gate without one is removed at the first emergency, and never silent, since an invisible bypass is no gate (CG-7); fail-closed to block and fail-forward to observe (CG-8); the gate lives with the boundary so every actor who crosses it inherits it, including those onboarded later, with the gate's own definition authority-protected against silent rewrite and verified before it is honoured where its provenance must be trusted (CG-9); and it composes inline guards rather than replacing them (CG-10). Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `SR-n` of `l1-staged-rollout` is now `SRO-n`. No requirement was added, removed or reworded. |

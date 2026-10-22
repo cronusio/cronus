@@ -1,6 +1,6 @@
 # Output Repair
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -64,7 +64,7 @@ Rules every Layer 2 implementation MUST NOT violate. They are technology-neutral
 
 - **RPR-7 (No streaming counterpart means no protection on the streaming path):** a repair defined over a **complete** output does **not** apply when the same output is delivered incrementally. Any repair whose defect can appear mid-stream MUST either declare a **streaming form** — one that buffers enough to catch a pattern split across chunk boundaries, and whose scope resets per generation so suppression in one round does not silence a later one — or **declare the streaming path unprotected**. Silence here is the dangerous option: the team believes the defect is handled and ships the path where it is not.
 
-- **RPR-8 (Repair is for decidable form; semantics belong to the contract):** where the defect is **semantic** — wrong answer, missing requirement, unmet criterion — the output contract's validate-and-retry path owns it (OC-1…OC-5), and repairing it is **fabrication**: a component with no view of the requirement inventing what the model should have said. Conversely, spending a retry on a defect a deterministic transformation resolves is waste. The discriminator is whether deciding "is this defective, and what is the correct form" requires judgment.
+- **RPR-8 (Repair is for decidable form; semantics belong to the contract):** where the defect is **semantic** — wrong answer, missing requirement, unmet criterion — the output contract's validate-and-retry path owns it (OCT-1…OCT-5), and repairing it is **fabrication**: a component with no view of the requirement inventing what the model should have said. Conversely, spending a retry on a defect a deterministic transformation resolves is waste. The discriminator is whether deciding "is this defective, and what is the correct form" requires judgment.
 
 - **RPR-9 (Repairs are model-scoped hypotheses, not permanent truths):** a repair encodes a **specific model's** observed misbehaviour. It records the models and versions it was observed against, and a provider, model, or version change **re-opens** the question rather than silently inheriting the correction. Applying a repair earned on one model to another is the same unearned generalization SG-3 forbids for learned patterns — with the extra hazard that a repair matching output the new model produces *legitimately* corrupts correct output.
 
@@ -112,7 +112,7 @@ model call
          │                                      │
          ├─ malformed structured call ─────────▶│─▶ typed containment → repair-retry (TCT-8)
          │                                      │
-         └─ SEMANTIC defect (judgment) ────────▶ validate → retry with verdict (OC-4/OC-5)
+         └─ SEMANTIC defect (judgment) ────────▶ validate → retry with verdict (OCT-4/OCT-5)
                                                 │
                                           downstream consumer
                                                 │
@@ -158,3 +158,4 @@ None new. A workflow's model call goes through the host-supplied model provider 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-06 | Core Team | Initial concept: the **deterministic post-generation correction layer** every model-consuming system grows and almost every one grows anonymously. Named declared repairs with no anonymous fixups, since an unnamed correction cannot be counted, tested at its trigger, retired, or attributed (RPR-1); **form only, never meaning** — a transformation that changes what the output *says* is an unreviewed edit by a component with no authority to make it (RPR-2); deterministic, idempotent, order-declared (RPR-3); **every firing counted and attributed to (repair, provider, model, version)** because the rate is the layer's actual product and an uncounted repair turns a measurable model defect into invisible maintenance (RPR-4); **both rate extremes actionable** — never-fires is dead code encoding an unchecked guarantee, always-fires is an upstream defect being papered over while its evidence is hidden (RPR-5, NEG-10 discipline); **silent to the model, never silent to the record**, since a corrected output indistinguishable from a correct one destroys exactly the information the layer produces (RPR-6); **no streaming counterpart means no protection on the streaming path** — a repair written over a complete string silently does not apply to the incremental path a product usually ships, so the streaming form is declared or the gap is (RPR-7); repair for decidable form, contract-retry for semantics, where repairing a semantic defect is fabrication and retrying a form defect is waste (RPR-8); **repairs as model-scoped hypotheses** whose observed-against versions are recorded and whose inheritance across a model change is re-opened, not assumed — SG-3's argument, with the added hazard that a stale repair corrupts output a new model produces legitimately (RPR-9); and **a repair never widens trust or promotes content to control**, so a helpful reconstruction of a malformed control token is the injection the boundary exists to prevent (RPR-10). §4.4 reconciles silent form-editing with CV-6's never-silently-edits by locating the boundary at meaning. §4.5 records the nodus disposition: no new invariant — the repair layer is host-side behind the model-provider seam. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `OC-n` of `l1-output-contracts` is now `OCT-n`. No requirement was added, removed or reworded. |

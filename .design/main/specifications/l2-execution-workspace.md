@@ -1,6 +1,6 @@
 # Execution Workspace
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-storage-model.md
@@ -300,7 +300,7 @@ Events:
 
 - **No auto-merge on fork convergence:** forks that touch the same files need human resolution. The workspace layer intentionally does not bundle a merge strategy — that is orchestration policy.
 - **SSH provider adds latency:** bundle-transfer-sync adds overhead compared to local providers. This is accepted; SSH is for environments where local execution is not viable.
-- **Retention window is fixed at 7 days:** configurable via `execution.workspace_retention_days` in the workspace config.
+- **Retention window defaults to 7 days:** configurable via `execution.workspace_retention_days` in the workspace config.
 - **Alternative — shared mutable directory:** rejected; races and partial-write corruption are unacceptable for autonomous agents.
 
 ## Canonical References
@@ -317,6 +317,7 @@ Events:
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.4 | 2026-10-22 | Core Team | The retention window is described as a default, not as fixed, to match its own configuration key (design-layer audit, 2026-10-22). |
 | 1.0.3 | 2026-10-03 | Core Team | Patch — §4.4 states the scope of the no-remote-git contract: it governs execution workspaces. An optional version-control transport of a declared subset of the project-local state root (`l1-multi-device-sync` SY-10) is a separate act under the user's recorded consent for a named remote and subset, performed by the sync operation, and does not loosen the contract — a workspace still never pushes. Documentation clarification only; no rule changed. Related Specifications extended with `l1-multi-device-sync`. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Compliance table cited the wrong invariants (ORC-2 is adaptive topology, ORC-6 judged termination, `STORE-3` does not exist): now ORC-5, ORC-11, SEC-6, STO-1. `local_fs` is declared unconfined and human-selected only (SEC-10/SEC-12); `sandbox` points at `l2-execution-sandbox` instead of claiming full OS isolation. Project start commands run only in a trusted workspace (`l2-security` §4.8). Removal is confined to the canonical worktree root, and an abandoned workspace keeps its branch so unreviewed work is not destroyed by timed cleanup. Provider table row for `local_fs` aligned with §2 (unconfined, human-selected only). |
 | 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

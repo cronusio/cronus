@@ -1,6 +1,6 @@
 # Orchestration
 
-**Version:** 1.1.4
+**Version:** 1.1.5
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-orchestration.md, l1-office-model.md
@@ -894,8 +894,8 @@ Plans are written against a specific codebase state. If files change between pla
 
 The drift check runs as the **first action** before any plan executor starts:
 
-```bash
-git diff --stat {planned_at_sha}..HEAD -- {in_scope_paths}
+```text
+show a diff summary of {in_scope_paths} between {planned_at_sha} and HEAD
 ```
 
 `planned_at_sha` is recorded in the plan's YAML frontmatter when the plan is created:
@@ -1118,6 +1118,7 @@ The length prefix makes the concatenation injective: without it, the same bytes 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.5 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one shell block (the drift check) rewritten as a step description. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.1.4 | 2026-10-22 | Patch — the OFF-6 row names the one exception `l1-office-model` 1.1.0 now admits (technology questions at the expert involvement level, intake and planning only; Pending — no involvement setting exists). |
 | 1.1.3 | 2026-10-03 | Patch — status vocabularies made explicit. §4.15–§4.17 carried an artifact registry with its own `complete`, a change lifecycle that "moves to Complete", and plan tasks with `status: done` beside the board's states, with nothing saying how they relate to the card. Each now states its relation (CONV-10): the artifact registry describes the *artifact* and never the work; a change's `Complete` describes the change record (its units' cards are `done` and its merge has landed); a plan task's `status` is a projection of its card, which is what the foundation gate reads. A disagreement is reported, not accepted (`l1-state-authority` SAU-4). §4.1's messaging line said the orchestrator is "the hub for cross-role coordination" — it is the hub for coordination *decisions*, and a recorded direct exchange between the instances of one parallel-staffing episode is allowed beside it (PS-12, `l2-inbox` §4.9). No behaviour changed. |
 | 1.1.2 | 2026-09-24 | Consistency pass (2026-09-24): The spec realizes the office model's delegation surface but mapped only l1-orchestration — OFF-2…OFF-8 (role catalog, hiring through the catalog under the approval gate, client contact only at ORC-9 gates, the clarification channel for blocking ambiguity, intent → plan → board states, unattended operation resuming ORC-10) had no compliance rows. `Implements` now names l1-office-model and the rows are added. OFF-1 (office isolation: delegation, messaging and the board never cross an office boundary) and OFF-9 (compounding capability, carried by the memory specifications — not realized here) complete the office-model rows. |

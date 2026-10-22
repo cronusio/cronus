@@ -1,6 +1,6 @@
 # Project Wiki Store (Implementation)
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-project-wiki.md
@@ -49,32 +49,30 @@ The concept requires a client-facing surface that maintains itself, stays ground
 
 ### 4.1 Schema (per-office SQLite, conceptual)
 
-```sql
--- [REFERENCE] illustrative, not final DDL
--- <state>/workspaces/<ws>/wiki/wiki.db — a derived projection CACHE (PW-3), never source of truth
-CREATE TABLE wiki_page (
-  id                 TEXT PRIMARY KEY,
-  office_id          TEXT NOT NULL,
-  parent_id          TEXT,                    -- overview → area → detail (PW-6); NULL for root
-  ord                INTEGER NOT NULL DEFAULT 0, -- sibling ordering
-  kind               TEXT NOT NULL,           -- overview|area|decisions|howto|glossary|changelog
-  title              TEXT NOT NULL,
-  body               TEXT NOT NULL,           -- generated plain-language content (PW-1)
-  citations          TEXT NOT NULL,           -- JSON [{source_kind, source_id}]; non-empty (PW-4)
-  source_fingerprint TEXT NOT NULL,           -- hash of the inputs this page was generated from (PW-5)
-  generated_at       INTEGER NOT NULL,
-  stale              INTEGER NOT NULL DEFAULT 0 -- 1 when current source fingerprint ≠ stored (PW-5)
-);
-CREATE TABLE wiki_changelog (                 -- PW-5 change history, newest-first
-  id        TEXT PRIMARY KEY,
-  office_id TEXT NOT NULL,
-  page_id   TEXT,
-  change    TEXT NOT NULL,                     -- human-readable "what changed"
-  at        INTEGER NOT NULL
-);
-CREATE VIRTUAL TABLE wiki_page_fts USING fts5(title, body, content=wiki_page); -- PW-6 search
-CREATE INDEX idx_wiki_parent ON wiki_page(parent_id, ord);
-CREATE INDEX idx_wiki_stale  ON wiki_page(office_id, stale);
+```text
+[REFERENCE] illustrative, not final DDL
+// <state>/workspaces/<ws>/wiki/wiki.db — a derived projection CACHE (PW-3), never source of truth
+table wiki_page
+  id  text, primary key
+  office_id  text, required
+  parent_id  text   // overview → area → detail (PW-6); NULL for root
+  ord  integer, required, default 0   // sibling ordering
+  kind  text, required   // overview|area|decisions|howto|glossary|changelog
+  title  text, required
+  body  text, required   // generated plain-language content (PW-1)
+  citations  text, required   // JSON [{source_kind, source_id}]; non-empty (PW-4)
+  source_fingerprint  text, required   // hash of the inputs this page was generated from (PW-5)
+  generated_at  integer, required
+  stale  integer, required, default 0   // 1 when current source fingerprint ≠ stored (PW-5)
+table wiki_changelog   // PW-5 change history, newest-first
+  id  text, primary key
+  office_id  text, required
+  page_id  text
+  change  text, required   // human-readable "what changed"
+  at  integer, required
+full-text table wiki_page_fts (fts5: title, body, content=wiki_page)   // PW-6 search
+index idx_wiki_parent on wiki_page(parent_id, ord)
+index idx_wiki_stale on wiki_page(office_id, stale)
 ```
 
 The page kinds mirror the concept's page model (§4.2 of the parent): `overview`, `area`, `decisions`, `howto`, `glossary`, `changelog`.
@@ -150,6 +148,7 @@ Largely a main-workspace product surface; the portable runtime contributes as a 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.3 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one SQL block (the wiki page, wiki changelog and page full-text tables) rewritten as a pseudo-schema. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): PW-8 named the development scaffolding's directory and process — restated as the office's internal engineering and specification artifacts (a product spec does not reference build scaffolding). `rebuild` dropped `wiki_changelog`, which current state cannot reconstruct — it is re-derived from the operational ledger's history, and an uncovered period is stated. |
 | 1.0.1 | 2026-07-15 | Promoted RFC→Stable via Post-Update Review (`@role:spec-critic` + `@role:prompt-engineer` PASS). One review finding fixed: §4.3 overclaimed that `rebuild` yields a **byte-equivalent** wiki — corrected to *informational* equivalence (same structure/sources/attributed facts), since generation is model-based and non-deterministic; the PW-3 guarantee is no-loss-of-authoritative-content, not byte-identical prose. No other change. Stable = design agreed; concrete schema/DDL validated during implementation. |
 | 1.0.0 | 2026-07-15 | Initial RFC — realizes l1-project-wiki as a per-office SQLite projection **cache** (`<ws>/wiki/wiki.db`), not loose Markdown files: `wiki_page` (parent/ord tree, citations, source_fingerprint, stale) + `wiki_changelog` + `wiki_page_fts`; event-driven incremental transactional regeneration (PW-3/4/5); `rebuild` as the operational proof the store is a rebuildable cache; read-only client access with the write path structurally absent (PW-2); per-office scoping + access-grants gate (PW-7); distinct from knowledge-base/SDD with a content filter (PW-8). Contrast recorded: wiki store = cache of upstream truth, unlike the memory learned-tier where the store IS the truth (MEM-4). |

@@ -1,6 +1,6 @@
 # Self-Improvement
 
-**Version:** 1.0.10
+**Version:** 1.0.11
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-model.md
@@ -48,18 +48,17 @@ Per-`(task_type, project)` tracking of declared versus verified success ratios. 
 
 #### Schema
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE calibration_buckets (
-    task_type        TEXT NOT NULL,
-    project          TEXT NOT NULL,
-    declared_success INTEGER NOT NULL DEFAULT 0,
-    verified_success INTEGER NOT NULL DEFAULT 0,
-    declared_failure INTEGER NOT NULL DEFAULT 0,
-    refuted_success  INTEGER NOT NULL DEFAULT 0,
-    last_updated     INTEGER NOT NULL,
-    PRIMARY KEY (task_type, project)
-);
+```text
+[REFERENCE] illustrative, not final DDL
+table calibration_buckets
+  task_type  text, required
+  project  text, required
+  declared_success  integer, required, default 0
+  verified_success  integer, required, default 0
+  declared_failure  integer, required, default 0
+  refuted_success  integer, required, default 0
+  last_updated  integer, required
+  primary key (task_type, project)
 ```
 
 #### Overconfidence formula
@@ -86,19 +85,18 @@ An anchored correction log. Each row records what went wrong, which files were i
 
 #### Schema
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE mistakes (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    project     TEXT NOT NULL,
-    category    TEXT NOT NULL,             -- e.g. "lifetime_annotations", "auth_order"
-    episode_id  TEXT,                      -- source episode ID, when available
-    files       TEXT NOT NULL DEFAULT '[]', -- JSON array of file paths
-    description TEXT NOT NULL,
-    correction  TEXT NOT NULL,
-    created_at  INTEGER NOT NULL
-);
-CREATE INDEX mistakes_proj_cat ON mistakes(project, category, created_at DESC);
+```text
+[REFERENCE] illustrative, not final DDL
+table mistakes
+  id  integer, primary key, auto-increment
+  project  text, required
+  category  text, required   // e.g. "lifetime_annotations", "auth_order"
+  episode_id  text   // source episode ID, when available
+  files  text, required, default '[]'   // JSON array of file paths
+  description  text, required
+  correction  text, required
+  created_at  integer, required
+index mistakes_proj_cat on mistakes(project, category, created_at descending)
 ```
 
 #### Brief query
@@ -124,19 +122,18 @@ Pre-task question gaps: situations where a clarifying question asked before star
 
 #### Schema
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE should_have_asked (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    project    TEXT NOT NULL,
-    trigger    TEXT NOT NULL,             -- normalized kebab/snake_case context signal
-    question   TEXT NOT NULL,
-    answer     TEXT NOT NULL,
-    episode_id TEXT,
-    files      TEXT NOT NULL DEFAULT '[]', -- JSON array
-    created_at INTEGER NOT NULL
-);
-CREATE INDEX shas_by_proj_trigger ON should_have_asked(project, trigger, created_at DESC);
+```text
+[REFERENCE] illustrative, not final DDL
+table should_have_asked
+  id  integer, primary key, auto-increment
+  project  text, required
+  trigger  text, required   // normalized kebab/snake_case context signal
+  question  text, required
+  answer  text, required
+  episode_id  text
+  files  text, required, default '[]'   // JSON array
+  created_at  integer, required
+index shas_by_proj_trigger on should_have_asked(project, trigger, created_at descending)
 ```
 
 #### Brief query
@@ -163,21 +160,19 @@ System-generated clarifying questions. When a session ends in failure or partial
 
 #### Schema
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE ask_backs (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    project    TEXT NOT NULL,
-    episode_id TEXT NOT NULL,
-    question   TEXT NOT NULL,
-    status     TEXT NOT NULL DEFAULT 'pending', -- pending|served|dismissed
-    model      TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    served_at  INTEGER
-);
--- At-most-one-pending-per-project debounce (enforced at DB level):
-CREATE UNIQUE INDEX ask_backs_one_pending_per_proj
-    ON ask_backs(project) WHERE status = 'pending';
+```text
+[REFERENCE] illustrative, not final DDL
+table ask_backs
+  id  integer, primary key, auto-increment
+  project  text, required
+  episode_id  text, required
+  question  text, required
+  status  text, required, default 'pending'   // pending|served|dismissed
+  model  text, required
+  created_at  integer, required
+  served_at  integer
+// At-most-one-pending-per-project debounce (enforced at DB level):
+unique index ask_backs_one_pending_per_proj on ask_backs(project) where status = 'pending'
 ```
 
 The partial UNIQUE INDEX enforces the invariant at the database level: an `INSERT` for a project that already has a pending ask-back fails immediately, so only the first question per session is stored without application-layer coordination.
@@ -201,22 +196,21 @@ Proven step-sequences extracted from successful episode clusters by the dream cy
 
 #### Schema
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE reasoning_templates (
-    id                TEXT NOT NULL PRIMARY KEY,
-    task_type         TEXT NOT NULL,
-    domain            TEXT NOT NULL,
-    name              TEXT NOT NULL,
-    steps             TEXT NOT NULL,               -- JSON array of step strings
-    evidence_episodes TEXT NOT NULL,               -- JSON array of episode IDs
-    success_rate      REAL NOT NULL,
-    times_used        INTEGER NOT NULL DEFAULT 0,
-    model             TEXT NOT NULL,
-    created_at        INTEGER NOT NULL,
-    last_used         INTEGER,
-    UNIQUE (task_type, domain)
-);
+```text
+[REFERENCE] illustrative, not final DDL
+table reasoning_templates
+  id  text, required, primary key
+  task_type  text, required
+  domain  text, required
+  name  text, required
+  steps  text, required   // JSON array of step strings
+  evidence_episodes  text, required   // JSON array of episode IDs
+  success_rate  real, required
+  times_used  integer, required, default 0
+  model  text, required
+  created_at  integer, required
+  last_used  integer
+  unique (task_type, domain)
 ```
 
 #### Dream cycle extraction
@@ -960,6 +954,7 @@ Before committing an evolved skill document to the training pipeline, a static s
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.11 | 2026-10-22 | Core Team | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): five SQL blocks (the calibration-bucket, mistake, should-have-asked, ask-back and reasoning-template tables) rewritten as pseudo-schemas. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.10 | 2026-10-03 | Core Team | Patch — the question limits in this corpus (this spec's one-pending ask-back, the constitution's per-task budget, the mission clarification ceiling, this spec's "open clarifications ≤2" health threshold) were four unrelated numbers in four places. §4.4 now names an ask-back as the post-session class of `l1-intent-resolution` IR-9 (c) — bounded here, never blocking, lowest priority in the client's one attention budget — and says its slot bounds this class only; §4.11 says what "open clarifications" counts (unanswered items of the mission clarification file) and that it is a measure of planning artifacts, never a question put to the client (`l1-intent-resolution` IR-9 e). No bound changed. Related Specifications extended with `l1-intent-resolution`. |
 | 1.0.9 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): Config redaction kept a secret's first and last four characters and matched only `api_key` — full redaction of every secret-shaped value (`l2-security` §4.11 forbids partial values). §4.14 re-implemented the learning-loop curator with different timings (archive 120 days vs 90) and scope (skills "patched by agents") — it now defines only the activity record, the one curator governs. Ask-backs no longer block the next task (OFF-5/OFF-6), and the slot is described as first-come rather than "most relevant". Store failures mark a brief section unavailable instead of empty. Host-harness tool names in §4.7 replaced by the execution-workspace model. Installing a trained skill over an active one is a reviewed pending revision. The no-unwrap probe's line-filter grader could not exclude test modules — replaced by a syntax-aware lint. |
 | 1.0.8 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

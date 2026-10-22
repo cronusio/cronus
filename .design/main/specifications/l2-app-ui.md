@@ -1,6 +1,6 @@
 # Application UI/UX Frontend (Desktop / Web / Mobile)
 
-**Version:** 1.4.2
+**Version:** 1.4.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -110,7 +110,7 @@ Theming has **two orthogonal axes**. The active look is `(mode) × (scheme)`; ch
 
 The UI is localized via language packs from the program tier (`languages/`); the active locale persists in `app.json` (`locale`). Initial languages: **English (`en`, default)** and **Russian (`ru`)**; the catalog is extensible. UI strings are externalized (no hardcoded user-facing text); missing translations fall back to English.
 
-<!-- TBD: RTL support timing; pluralization/format library choice -->
+<!-- TBD: RTL support timing; pluralization/format library choice. Trigger: take both when a right-to-left language pack is first requested -->
 
 ### 4.7 Settings Persistence System
 
@@ -451,7 +451,7 @@ For servers that require OAuth (`SSETransport`, `StreamableHTTP`):
 
 - **System-WebView variance:** styling can break on old WebKitGTK/Android WebView; mitigated by the OS floor / PostCSS downgrade.
 - **No on-device 24/7 agent on mobile:** by design (INV-4); the hub carries autonomy.
-- **Alternative — Electron + Capacitor split:** heavier and duplicates desktop/mobile shells; rejected in favor of one Tauri v2 core. <!-- TBD: confirm shadcn/ui vs DaisyUI selection before UI build -->
+- **Alternative — Electron + Capacitor split:** heavier and duplicates desktop/mobile shells; rejected in favor of one Tauri v2 core. **As built (2026-10-22):** neither shadcn/ui nor DaisyUI is a dependency of `packages/ui`. The components are hand-written over the design-token contract (`l2-design-system`) with Tailwind v4 utilities; the stack line that names shadcn/ui records the original intent and is not realized. <!-- TBD: adopt a component library only when a component arrives that the hand-written set cannot carry, and then one, not both -->
 
 ## Canonical References
 
@@ -470,3 +470,4 @@ For servers that require OAuth (`SSETransport`, `StreamableHTTP`):
 | 1.4.0 | 2026-09-02 | §4.5 Theming split into two orthogonal axes — **mode** (`system`/`light`/`dark`) × **colour scheme** (a named design-identity token package); one built-in scheme ships (`default`, dark-first), more added as data; the resolver + token contract move to the new `l2-design-system`. §4.1 Surfaces regrouped and deferred to `l2-navigation` §4.3 as the ordering authority; INV-9 placeholder rule restated. Related Specs + Canonical References extended with `l2-design-system` and `l2-navigation`. Document History section introduced with this entry (versions ≤1.3.1 summarised in the `INDEX.md` row). |
 | 1.4.1 | 2026-09-03 | Cross-link only: added `l2-ui-module-topology.md` to Related Specifications — the source-partition spec for `packages/ui`, whose surface tier is populated by the §4.1 surfaces and whose single-seam rule keeps the §4.2 shell-core bridge the sole site performing core calls. No design or requirement change; stays Stable. |
 | 1.4.2 | 2026-09-24 | Consistency pass (2026-09-24): Settings loading filled a field that was "absent or zero-value", so a user's stored `false` or `0` was reset to the default on every upgrade — only absent fields are filled; settings live in the state tier's `app.json` with a schema version (STO-9). INV-7 said telemetry leaves the device (opt-in, TEL-1). The Kanban surface listed `review` as a canonical state and the Office surface a floor projection (KAN-8, OVZ-9) — corrected; the bridge diagram shows the model runtime. §4.12–§4.14 are marked as core behaviour recorded for display (INV-2); the MCP OAuth callback binds loopback with PKCE and a checked `state`, tokens stay secrets; stdio MCP servers run sandboxed; the second-instance forwarding channel is per-user and carries only runtime flags. |
+| 1.4.3 | 2026-10-22 | The shadcn/ui vs DaisyUI TBD is recorded as built: neither is a dependency of `packages/ui`; the components are hand-written over the design-token contract with Tailwind v4 utilities, and a library is adopted only when a component arrives that the hand-written set cannot carry. The RTL and pluralization TBD names its trigger (design-layer audit, 2026-10-22). |

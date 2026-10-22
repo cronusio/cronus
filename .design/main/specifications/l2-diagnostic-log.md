@@ -1,6 +1,6 @@
 # Diagnostic Log (Logging Realization)
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-diagnostic-log.md, l1-log-legibility.md
@@ -11,12 +11,12 @@ How the Rust product logs: one structured event model for every crate, a sink in
 
 ## Related Specifications
 
-- [l1-diagnostic-log.md](l1-diagnostic-log.md) - DL-1…DL-8, the forensic plane this realizes.
+- [l1-diagnostic-log.md](l1-diagnostic-log.md) - DLG-1…DLG-8, the forensic plane this realizes.
 - [l1-log-legibility.md](l1-log-legibility.md) - LL-1…LL-9, the event model and its projections.
 - [l2-filesystem-layout.md](l2-filesystem-layout.md) - §4.1 `<logs>` location per OS; logs are machine-local and excluded from backups by default.
 - [l2-invocable-registry.md](l2-invocable-registry.md) - §4.12 redaction at the boundary and the per-invocable "do not journal input" declaration reused for log fields.
-- [l2-tool-receipts.md](l2-tool-receipts.md) - The execution-authenticity record; a different plane, never fed from the log (DL-1).
-- [l2-github-issue.md](l2-github-issue.md) - The issue-report bundle, the log's one egress path besides telemetry (DL-6).
+- [l2-tool-receipts.md](l2-tool-receipts.md) - The execution-authenticity record; a different plane, never fed from the log (DLG-1).
+- [l2-github-issue.md](l2-github-issue.md) - The issue-report bundle, the log's one egress path besides telemetry (DLG-6).
 - [l2-technology-stack.md](l2-technology-stack.md) - The logging crates added to the stack.
 - [l2-crate-topology.md](l2-crate-topology.md) - Which tier may install a sink (binaries only) and which may only emit (every library tier).
 
@@ -35,19 +35,19 @@ The engineering rules require descriptive structured events and critical errors 
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| DL-1 Distinct plane | The log is its own sink. Receipts, the session journal, health scores, telemetry and the dispatch journal (`l2-invocable-registry` §4.13) are written by their owners and never derived from log lines; a log line may *mention* their identifiers for correlation (LL-6). |
-| DL-2 Survives what other planes cannot | The sink is the first thing `main` installs, before argument parsing finishes resolving configuration. A panic hook writes the panic, its location and a backtrace to the log before the default hook runs. Standard error of spawned subprocesses (model servers, tools) is forwarded into the log under the subprocess's name. A native-fault handler is **Pending** per OS; where absent, `log status` reports *native crash capture: unavailable* rather than implying coverage. |
-| DL-3 Session header | The first event of every process is `session.start` with OS, architecture, product version and build, process kind (`cli`, `tui`, `engine`, `desktop`), working directory, arguments (secret-marked ones replaced by `<redacted>`), state root and start time. |
-| DL-4 Own scope full, dependencies clamped | Default filter: `cronus*` targets at `info`, everything else at `warn`. `log.level` (setting) and `CRONUS_LOG` (environment, same filter syntax) override; the dependency floor is a separate value so raising the product's verbosity does not flood the file. |
-| DL-5 Bounded, rotating | One file family per process kind: `<logs>/<kind>.jsonl`, rotated at 10 MiB, 5 rotations kept (`log.max_size`, `log.max_files`). The oldest rotation is dropped silently by design. |
-| DL-6 Local, consent-gated, secret-safe | Nothing reads the log for egress except the issue-report bundle (preview, scrub, consent) and the telemetry opt-in. Backup excludes `<logs>` unless `--include-logs`. |
-| DL-7 Live inspection at parity | `log show [--level] [--grep] [--since] [--kind]`, `log tail`, `log path`, `log status` are `Inspect` installation verbs, answered without composing the office; the terminal UI renders them under `/log …`, the desktop in a log panel over the same core functions. |
-| DL-8 Neutral sink | Writes go through a non-blocking writer with a bounded queue; when the queue is full events are dropped and counted, and the count is written as one `log.dropped` event when space returns. A failed open or rotation retries on the next write and never panics or returns an error into the caller. |
+| DLG-1 Distinct plane | The log is its own sink. Receipts, the session journal, health scores, telemetry and the dispatch journal (`l2-invocable-registry` §4.13) are written by their owners and never derived from log lines; a log line may *mention* their identifiers for correlation (LL-6). |
+| DLG-2 Survives what other planes cannot | The sink is the first thing `main` installs, before argument parsing finishes resolving configuration. A panic hook writes the panic, its location and a backtrace to the log before the default hook runs. Standard error of spawned subprocesses (model servers, tools) is forwarded into the log under the subprocess's name. A native-fault handler is **Pending** per OS; where absent, `log status` reports *native crash capture: unavailable* rather than implying coverage. |
+| DLG-3 Session header | The first event of every process is `session.start` with OS, architecture, product version and build, process kind (`cli`, `tui`, `engine`, `desktop`), working directory, arguments (secret-marked ones replaced by `<redacted>`), state root and start time. |
+| DLG-4 Own scope full, dependencies clamped | Default filter: `cronus*` targets at `info`, everything else at `warn`. `log.level` (setting) and `CRONUS_LOG` (environment, same filter syntax) override; the dependency floor is a separate value so raising the product's verbosity does not flood the file. |
+| DLG-5 Bounded, rotating | One file family per process kind: `<logs>/<kind>.jsonl`, rotated at 10 MiB, 5 rotations kept (`log.max_size`, `log.max_files`). The oldest rotation is dropped silently by design. |
+| DLG-6 Local, consent-gated, secret-safe | Nothing reads the log for egress except the issue-report bundle (preview, scrub, consent) and the telemetry opt-in. Backup excludes `<logs>` unless `--include-logs`. |
+| DLG-7 Live inspection at parity | `log show [--level] [--grep] [--since] [--kind]`, `log tail`, `log path`, `log status` are `Inspect` installation verbs, answered without composing the office; the terminal UI renders them under `/log …`, the desktop in a log panel over the same core functions. |
+| DLG-8 Neutral sink | Writes go through a non-blocking writer with a bounded queue; when the queue is full events are dropped and counted, and the count is written as one `log.dropped` event when space returns. A failed open or rotation retries on the next write and never panics or returns an error into the caller. |
 | LL-1 One event, projections | Every fact is one `tracing` event. Projections: the JSON-lines file (complete), the console (human), the live tail (stream), the agent feed (compact). No surface writes a log line of its own. |
 | LL-2 Message and fields | Each event carries a stable message (`"backup created"`) and typed fields (`backup.id`, `bytes`, `duration_ms`); messages never embed values that belong in fields. |
 | LL-3 Shaped per reader | Console: level, target, message, key fields on one line, payloads folded, `warn` and above by default for one-shot commands. File: every field. Agent feed: §4.4. |
-| LL-4 Overload bounded | Level gating (DL-4), a payload policy (`log.payload = descriptor` by default: sizes and counts, not bodies; `excerpt` and `full` opt-in), and folding of identical consecutive events into one with `repeat`. |
-| LL-5 Honest reduction | A truncated field carries `truncated_from` with the original size; a folded event carries `repeat`; dropped events are counted (DL-8). |
+| LL-4 Overload bounded | Level gating (DLG-4), a payload policy (`log.payload = descriptor` by default: sizes and counts, not bodies; `excerpt` and `full` opt-in), and folding of identical consecutive events into one with `repeat`. |
+| LL-5 Honest reduction | A truncated field carries `truncated_from` with the original size; a folded event carries `repeat`; dropped events are counted (DLG-8). |
 | LL-6 Attribution | Fields always present: `ts`, `level`, `target` (crate and module), `kind` (process), `session` (process run id), and when applicable `workspace`, `card`, `run`, `agent`, `invocation` (the dispatch pairing identity). |
 | LL-7 Secret-safe at every projection | Every projection passes its text through the core redaction path with the live secret list before rendering; arguments of invocables declared "do not journal input" are never logged; field names on a denylist (`*token*`, `*secret*`, `*password*`, `authorization`) are always replaced. |
 | LL-8 Agent economy | §4.4: tail-windowed, payload-free, folded, capped by a declared token budget. |
@@ -61,7 +61,7 @@ The engineering rules require descriptive structured events and critical errors 
 [REFERENCE]
 main():
   guard := diagnostics::install(process_kind, logs_root())   // first statement; holds the writer alive
-  emit session.start header                                   // DL-3
+  emit session.start header                                   // DLG-3
   install panic hook (write panic + backtrace, then chain to the default hook)
   … parse, compose, run …
   drop(guard)                                                 // flushes the queue on exit
@@ -111,7 +111,7 @@ main():
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[DIAG]` | `.design/main/specifications/l1-diagnostic-log.md` | DL-1…DL-8 |
+| `[DIAG]` | `.design/main/specifications/l1-diagnostic-log.md` | DLG-1…DLG-8 |
 | `[LEGIBILITY]` | `.design/main/specifications/l1-log-legibility.md` | LL-1…LL-9 |
 | `[CLI-MAIN]` | `crates/cli/src/main.rs` | Where the sink is installed first |
 | `[REDACTION]` | `.design/main/specifications/l2-invocable-registry.md` | §4.12 — the redaction path every projection uses |
@@ -121,3 +121,4 @@ main():
 | Version | Date | Notes |
 | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Initial realization of `l1-diagnostic-log` and `l1-log-legibility`, from the user's backlog (logging): the `tracing` family as the one event model, the sink installed first in every binary, a session header, a panic hook and forwarded subprocess output, own crates at `info` and dependencies at `warn`, rotating JSON-lines files per process kind under `<logs>`, a non-blocking writer that drops and counts rather than blocks, redaction at every projection, a budgeted agent feed, and the `log` inspect verbs on every surface. All Pending in code (no crate logs today); native crash capture Pending per OS. |
+| 1.0.1 | 2026-10-22 | Citations of the parent's requirement IDs follow the rename of its prefix `DL` → `DLG` (RULES §1, 1.8.0). No requirement was added, removed or reworded. |

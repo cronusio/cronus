@@ -1,6 +1,6 @@
 # Sandbox Network Policy
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md
@@ -63,7 +63,7 @@ SandboxPolicy {
 
   // Optional OS-native isolation compatibility:
   // "strict"       — abort sandbox creation if kernel isolation cannot be applied.
-  // "best_effort"  — [MODIFIED v1.1.0] NOT a silent downgrade (ES-8 of l1-execution-sandbox): proceed only on the axes
+  // "best_effort"  — [MODIFIED v1.1.0] NOT a silent downgrade (EXS-8 of l1-execution-sandbox): proceed only on the axes
   //                  the human lists in `accept_unconfined`; each accepted axis is recorded, stamped on every surface
   //                  that runs under it, and shown by `cronus sandbox status`. An axis not listed still refuses.
   isolation_compatibility: "strict" | "best_effort",
@@ -296,6 +296,7 @@ Every access failure classification is written to the audit log with the full `A
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.2 | 2026-10-22 | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `ES-n` of `l1-execution-sandbox` is now `EXS-n`. No requirement was added, removed or reworded. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): §4.9 access-failure classification no longer labels ordinary network errors (ECONNREFUSED, ETIMEDOUT, ENOTFOUND…) and a remote 401/403 as `blocked-by-policy`/`missing-approval` with high confidence — that nudged users toward widening egress for a server that was merely down, and contradicted `l2-execution-sandbox` §4.8 (unknown failures are not denials); only a recorded proxy/backend denial is a policy block. `run_as_user` is honored only where no elevation is needed. Approval-gate cross-reference corrected (§4.8 → §4.6, AG-9); typo fixed. |
-| 1.1.0 | 2026-09-19 | `isolation_compatibility: "best_effort"` reconciled with `l1-execution-sandbox` ES-8 (fail closed for untrusted code): it read as "proceed without kernel isolation; emit a warning", a silent downgrade the L1 forbids and that `l2-execution-sandbox` refuses. It now proceeds only on the axes the human lists in the new `accept_unconfined` field — each recorded, stamped on every surface that runs under it, and shown by `cronus sandbox status`; an axis not listed still refuses. Found while decomposing `l2-execution-sandbox` into tasks. |
+| 1.1.0 | 2026-09-19 | `isolation_compatibility: "best_effort"` reconciled with `l1-execution-sandbox` EXS-8 (fail closed for untrusted code): it read as "proceed without kernel isolation; emit a warning", a silent downgrade the L1 forbids and that `l2-execution-sandbox` refuses. It now proceeds only on the axes the human lists in the new `accept_unconfined` field — each recorded, stamped on every surface that runs under it, and shown by `cronus sandbox status`; an axis not listed still refuses. Found while decomposing `l2-execution-sandbox` into tasks. |
 | 1.0.1 | 2026-09-19 | Cross-reference only — `l2-execution-sandbox` is the enforcement mechanism this policy schema lacked; Related Specifications and Canonical References extended. No invariant or schema changed. (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

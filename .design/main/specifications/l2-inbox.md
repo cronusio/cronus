@@ -1,6 +1,6 @@
 # Inbox (Inter-Actor Messaging)
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-office-model.md, l1-orchestration.md
@@ -177,7 +177,7 @@ Rules the transport enforces:
 2. **Recorded.** Every episode send publishes `InboxArrived` (§4.7) carrying `episode_id` and `thread_id`, so the lead and the human see the whole exchange (ORC-12). There is no episode channel outside the inbox.
 3. **Bounded.** The lead declares `max_exchange_rounds` when it opens the episode (default 3). A round is a message in a thread from a different sender than the previous one. At the bound the transport refuses further sibling messages in that thread and publishes `ExchangeBoundReached { episode_id, thread_id }` to the lead; the lead decides (DL-3) and its own message is always accepted.
 4. **Decisions bind by ratification.** A `decision` row without `ratified_by` is delivered and rendered as a `proposal`. Only the lead may write `ratified_by`, or the delegation scope the lead recorded when it opened the episode names the author; a sibling cannot ratify itself.
-5. **Inside the episode.** Episode traffic is accepted only between the instances in the episode's sealed member set (FAN-2) and its lead. Deliberation arguments and rival attempts are not episodes and use no such channel (DL-1, CE-3).
+5. **Inside the episode.** Episode traffic is accepted only between the instances in the episode's sealed member set (FAN-2) and its lead. Deliberation arguments and rival attempts are not episodes and use no such channel (DL-1, CPE-3).
 
 ## 5. Drawbacks & Alternatives
 
@@ -200,6 +200,7 @@ Rules the transport enforces:
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CE-n` of `l1-competitive-execution` is now `CPE-n`. No requirement was added, removed or reworded. |
 | 1.1.0 | 2026-10-03 | Core Team | New §4.9 — the transport side of `l1-parallel-staffing` PS-12 (sibling exchange inside a fan-out episode): episode traffic carries `episode_id`, `thread_id`, a `scope` (one actor or the whole episode) and, for decisions, `ratified_by`; the kinds are a closed set with no `ack` (delivery is attested by `InboxArrived` and the drained row, never a reply); the lead declares `max_exchange_rounds` (default 3, `[DR]` matching the other bounded loops in the corpus) and the transport escalates a thread that reaches it with `ExchangeBoundReached`; an unratified `decision` is rendered as a `proposal`; episode traffic is accepted only inside the episode's sealed member set. The ORC-12 row now says the orchestrator is the hub for cross-role coordination *decisions* and that recorded sibling exchange is allowed beside it (it had said "the hub for cross-role coordination", which read as forbidding any direct message). One rejected alternative (a separate peer channel). Pending realization — the staffing contract has no Layer 2 yet. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): A drained row reached the model as a synthetic user message "indistinguishable from a real user turn" — a subagent or workflow could speak with the principal's authority; parts are now labeled by sender and non-human senders are wrapped as untrusted data (`l2-tool-security` §4.6), the user role being transport only. Compliance cited nonexistent `OM-3`/`STORE-2` — now ORC-12, OFF-1, STO-2. |
 | 1.0.1 | 2026-07-10 | Core Team | Fixed broken Related Specifications link — the storage tier is an L1 concept (l1-storage-model.md); the l2- prefix pointed at a non-existent file (Canonical References already used the correct l1- path) |

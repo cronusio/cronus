@@ -1,6 +1,6 @@
 # Outcome-Attributed Cost
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -29,7 +29,7 @@ own working strategy as its largest source of waste.
 
 ## Related Specifications
 
-- [l1-cost-rating.md](l1-cost-rating.md) — the upstream producer: rating derives the monetary figure this layer attributes. CR-5's estimate-vs-authoritative labeling and CR-8's auditable inputs travel through attribution unchanged; nothing here re-prices anything.
+- [l1-cost-rating.md](l1-cost-rating.md) — the upstream producer: rating derives the monetary figure this layer attributes. CRT-5's estimate-vs-authoritative labeling and CRT-8's auditable inputs travel through attribution unchanged; nothing here re-prices anything.
 - [l1-usage-allowance.md](l1-usage-allowance.md) — the forward-looking counterpart: UA governs *how much is left* and UA-8 the order in which capability sheds; this governs *what the spend bought*, retrospectively. Neither gates the other (OAC-9).
 - [l1-competitive-execution.md](l1-competitive-execution.md) — the invariant that makes the vocabulary necessary: best-of-N deliberately discards N−1 attempts, and those attempts are **discarded-by-design**, never *reverted* (OAC-3). Conflating them prices a working mechanism as waste.
 - [l1-version-control.md](l1-version-control.md) — VC-3's card-aligned commit boundary is what makes attribution reconstructable at all: a commit that maps to one work unit is the join between spend and produced artifact (OAC-5).
@@ -297,3 +297,4 @@ No new language primitive is needed:
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-05 | Core Team | Initial spec — outcome-attributed cost as the closing half of the cost family, which measured outflow (meter → rate → allowance → enforce) and could not distinguish an expensive session that shipped from an equally expensive one reverted the next morning: spend attributed to a produced output or explicitly to none, with a large unattributed share being the finding rather than a gap (OAC-1); survival observed **later**, over a declared window, never inferred at production time, with *unresolved* an honest state rather than a default (OAC-2); a closed outcome vocabulary — kept / superseded / reverted / abandoned / **discarded-by-design** / unresolved — whose load-bearing separation is that a deliberate best-of-N's losing branches are the declared price of a strategy and not a failure, so an office running competitive execution does not read its own working mechanism as its largest waste (OAC-3); spend-with-no-durable-output measured as a first-class category carrying **no implicit verdict**, since the same number means opposite things for exploration and for a tenth attempt at one bug (OAC-4); attribution reconstructed from records already kept, never a parallel ledger that drifts into confident lies (OAC-5); shared and uncertain attribution expressed rather than resolved by an undeclared tiebreak (OAC-6); per-unit figures reported with denominator, dispersion, and minimum-sample abstention (OAC-7); never a verdict on a person, structurally rather than by convention, because a measure that scores people is gamed and a gamed measure still carries a number's authority (OAC-8); retrospective and never an in-flight gate, since wiring survival statistics into live selection closes a loop in which the measure shapes what it measures (OAC-9); and counterfactual honesty with no fabricated savings (OAC-10). Nodus projection needs no new primitive — the run record carries the cost half and gains a declared outcome slot, competitive selection labels its own discards at the source, and a later survival verdict arrives through the existing correlated-later-completion path. Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CR-n` of `l1-cost-rating` is now `CRT-n`. No requirement was added, removed or reworded. |

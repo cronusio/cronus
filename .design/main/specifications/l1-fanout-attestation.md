@@ -1,6 +1,6 @@
 # Fan-Out Attestation
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ This spec is deliberately **orthogonal** to the coordination family. Parallel st
 ## Related Specifications
 
 - [l1-parallel-staffing.md](l1-parallel-staffing.md) — the throughput fan-out (disjoint partitions, integrate-all); its fan-out step is subject to this barrier, and PS-2 disjointness is the ownership precondition of a launch episode.
-- [l1-competitive-execution.md](l1-competitive-execution.md) — the best-of-N fan-out; CE-7 bounded width is the same width this spec partitions into episodes, and CE-9 observable contest is what an attested episode makes true rather than asserted.
+- [l1-competitive-execution.md](l1-competitive-execution.md) — the best-of-N fan-out; CPE-7 bounded width is the same width this spec partitions into episodes, and CPE-9 observable contest is what an attested episode makes true rather than asserted.
 - [l1-deliberation.md](l1-deliberation.md) — the synthesis fan-out; independent perspectives are only independent if they actually ran independently, which is what the barrier records.
 - [l1-orchestration.md](l1-orchestration.md) — the delegating side that opens episodes; ORC-5 context isolation, ORC-7 budget bound, ORC-12 transparent coordination.
 - [l1-completion-verification.md](l1-completion-verification.md) — CMP-3: a recorded return is scheduler completion, never verification; the two acts are separate and this spec never substitutes for the other.
@@ -141,7 +141,7 @@ The three fan-out modes are mutually exclusive in their fan-in; this contract co
 1. **Episode store** — an append-only per-scope record of transitions with timestamps, a validating loader that refuses impossible states (FAN-10), and a reduction that reports an episode as open / sealed / complete / abandoned.
 2. **Host adapters** — one adapter per execution host exposing a non-blocking launch that returns an identity, plus a capability probe so the FAN-8 fallback is chosen before the plan is written rather than discovered mid-run.
 3. **Refusal points first** — implement the `seal` and `record_return` refusals before the happy path; they are the invariant, and an implementation whose refusals arrive later ships a window during which false attestations are recordable.
-4. **Projection** — surface episodes in the office's live view (ORC-12/CE-9), showing declared members, started members, and seal state, so an unsealed episode is visible while it is still recoverable.
+4. **Projection** — surface episodes in the office's live view (ORC-12/CPE-9), showing declared members, started members, and seal state, so an unsealed episode is visible while it is still recoverable.
 5. **Cost & telemetry** — attribute per-member cost through the member identity (l1-outcome-attributed-cost); an episode that could not be opened for want of handles (FAN-9) marks its cost as host-reported.
 
 ## 6. Drawbacks & Alternatives
@@ -167,3 +167,4 @@ The three fan-out modes are mutually exclusive in their fan-in; this contract co
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-25 | Core Team | Initial concept — concurrency as an attested claim rather than an assumed property. The **launch barrier**: an episode declares its exact member set, records a host-issued handle per member, and seals before the first wait (FAN-2), which the serial launch-wait-launch pattern structurally cannot satisfy; handles are host-issued and never coordinator-authored (FAN-3); a partial launch keeps the episode open and ends in retry or a reasoned, terminal, non-successful abandonment, never a seal around the gap (FAN-4); the attestation's claim is explicitly bounded to acceptance ordering and proves nothing about overlap, isolation, honesty, or integration (FAN-5); a return is scheduler completion, not verification (FAN-6); rolling episodes bounded by host concurrency with results reported in declared order (FAN-7); a declared sequential fallback where the host cannot fan out, never a parallel description of a serial run (FAN-8); native scheduling preferred over detached process farms that surrender cancellation, observability and cost attribution, with no episode opened where no per-member identity exists (FAN-9); append-only episode state that refuses impossible transition sequences (FAN-10); check-level parallelism explicitly excluded from attestation (FAN-11). Orthogonal to the coordination family — parallel-staffing, competitive-execution and deliberation each decide what is fanned out and how fan-in resolves; none governs the launch act, and all three can claim a concurrency they did not perform. Nodus realization: l1-nodus-language NL-24 realized-execution-mode attestation for `~PARALLEL`. Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CE-n` of `l1-competitive-execution` is now `CPE-n`. No requirement was added, removed or reworded. |

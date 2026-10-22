@@ -1,6 +1,6 @@
 # Project Specification Rules
 
-**Version:** 1.7.1
+**Version:** 1.8.0
 **Status:** Active
 
 ## Overview
@@ -13,11 +13,12 @@ Read by the agent before every operation. Updated only via explicit triggers.
 - Spec files must include a layer prefix (e.g., `l1-`, `l2-`), followed by lowercase kebab-case: `l1-api.md`, `l2-database-schema.md`.
 - System files use uppercase: `INDEX.md`, `RULES.md`.
 - Section names within specs are title-cased.
+- Requirement-ID prefixes (`DL`, `ES`, `AC`, …) are unique across a workspace: one prefix, one defining spec. A new spec chooses a prefix no spec in its workspace already defines, and a citation of a requirement owned by another workspace names the workspace (`nodus LP-5`). Two specs sharing a prefix make every unqualified citation of it ambiguous to readers and to the spec graph.
 
 ## 2. Status Rules
 
 - **Draft → RFC**: all required sections filled, ready for review.
-- **RFC → Stable**: reviewed, approved, no open questions.
+- **RFC → Stable**: reviewed, approved, no open question that blocks realization. A non-blocking open point may remain as a marked `<!-- TBD: … -->` that names its owner or its trigger (C13.3); an unmarked or blocking one may not.
 - **RFC → Draft**: needs rework or revision affecting ≥1 core section.
 - **Stable → RFC**: substantive amendment (minor/major bump) requires re-review.
 - **Any → Deprecated**: explicitly superseded; replacement must be named.
@@ -36,8 +37,9 @@ Read by the agent before every operation. Updated only via explicit triggers.
 
 ## 5. Content Rules
 
-- No implementation code (no Rust, JS, Python, SQL, etc.).
+- No implementation code (no Rust, JS, Python, SQL, etc.). A fenced block in a language that compiles or executes (`rust`, `sql`, `bash`, `js`, `python`, …) is implementation code and is written as pseudo-code in a `text` block instead.
 - Pseudo-code and logic flows are permitted.
+- Data-format examples — a configuration file, a record shape, a Markdown template — are not code and may use their own format's fence (`json`, `yaml`, `toml`, `markdown`).
 - Every spec must have: Overview, Motivation, Document History.
 
 ## 6. Relations Rules
@@ -47,18 +49,6 @@ Read by the agent before every operation. Updated only via explicit triggers.
 - Circular dependencies must be flagged and resolved.
 
 ## 7. Project Conventions
-
-### C1 — `.magic/` Engine Safety
-
-`.magic/` is the active SDD engine. Any modification must follow this protocol:
-
-1. **Read first** — open and fully read every file that will be affected.
-2. **Analyse impact** — trace how the changed file is referenced by other engine files and workflow wrappers.
-3. **Verify continuity** — confirm that after the change all workflows remain fully functional.
-4. **Never edit blindly** — if the scope of impact is unclear, stop and ask before proceeding.
-5. **Document the change** — record modifications in the relevant spec and commit message.
-6. **Atomic Update** — apply changes simultaneously across all related files (scripts, workflows, and documentation) to maintain full engine consistency.
-7. **No-Change, No-Bump** — NEVER trigger a version bump (C14) if no physical files in `.magic/` were modified (e.g., during dry runs or purely cognitive tasks).
 
 ### C2 — Workflow Minimalism
 
@@ -74,11 +64,11 @@ Skip the user story priority prompt. The agent must automatically assign default
 
 ### C6 — Selective Planning
 
-During plan updates, specs are handled by their status:
+During plan updates, specs are handled by their status. The agent decides and narrates; it does not ask (C9, C25, C27):
 
 - **Draft specs**: automatically moved to `## Backlog` in `PLAN.md` without user input.
-- **RFC specs**: surfaced to user with a recommendation to backlog until Stable.
-- **Stable specs**: agent asks which ones to pull into the active plan. All others go to Backlog.
+- **RFC specs**: parked in `## Backlog` until Stable, narrated as a `[DR]` that names the review they wait for.
+- **Stable specs**: the agent decides which enter the active plan by the C27 ranking (pipeline stage, dependency topology, status maturity, coverage gap, `INDEX.md` order) and narrates the choice as `[DR] {decision} — {criterion}. (Override: {command})`. A Stable spec not pulled in is recorded as a `Planned` or `Held` phase with its preconditions named, never silently dropped and never parked in the Backlog, which holds non-Stable specs only.
 - **Orphaned specs** (in INDEX.md but absent from both plan and backlog): flagged as critical blockers.
 
 ### C7 — Universal Script Executor
@@ -119,11 +109,7 @@ Logic and progress tracking are distributed between two primary files to ensure 
 1. **`PLAN.md` (Strategic)**: High-level overview of **Phase → Specification**. Each specification has a single checkbox representing its aggregate implementation status.
 2. **`TASKS.md` (Tactical)**: The master execution ledger. Contains a concise **Phase Checklist** (items prefixed with unique `[T-XXXX]` IDs) followed by detailed task blocks.
 
-All execution progress (`[x]`, `[/]`, etc.) must be recorded in the `TASKS.md` checklist first. `PLAN.md` is updated only when a specification or phase is fully completed.
-
-### C11 — Simulation Workflow (C2 Exception)
-
-`magic.simulate` is explicitly authorized as a developer-facing tool for engine validation and regression testing. It is a one-time exception to C2. Not intended for use in regular project workflows.
+All execution progress (`[x]`, `[/]`, etc.) must be recorded in the `TASKS.md` checklist first. `PLAN.md` is updated only when a specification or phase is fully completed, or when a spec is recorded as built in part (C31).
 
 ### C12 — Quarantine Cascade
 
@@ -141,16 +127,6 @@ All AI agents operating within the Magic SDD framework must adhere to strict cog
 4. **Mandatory Self-Verification**: Cross-reference actions against original instructions before finalizing any task or presenting a completion checklist.
 5. **Anti-Hallucination Audit**: All architectural conclusions, problem reports, and proposed changes must be directly traceable to specific statements within project specifications or engine rules.
 
-### C14 — Engine Versioning Protocol
-
-To ensure accurate engine state tracking and reliable updates, any modification to the core engine/kernel files (anything inside the `.magic/` directory, including workflows and templates) MUST be accompanied by an automated engine metadata update: `node .magic/scripts/executor.js update-engine-meta`.
-
-1. **Scope**: Applies to all `.md` workflows, `scripts/`, `templates/`, and `config.json` inside the engine directory.
-2. **Automation**: This command automatically increments the patch version in `.magic/.version` and regenerates `.magic/.checksums`. Version history is tracked via git log and `CHANGELOG.md`.
-3. **Exclusion**: Modifications to `.design/` files (project content) do NOT trigger an engine version bump; they trigger project manifest bumps instead.
-4. **Synchronization**: The version in `.magic/.version` should stay aligned with the latest meaningful change to the engine's functional logic.
-5. **Simulation Exemption**: Purely cognitive simulations, dry runs, or audit tasks that do not modify files MUST NOT trigger a C14 version bump to avoid metadata noise.
-
 ### C15 — Workspace Scope Isolation
 
 When operating in a workspace with a defined scope (via `.design/workspace.json`), the agent MUST restrict all analysis and file operations to the directories specified in the scope. All other project directories are treated as out-of-scope to ensure logical isolation and prevent context leakage or accidental modification of unrelated modules.
@@ -158,14 +134,6 @@ When operating in a workspace with a defined scope (via `.design/workspace.json`
 ### C16 — Micro-spec Convention
 
 For minor features, simple bugfixes, or changes expected to be under 50 lines of documentation, the agent is authorized to use the lightweight `.magic/templates/micro-spec.md` instead of the full specification template. If a Micro-spec exceeds 50 lines or architectural complexity increases, it MUST be promoted to the full Standard template.
-
-### C17 — Adapter Distribution Reference
-
-All supported IDE/Agent adapters and their target directories must be documented in `docs/distribution.md`. This file is the reference for users performing manual installation from GitHub Releases.
-
-### C20 — Auto-Heal Recovery
-
-The engine must proactively identify and repair its own metadata. If `executor.js` detects missing history files or corrupted checksums during non-critical operations, it should attempt to "Auto-Heal" (restore defaults or regenerate) before Proceeding or Halting.
 
 ### C21 — Project Ventilation (Analyze)
 
@@ -306,7 +274,7 @@ This project deliberately authors L1 concept specifications ahead of implementat
 
 ### C29 — SDD Engine as Provisional Scaffolding
 
-The SDD engine (`.magic/`, `workflows/`, `skills/`, `rules/`) and the `.design/` specification layer are **build scaffolding for Cronus, not part of the Cronus product or its core**. They exist to drive the project's initial-stage implementation and are provisional: once Cronus is capable enough to host its own development (self-application / dogfooding), the product itself supersedes this external engine as the tool that carries the project forward. This convention records the *ontological status* of the scaffolding; C1 governs how it is safely modified and the engine's own containment rule (`rules/magic.md` §6, the Code ↔ SDD boundary) governs how product artifacts must avoid referencing it — this rule is the shared rationale beneath both.
+The SDD engine (`.magic/`, `workflows/`, `skills/`, `rules/`) and the `.design/` specification layer are **build scaffolding for Cronus, not part of the Cronus product or its core**. They exist to drive the project's initial-stage implementation and are provisional: once Cronus is capable enough to host its own development (self-application / dogfooding), the product itself supersedes this external engine as the tool that carries the project forward. This convention records the *ontological status* of the scaffolding; the engine's own rules govern how it is modified (`rules/magic.md`: the engine directories are read-only for ordinary work) and how product artifacts must avoid referencing it (`rules/magic.md` §6, the Code ↔ SDD boundary) — this rule is the shared rationale beneath both.
 
 1. **Not product, not core**: no shipped product artifact (source, binaries, user-facing docs, release bundles) may depend on, embed, or require the SDD engine or `.design/` to function. The product MUST remain fully operational and self-describing without them — a release that excludes `.design/` and the engine directories loses no product capability.
 2. **Scaffolding, handled as scaffolding**: the engine is a means, not a deliverable. It is maintained to serve implementation and MUST NOT be elevated into the product's own architecture, feature set, or public surface.
@@ -319,12 +287,22 @@ New user-observable behaviour ships **together with** the usage-simulation scena
 1. **Authoring is part of the change, not a follow-up.** A scenario written afterwards is written against what was built rather than against what was meant.
 2. **Discovery and guarding are separate instruments.** A defect a scenario finds is pinned by a cheap deterministic test before its finding closes; an expensive free-route run is never the only thing guarding a known defect.
 3. **A run reports; it does not repair.** Findings are evidence, and fixing them is a separate, separately-authorized act.
-4. **Distinct from C11.** `magic.simulate` is an engine-validation tool for the scaffolding; this rule governs simulation of the *product's own* user-facing surfaces and survives the scaffolding's removal (C29).
+4. **Distinct from engine simulation.** Validating the scaffolding itself is the engine's concern and outside this project's rules; this rule governs simulation of the *product's own* user-facing surfaces and survives the scaffolding's removal (C29).
+
+### C31 — Domain-Only Marker
+
+A spec whose domain logic and tests exist but which no command, screen or runtime reaches is **not complete**, and `PLAN.md` says so rather than ticking it. The checkbox convention (C10) gains one state and one tag:
+
+1. **`[/]` on a spec line** means *built in part*; the line states what is missing. **`domain-only`** is the common case: the logic is built and tested, and nothing a person or an agent can use reaches it. `[x]` on a spec means *built and reachable* — a person, or the surface the spec names, can use it.
+2. **The mark is on the spec, not on the phase.** A Done phase stays Done at its delivered scope; the delta that completes a `[/]` spec is a line item in a later phase, never a reopening of the Done one.
+3. **Auto-revert.** When the surface lands the spec returns to `[x]` and the tag is dropped, as C28.4 does for `concept-only`.
+4. **Honesty over suppression.** The mark exists to make the logic-to-surface gap visible on every planning pass (INV-9 of `l1-architecture`: a ticked box must not imply a capability that cannot be reached). It applies to L2 specs; L1 specs carry `concept-only` (C28).
 
 ## Document History
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.8.0 | 2026-10-22 | Amendments decided in the design-layer audit survey (the person's decisions): §1 requirement-ID prefixes are unique across a workspace; §2 a non-blocking open point may remain in a Stable spec as a marked TBD naming its owner or trigger (C13.3 already prescribed the marker; the old wording forbade it); §5 now says what counts as implementation code — `rust`, `sql`, `bash` and other executable fences become pseudo-code, data-format examples keep their own fence — and the specs that carried such blocks were rewritten; C6 follows C27: the agent decides and narrates a `[DR]` instead of asking which Stable specs enter the plan, and a Stable spec not pulled in becomes a `Planned` or `Held` phase, never a Backlog entry; C1, C11, C14, C17 and C20 removed — they govern editing the vendored engine (read-only in this project), cite a workflow and a file this project does not have, and are the engine's own protocol; C29 and C30 reworded where they cited them; new C31 — Domain-Only Marker (`[/]`, `domain-only`) so a ticked box means reachable. Numbers are not reused. |
 | 1.7.1 | 2026-09-24 | Patch — C29 cited "§6 (SDD Reference Containment)", a section this file does not have (§6 here is Relations Rules); the citation now names the engine's own containment rule (`rules/magic.md` §6), which is where reference containment is actually defined. No requirement changed. |
 | 1.7.0 | 2026-09-11 | Added C30 — Usage-Simulation Companion Artifact: user-observable behaviour ships with the scenario that exercises it (USM-10); intent fixed and route free; discovery pinned by a cheap deterministic test before a finding closes; a run reports and never repairs; explicitly distinct from C11 engine simulation. |
 | 1.6.0 | 2026-07-24 | Added C29 — SDD Engine as Provisional Scaffolding: the SDD engine (`.magic/`, `workflows/`, `skills/`, `rules/`) and the `.design/` layer are build scaffolding, not part of the Cronus product or core; provisional, to be superseded once Cronus self-hosts its own development; product artifacts must remain fully functional without them (the shared rationale beneath C1 and §6). Document History table introduced with this entry. |

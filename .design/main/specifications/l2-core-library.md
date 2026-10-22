@@ -1,6 +1,6 @@
 # Core Library (Foundation)
 
-**Version:** 1.2.2
+**Version:** 1.2.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -242,14 +242,12 @@ Validation: if a given ID does not start with the expected prefix, return an err
 IDs are **branded** at the type level so that a `SessionId` cannot be passed where a
 `MessageId` is expected:
 
-```rust
-// [REFERENCE]
-type SessionId  = Branded<String, "SessionId">;
-type MessageId  = Branded<String, "MessageId">;
+```text
+[REFERENCE]
+SessionId = branded text "SessionId"
+MessageId = branded text "MessageId"
 
-impl SessionId {
-    pub fn ascending(given: Option<&str>) -> Result<Self> { /* prefix: "ses" */ }
-}
+SessionId.ascending(given: optional text) -> SessionId | error   // prefix: "ses"
 ```
 
 Cross-entity operations (e.g., "which messages belong to session X") use the unbranded
@@ -312,7 +310,7 @@ not own are treated as opaque values and forwarded without transformation.
 ## 5. Drawbacks & Alternatives
 
 - **C-ABI surface is verbose:** mitigated by generating bindings; the embeddability benefit (INV-1) justifies it.
-- **Alternative — TypeScript/Node core:** richer AI SDK ecosystem but high memory footprint and poor mobile embedding; rejected for the foundation. <!-- TBD: confirm whether a thin Go alternative core is worth a spike given repo history -->
+- **Alternative — TypeScript/Node core:** richer AI SDK ecosystem but high memory footprint and poor mobile embedding; rejected for the foundation. **Resolved as built (2026-10-22):** the whole workspace is Rust and the core shipped in Rust; a Go alternative core is not pursued.
 
 ## Canonical References
 
@@ -328,3 +326,5 @@ not own are treated as opaque values and forwarded without transformation.
 | 1.2.0 | 2026-07-04 | Manager initialization as dependency waves (§4.5): independent managers initialize concurrently, cold start bounded by the longest dependency path; idle watchers consolidated into one multiplexed timer task. History table added with this entry. |
 | 1.2.1 | 2026-07-29 | Completeness fix: extended the §3 Invariant-Compliance table to INV-8/INV-9/INV-10, which entered `l1-architecture` after this table (INV-1…INV-7) was written, restoring the L1 "all invariants addressed" gate. INV-8 — the core library IS the modular monolith (in-process modules, one deployable), partitioned by `l2-crate-topology` without a process boundary. INV-9 — the core is the honest referent frontends bind to (no half-capabilities). INV-10 — the core owns the inward domain↔adapter seam (domain depends on contract types; adapter representations mapped at the seam). No new design or requirement; stays Stable. |
 | 1.2.2 | 2026-09-23 | Consistency pass (2026-09-23): §2 specified "Async via Tokio" while the tree has no async runtime and `l2-model-runtime` builds its transport synchronous by design — the core is now specified synchronous with bounded worker threads (the manager example drops `.await`). The "AI gateway: llama.cpp via FFI" row contradicted the model runtime (loopback REST providers on desktop/server, FFI only on mobile) — replaced by the model-runtime row; the board row no longer lists archive as a state (KAN-1). Typed IDs: a clock stepped backwards or more than 4 096 IDs in a millisecond could repeat or reorder IDs — the timestamp is monotonic and the counter never spills; no prefix may prefix another; `grn` added. Thinking-level changes by hooks stay inside the user's effort envelope (RTG-11). The TypeScript declaration-merging taxonomy put the agent loop's message types in a TS package (INV-2) — custom message types are declared in the extension manifest and schema-validated by the core. |
+| 1.2.3 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one Rust block (the typed-ID sketch) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
+| 1.2.4 | 2026-10-22 | The Go-alternative-core TBD is closed as built: the whole workspace is Rust and the core shipped in Rust (design-layer audit, 2026-10-22). |

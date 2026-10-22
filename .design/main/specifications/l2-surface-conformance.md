@@ -1,6 +1,6 @@
 # Surface Conformance Corpus
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-parity.md
@@ -163,6 +163,15 @@ Recorded at the invocable that owns each, and corrected separately after converg
 
 The first and third are correctness defects, not stylistic ones: the first misreports failure as success to any script that consumes it, and the third can emit output a parser rejects. Both are nonetheless preserved through convergence and corrected after it, because a diff that unifies and corrects at once is one neither audience can read.
 
+**Status of the four residuals `[ADDED v1.2.1]`**, read against the tree on 2026-10-22:
+
+| Residual | Status | Evidence |
+| --- | --- | --- |
+| Unavailability reported as emptiness | **Corrected at the registered handlers; not re-verified site by site.** The distinct `Outcome::Unavailable { reason }` variant exists and the handlers read in this audit use it (e.g. the knowledge verbs when the store cannot be opened). A listing that swallows a store error may remain at a site the audit did not open. | `crates/core/src/invocable_bootstrap/knowledge.rs` |
+| Output format ignored | **Corrected** by the command-surface audit-closure phase: the sites that discarded the requested format were fixed at their owners (`ext list`, `ext scan`, `registry show`, the requires-approval branch of `activation enable`). | that phase's task record |
+| Structured output hand-built | **Corrected** by the same phase: one full escaper (`crates/cli/src/output.rs`, `json_escape`) replaced the two weak duplicates, and a genuinely unescaped agent name in `registry list --format json` was found and fixed. | `cli_smoke.rs` JSON round-trip tests |
+| Redaction fed nothing | **Open.** Every surface still constructs an empty secret list, so masking by value is inert. `l2-diagnostic-log` LL-7 rests on the field-name denylist for the same reason. | `l2-invocable-registry` §4.12 |
+
 ## 5. Implementation Notes
 
 1. **Fixture crate and harness**, with the three assertion families and no consumers yet.
@@ -196,6 +205,7 @@ The first and third are correctness defects, not stylistic ones: the first misre
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | §4.7 gains a status table for the four recorded residuals, read against the tree on 2026-10-22: unavailability-as-emptiness corrected at the registered handlers (not re-verified site by site), output-format-ignored and hand-built-structured-output corrected by the command-surface audit-closure work, redaction-fed-nothing still open. Found by the design-layer audit: the section still listed the corrected defects as live. |
 | 1.2.0 | 2026-10-21 | The rendering obligation of §4.4 is realized for the read-only installation verbs: shared installation fixtures (verb, installation state, signal, facts), a harness function and report shape in the conformance crate, and a registration in the command line's test target that runs each fixture through the program and through the terminal UI's composed registry, and watches the disk for any trace an `Inspect` verb leaves. The `Install` and `Recompose` halves of the live-effect obligation are stated as not yet covered. |
 | 1.1.0 | 2026-10-08 | The terminal UI now projects `Installation` (`l2-invocable-registry` §4.7). §4.4 gains four obligations inside the existing families: the terminal UI's installation set is a subset of the command line's with every gap declared; one group-and-verb name per surface projection across loci; each installation verb's live-effect class pinned to an observable effect, including the typed refusal of a `Recompose` verb while work it would alter is in flight and the raised class of an argument-raised invocation; the same semantic outcome behind the command line's exit signal and the terminal UI's inline block, partial success included. §4.6 names installation rendering and consent collection, and the terminal UI's `tui` exclusion, as legitimate per-surface differences. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): SP-12 and SP-13 compliance rows added (pending realization): descriptor-only projections and an `Unknown` fixture per surface. The surface-set assertion predated locus filtering and reachability — it now counts the loci a surface does not take as declared exclusions and omits HumanOnly invocables from agent-facing projections (REA-1). |

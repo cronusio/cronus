@@ -1,6 +1,6 @@
 # Service Activation (OS Realization)
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-background-activation.md
@@ -67,30 +67,25 @@ The concept spec fixes *what* activation means and *who* may grant it. What rema
 
 OS registration opens registries, writes plists, and shells out to service managers — infrastructure by every definition, and therefore not domain code. Per the crate-minting rule of [l2-crate-topology.md](l2-crate-topology.md) §4.4 (a module earns a crate when it requires an infrastructure dependency the domain tier may not hold), registration lives behind a seam:
 
-```rust
-// [REFERENCE] the seam, in the contract crate — no OS types cross it
-pub enum ActivationMode { Login, System }
+```text
+[REFERENCE] the seam, in the contract crate — no OS types cross it
+ActivationMode = Login | System
 
-pub enum ActivationState {
-    Inactive,
-    Active(ActivationMode),
-    RequiresApproval(ActivationMode),   // registered, vetoed by the user or OS (BA-8)
-    Unknown { reason: String },         // the facility could not be queried (BA-8)
-}
+ActivationState =
+    Inactive
+  | Active(ActivationMode)
+  | RequiresApproval(ActivationMode)     // registered, vetoed by the user or OS (BA-8)
+  | Unknown { reason: text }             // the facility could not be queried (BA-8)
 
-pub trait ActivationRegistry: Send + Sync {
-    /// What this host can offer. `Unsupported` on a spoke (BA-10).
-    fn capabilities(&self) -> ActivationCapabilities;
-
-    /// Read the OS. Never a cached value (BA-8).
-    fn observe(&self) -> ActivationState;
-
-    /// Remove the other mode, verify, then register. May prompt for elevation (BA-6).
-    fn enable(&self, mode: ActivationMode) -> Result<()>;
-
-    /// Remove and verify absence (BA-7).
-    fn disable(&self) -> Result<()>;
-}
+interface ActivationRegistry             (shared across threads)
+  capabilities() -> ActivationCapabilities
+      // what this host can offer; Unsupported on a spoke (BA-10)
+  observe() -> ActivationState
+      // read the OS, never a cached value (BA-8)
+  enable(mode: ActivationMode) -> ok | error
+      // remove the other mode, verify, then register; may prompt for elevation (BA-6)
+  disable() -> ok | error
+      // remove and verify absence (BA-7)
 ```
 
 The domain tier holds the policy — mutual exclusion, consent bookkeeping, the transition state machine — and calls the seam. The adapter (`cronus-activation-os`, or an equivalent platform crate) holds the OS calls. The domain never names a registry key.
@@ -255,6 +250,7 @@ The command is human-invoked by construction; it is not, and must never become, 
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.4 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one Rust block (the activation seam) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): BA-4's structural barrier was stated as a filesystem deny list, but `HKCU\\…\\Run` is a registry value and per-user scheduled tasks, macOS login items, XDG autostart, shell startup files and user crontabs are persistence paths a filesystem scope does not cover — the baseline denies them at the level they live at, a platform gap is reported as a stated gap (SEC-12), and a write to any of them is an AG-10 privileged sink. The BA-3 row named a `None` state the seam does not have — it is `Inactive`. |
 | 1.0.3 | 2026-10-21 | §4.7 and the BA-11 row point at `l2-engine-endpoint.md`, which realizes the attach rule, and record two refinements it makes to the sketch: the record is a separate file from the lock, and a short-lived process attaches or stands alone rather than electing itself engine. |
 | 1.0.1 | 2026-07-17 | Promoted RFC→Stable via Post-Update Review (`@role:spec-critic` + `@role:prompt-engineer`). Resolved all three open questions with design decisions (not deferrals): (1) **non-systemd Linux** — system-scoped reports `Unsupported` (BA-10), login-scoped falls back to the init-agnostic XDG autostart entry (`~/.config/autostart/*.desktop`), so the refusal is per-mode not whole-host (§2, §3 BA-10, §4.4); (2) **`tauri-plugin-autostart`** — rejected per the std-first dependency policy (covers only login-scoped, inverts the dependency direction by pulling Tauri/shell into a CLI-linked adapter); per-OS registration is implemented directly (§5); (3) **Windows S4U** — the design (S4U over Service, `RunLevel = Limited`) is settled; only the empirical At-startup launch-timing remains, reframed as a build-time validation gate with a documented `At log on` fallback (§4.2, §5 note 7), never a design blocker. Reconciled the §2 divergence: `l2-technology-stack` amended 1.2.0→1.2.1 ("Windows service" → "Windows S4U scheduled task"), so the two specs now agree; the callout is updated to record the resolution. Stable = design agreed; empirical S4U timing validated during implementation. |

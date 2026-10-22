@@ -1,6 +1,6 @@
 # Program Lifecycle (Installation, Command Registration, Update)
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-program-lifecycle.md
@@ -42,8 +42,8 @@ The layout says where the program lives but no specification says how it gets th
 | PLC-4 Never interrupts work | `update apply` is an installation verb of class `Recompose` applied by relaunch: it takes the work gate (`l2-engine-endpoint` §4.7) and is refused while work it would alter is in flight, naming that work; `--when idle` and `--when next-start` record a pending switch instead, carried out by the engine at the next idle point or by the next start before composition. |
 | PLC-5 Atomic, automatic way back | §4.4: the staged release is switched in by rename-aside, the previous release kept under `<program>/previous/`; the relaunched program runs the post-switch health check before opening state; a failure or a crash before the check passes switches back on the next start and reports it. `update rollback` returns explicitly while `previous/` exists. Activation and command registrations point at stable paths, so the switch leaves them valid. |
 | PLC-6 Forward once, never backwards | The new program's first open of each store takes the STO-9 safety copy and migrates; `install.json` records the release and the backup that preceded the migration. `update rollback` after a migration restores that backup through `l2-backup` and states first, in plain words, what is lost (work since the migration). Every store already refuses a newer version (`l2-filesystem-layout` STO-9 row). |
-| PLC-7 Announced, never pressed | The engine checks at most once per day and announces a newer release once, as an inbox notice and a status-line marker: version, plain-language notes in the active locale (`notes.<locale>`, English fallback), and a security marker. Dismiss, postpone (7 days) and "turn off checks" are offered; no countdown, no modal. `update.auto = true` (off by default) stages and applies at the next idle point under PLC-4. |
-| PLC-8 Private, quiet | The check is one HTTPS GET of the manifest with a fixed user-agent naming only the product; no query string, no identifier, no cookie. Offline or an unreachable host yields `could-not-check` with the time of the last successful check; the next attempt waits for the next daily slot. `update.check = false` turns checks off. |
+| PLC-7 Announced, never pressed | `[MODIFIED v1.2.0]` Only when `update.check` is on (§4.1.1), the engine checks at most once per day and announces a newer release once, as an inbox notice and a status-line marker: version, plain-language notes in the active locale (`notes.<locale>`, English fallback), and a security marker. Dismiss, postpone (7 days) and "turn off checks" are offered; no countdown, no modal. A person who never turned checks on sees no announcement and no `update check` traffic; `update status` reports the installed release and the time of the last check, or that none has run. `update.auto = true` (off by default) stages and applies at the next idle point under PLC-4. |
+| PLC-8 Private, quiet | The check is one HTTPS GET of the manifest with a fixed user-agent naming only the product; no query string, no identifier, no cookie. Offline or an unreachable host yields `could-not-check` with the time of the last successful check; the next attempt waits for the next daily slot. `[MODIFIED v1.2.0]` `update.check` is `false` until the person answers the one-time question (§4.1.1); setting it back to `false` turns checks off again. |
 | PLC-9 Channels and skew | `update channel <stable\|pre-release>` (default `stable`) is an `Install` verb; the program never changes it. Versions are SemVer starting at 0.1.0. After a switch, the engine's peer-compatibility verdict (PCO-14) is what an older spoke or extension sees on connect. |
 | PLC-10 Owner updates | `install.json` records `origin` (§4.1). For `package-manager:<name>`, `store` and `source`, `update check` still reports a newer release but `apply` is refused with the owner's command (`winget upgrade Cronus`, `scoop update cronus`, `brew upgrade cronus`, the distribution's package command) or the store page; a source build reports `source build — not self-updating`. |
 | PLC-11 Uninstall keeps the state | §4.5: the Windows uninstaller and `cronus uninstall` (archive installs) disable activation, run `shell unregister`, and remove `<program>/`; `<state>/` stays unless `--remove-state` was chosen, which offers `backup create` first. Every registration removed is listed in the outcome. |
@@ -73,11 +73,29 @@ The layout says where the program lives but no specification says how it gets th
   "release":  "0.1.3",
   "previous": "0.1.2" | null,          // present while <program>/previous/ is kept
   "pending":  { "release": "0.1.4", "when": "idle" | "next-start" } | null,
-  "migration_backup": "<backup id>" | null   // the STO-9 copy taken by this release's first open
+  "migration_backup": "<backup id>" | null,  // the STO-9 copy taken by this release's first open
+  "update_check": true | false | null        // the installer's answer to the §4.1.1 question; null = never asked
 }
 ```
 
 A package or store installation writes `origin` at packaging time; a source build has no `install.json` and is treated as `source`.
+
+#### 4.1.1 The update-check question `[ADDED v1.2.0]`
+
+An update check is off until the person says otherwise (`l1-program-lifecycle` §2, decided 2026-10-22; DN-1, DN-4, HSO-4). The question is asked exactly once, in plain words, with the box **not** ticked:
+
+```text
+[REFERENCE]
+question  : "Tell me when a new version is available?"
+detail    : "Once a day Cronus asks the release server for the latest version number.
+             It sends nothing about you, your projects or your work. If you say no,
+             Cronus never contacts the server, and you will only learn about a
+             new version — security fixes included — by checking yourself."
+choices   : [ ] Yes, check once a day        (not pre-selected)
+            [x] No, never                    (the answer when nothing is chosen)
+```
+
+Where it is asked depends on the route. The product installer (NSIS, `.dmg`, AppImage, MSI) shows it on its options page and writes the answer into `install.json` as `update_check` (`true`, `false`, or absent when it was never asked). Every other route — archive, package manager, store, source build — has no installer page, so the engine asks at the first **interactive** start, when `update_check` is absent and the `update.check` setting has never been written. The answer is stored as the `update.check` setting (state tier) and the question is never asked again; `update status` and the settings surface let the person change it at any time. A non-interactive start — a pipe, automation, continuous integration, a service start with no terminal — never asks and never checks, which is also the state of a person who has never been asked.
 
 ### 4.2 Release manifest
 
@@ -163,7 +181,7 @@ rollback():
 | Command registration | `cronus shell status \| register [--completion] \| unregister` | `/shell …` | Inspect / Install |
 | Uninstall (archive installs) | `cronus uninstall [--remove-state]` | — (answered with the command) | Recompose |
 
-Settings: `update.check` (default `true`), `update.auto` (default `false`), `update.channel` (default `stable`).
+Settings: `update.check` (default `false` until the §4.1.1 question is answered — `[MODIFIED v1.2.0]`, was `true`), `update.auto` (default `false`), `update.channel` (default `stable`).
 
 ## 5. Drawbacks & Alternatives
 
@@ -187,3 +205,4 @@ Settings: `update.check` (default `true`), `update.auto` (default `false`), `upd
 | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Initial realization of `l1-program-lifecycle`: installation routes and `install.json` (origin, scope, channel, pending switch, kept previous, migration backup); a signed per-channel manifest with per-artifact digests and plain-language notes in English and Russian; command registration per OS (Windows per-user path plus the settings broadcast, a symlink into `~/.local/bin` elsewhere, profile edits only inside a marked block) with a status that resolves `cronus` as a new shell would; staged switch by rename-aside, previous release kept 14 days, post-switch health check with automatic return, explicit rollback restoring the migration backup; uninstall keeping the state tier; the `update`, `shell` and `uninstall` installation verbs with their effect classes. All Pending in code. Open: release-key rotation. |
 | 1.1.0 | 2026-10-22 | Invariant Compliance rows for PLC-13 (registrations name the stable entry) and PLC-14 (announcement timing: terminal only, never delays the command, channel lag, per-extension throttle). |
+| 1.2.0 | 2026-10-22 | `update.check` defaults to `false` (was `true`) and the question that turns it on is specified: new §4.1.1 (asked once, unticked, plain words naming what is sent and what declining costs; the installer asks on its options page and records `update_check` in `install.json`, every other route asks at the first interactive start; a non-interactive start never asks and never checks); `install.json` gains `update_check`; the PLC-7 and PLC-8 rows follow; `update status` reports the time of the last check, or that none has run. Follows the L1 decision of the same date. |

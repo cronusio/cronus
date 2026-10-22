@@ -156,7 +156,7 @@ fn register_add_url(registry: &mut InvocableRegistry, dispatcher: &mut Dispatche
     let invocable = Invocable {
         id: id.clone(),
         name: "Add Url",
-        summary: "Ingest a web page by URL. http:// only.",
+        summary: "Ingest a web page by URL. http:// only; local and private addresses are refused.",
         group: "knowledge",
         locus: Locus::Semantic,
         binders: vec![

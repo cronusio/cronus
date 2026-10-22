@@ -1,6 +1,6 @@
 # Remote Attachment
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -33,7 +33,7 @@ The obvious shortcuts are each a hazard. Opening the hub's endpoint to the netwo
 
 ## 2. Constraints & Assumptions
 
-- **Assumption (forecast):** "remote control between platforms, from other devices" means the person controls their own hub from another device; one Cronus operating another machine's desktop is not in scope. Runner-up: remote desktop control of other machines by the office. Override: `/magic.spec amend l1-remote-attachment "office operates remote machines"`.
+- **Confirmed (2026-10-22, the person's decision):** "remote control between platforms, from other devices" means the person controls their own hub from another device; one Cronus operating another machine's desktop is not in scope. Not taken: remote desktop control of other machines by the office.
 - The hub is a host that can stay up (INV-4); the remote device may be a phone that cannot.
 - There is no product-operated server; any relay is the person's own (SY-8).
 - A remote device can be lost or borrowed; its access must be revocable at once from the hub.
@@ -116,3 +116,4 @@ revoke(device):
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — RMA-1…RMA-11, from the user's backlog (remote control across platforms, from other devices, as a plugin): an extension off until enabled at the hub; explicit per-device pairing revocable at once; the remote surface a spoke over the same dispatch contract; a narrower default scope (view, converse) with remote approval a per-device grant and installation verbs and irreversible approvals never remote; an end-to-end encrypted link the person owns; honest staleness and pending actions; one conversation across devices; skew verdicts; attached devices and remote actions always visible; no false promises about a sleeping hub; a cache, never a replica. Concept-only until an L2 is planned. |
+| 1.0.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

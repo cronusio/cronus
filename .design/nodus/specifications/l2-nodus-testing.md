@@ -1,6 +1,6 @@
 # Nodus DSL Testing — Rust Implementation
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** [l1-nodus-testing.md](l1-nodus-testing.md)
@@ -14,12 +14,18 @@ diagnostics for test-related issues.
 
 ## Related Specifications
 
-- [l1-nodus-testing.md](l1-nodus-testing.md) — parent contract; defines NT-1…NT-11 invariants
+- [l1-nodus-testing.md](l1-nodus-testing.md) — parent contract; defines NT-1…NT-12 invariants
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — Rust runtime module structure and `Executor`
 - [l1-nodus-language.md](l1-nodus-language.md) — `@test:` block as a language-level declaration; **NL-6** dual-representation (compact → human → compact must be AST-equal), the invariant §10.4's round-trip rule realizes for `TestBlock`
 - [l2-nodus-control-flow.md](l2-nodus-control-flow.md) — its §3 NL-6 row governs the same round-trip guard for control-flow statements; §10.5 records why `@test:` bodies were initially outside that guard's assertion scope
 - [l1-nodus-portability.md](l1-nodus-portability.md) — [ADDED v1.3.0] NT-11 differential parity is the executable form of LP-3 (the two-conforming-host requirement); §11 records why the crate has no second path for it to diff
 - [l2-nodus-portability.md](l2-nodus-portability.md) — [ADDED v1.3.0] its §4.8 LP-3 admission records are a *different* two-host comparison (a satisfying host vs. a non-satisfying one, asserting **divergence**) from NT-11's parity harness (two conforming hosts, asserting **equivalence**) — not reusable for this invariant
+
+## Motivation
+
+A workflow is a program that is trusted with real effects, and until it declares what it expects it can only be trusted on faith. The language gives an author `@test:` blocks to state an input and the final values a run must produce (`l1-nodus-testing`); this specification is the concrete Rust realization of that contract, so a test is a run of the real executor judged against what the author wrote — not a second, hand-built model of the workflow that can drift from it.
+
+The design choices that follow come from three constraints: each block runs in a fresh context so one test cannot leak into the next (NT-1), and its model calls receive stubbed answers so a test never reaches an external provider (NT-5); the run's final variable environment must be exposed so that an assertion can be made about it (NT-3); and the declaration must survive the compact ↔ human round trip unchanged (NL-6), so the AST keeps what the author wrote. A block that asserts nothing is reported by the `W009` advisory rather than passing silently.
 
 ## 1. Module Map
 
@@ -34,13 +40,13 @@ diagnostics for test-related issues.
 
 ## 2. TestBlock AST Node
 
-```rust
-pub struct TestBlock {
-    pub name: String,
-    pub input: Vec<(String, String)>,    // field_name → raw_value_string
-    pub expected: Vec<(String, String)>, // variable_name → raw_expected_string
-    pub tags: Vec<String>,               // tag identifiers
-    pub raw_lines: Vec<String>,          // backward-compat for transpiler
+```text
+TestBlock {
+  name: text
+  input: list of (field_name, raw_value_string)
+  expected: list of (variable_name, raw_expected_string)
+  tags: list of text                      // tag identifiers
+  raw_lines: list of text                 // backward-compat for transpiler
 }
 ```
 
@@ -66,15 +72,15 @@ both scan it textually — so it is not a transpiler-only artifact and cannot be
 
 `executor::RunResult` exposes the full post-execution variable environment:
 
-```rust
-pub struct RunResult {
-    pub workflow: String,
-    pub status: Status,
-    pub out: Value,
-    pub log: Vec<LogEntry>,
-    pub errors: Vec<RuntimeError>,
-    pub flags: Vec<String>,
-    pub vars: HashMap<String, Value>, // key without '$': "out", "confidence", etc.
+```text
+RunResult {
+  workflow: text
+  status: Status
+  out: Value
+  log: list of LogEntry
+  errors: list of RuntimeError
+  flags: list of text
+  vars: map of text to Value              // key without '$': "out", "confidence", etc.
 }
 ```
 
@@ -83,14 +89,14 @@ It is the authoritative source for `expected:` assertions (NT-3).
 
 ## 4. Public API
 
-```rust
+```text
 // Run all @test: blocks in declaration order. Returns an empty report for
 // workflows with no test blocks (not an error).
-pub fn test(source: &str, filename: &str) -> Result<TestReport, Error>
+test(source: text, filename: text) -> TestReport | error
 
 // Like test(), but only runs blocks whose tags list intersects tag_filter.
 // If tag_filter is empty, all blocks run (NT-6).
-pub fn test_with_tags(source: &str, tag_filter: &[&str]) -> Result<TestReport, Error>
+test_with_tags(source: text, tag_filter: list of text) -> TestReport | error
 ```
 
 Both functions are re-exported from the crate root.
@@ -99,17 +105,17 @@ Both functions are re-exported from the crate root.
 
 ### TestReport / TestResult
 
-```rust
-pub struct TestReport {
-    pub results: Vec<TestResult>, // declaration order (NT-7)
-    pub passed: usize,
-    pub failed: usize,
+```text
+TestReport {
+  results: list of TestResult             // declaration order (NT-7)
+  passed: count
+  failed: count
 }
 
-pub struct TestResult {
-    pub name: String,  // @test: block name
-    pub passed: bool,
-    pub message: String, // "ok" or first-failing-assertion description
+TestResult {
+  name: text                              // @test: block name
+  passed: bool
+  message: text                           // "ok" or first-failing-assertion description
 }
 ```
 
@@ -140,12 +146,10 @@ invariant enforced by `TestReport::from_results`.
 
 ## 6. Assertion Evaluator
 
-```rust
-fn evaluate_test_block(
-    vars: &HashMap<String, Value>,
-    status: &Status,
-    expected: &[(String, String)],
-) -> (bool, String)
+```text
+evaluate_test_block(vars: map of text to Value, status: Status,
+                    expected: list of (variable_name, raw_expected_string))
+    -> (passed: bool, message: text)
 ```
 
 Semantics:
@@ -209,7 +213,7 @@ into a hard validate-before-run failure on files that parse today. Note the inte
 in source but an empty one in the AST, so it emits **both** `W015` (the pairs were dropped) and
 `W009` (nothing is asserted). That pairing is the intended signal, not a duplicate report.
 
-## 8. NT-1…NT-11 Compliance Table
+## 8. NT-1…NT-12 Compliance Table
 
 | Invariant | Status | Implementation |
 | --- | --- | --- |
@@ -386,6 +390,8 @@ with no further design work here.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.6.0 | 2026-10-22 | New Motivation section (RULES §5 requires one and this spec had none); the compliance heading and the parent-contract line say NT-1…NT-12 — the table already carried the NT-12 row, the headings still said NT-11 (design-layer audit, 2026-10-22). |
+| 1.5.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): five Rust blocks (the test block, the run result, the entry points, the report, the evaluator) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.5.0 | 2026-10-22 | Invariant Compliance row for NT-12 (a block may declare the outcome it expects through `@status` / `@error`), Pending; the evaluator already has the run status in hand. |
 | 1.4.0 | 2026-09-24 | Realization sync (2026-09-24): The test entry points validate before any block runs; `E023` rejects an `input:` key the workflow does not declare and an `expected:` variable that can never exist (NT-9); a block passes only when its assertions hold and the run ended `Ok` (NT-4). NT-2 and NT-9 stay Partial on one point: literal kind is still lost, so an `input:` value is typed from its spelling rather than its field's declared type. |
 | 1.3.1 | 2026-09-24 | Consistency pass (2026-09-24): Four spec-vs-code gaps recorded as pending. The test entry points never run the validator, so a workflow carrying `E015` still executes its blocks. An undeclared `input:` key is dropped rather than rejected (NT-9). Literal kind is lost: a quoted value is re-typed from its spelling and the `@in:` declared type is ignored (NT-2 now Partial). A block with non-empty `expected:` passes on `Status::Partial`, contrary to L1 §4.4. §5's parallel-safe-stub paragraph claimed `~PARALLEL` test blocks exercise real concurrent scheduling; branches run sequentially and `~JOIN` binds an empty map (`l2-nodus-runtime` §4.4). |

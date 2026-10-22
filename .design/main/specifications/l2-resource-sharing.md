@@ -1,6 +1,6 @@
 # Resource Sharing (Implementation)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-resource-sharing.md
@@ -45,113 +45,72 @@ Each resource type (skills, tools, notes, channels, knowledge) needs sharing sup
 
 ### 4.1 Schema
 
-```sql
+```text
 [REFERENCE]
-CREATE TABLE access_grant (
-    id             TEXT PRIMARY KEY,         -- grn-prefixed typed ID
-    resource_type  TEXT NOT NULL,            -- 'knowledge'|'skill'|'tool'|'note'|'channel'|'file'|'prompt'
-    resource_id    TEXT NOT NULL,
-    principal_type TEXT NOT NULL,            -- 'user'|'group'|'public'
-    principal_id   TEXT NOT NULL,            -- user_id | group_id | '*'
-    permission     TEXT NOT NULL,            -- 'read'|'write'
-    created_at     INTEGER NOT NULL,         -- epoch nanoseconds
+table access_grant
+  id  text, primary key   // grn-prefixed typed ID
+  resource_type  text, required   // 'knowledge'|'skill'|'tool'|'note'|'channel'|'file'|'prompt'
+  resource_id  text, required
+  principal_type  text, required   // 'user'|'group'|'public'
+  principal_id  text, required   // user_id | group_id | '*'
+  permission  text, required   // 'read'|'write'
+  created_at  integer, required   // epoch nanoseconds
+  unique (resource_type, resource_id, principal_type, principal_id, permission)
 
-    UNIQUE (resource_type, resource_id, principal_type, principal_id, permission)
-);
-
-CREATE INDEX ix_access_grant_resource ON access_grant (resource_type, resource_id);
-CREATE INDEX ix_access_grant_principal ON access_grant (principal_type, principal_id);
+index ix_access_grant_resource on access_grant(resource_type, resource_id)
+index ix_access_grant_principal on access_grant(principal_type, principal_id)
 ```
 
 ### 4.2 Rust Types
 
-```rust
+```text
 [REFERENCE]
-/// Principal type discriminant — compile-time checked resource scope.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResourceKind {
-    Knowledge,
-    Skill,
-    Tool,
-    Note,
-    Channel,
-    File,
-    Prompt,
-}
+// Principal type discriminant — checked resource scope.
+ResourceKind = Knowledge | Skill | Tool | Note | Channel | File | Prompt
+PrincipalKind = User | Group | Public
+Permission = Read | Write               // Write implies Read; ordered Read < Write
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrincipalKind {
-    User,
-    Group,
-    Public,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Permission {
-    Read,
-    Write, // implies Read
-}
-
-pub struct AccessGrant {
-    pub id            : GrantId,
-    pub resource_type : ResourceKind,
-    pub resource_id   : String,
-    pub principal_type: PrincipalKind,
-    pub principal_id  : String,       // user_id | group_id | "*"
-    pub permission    : Permission,
-    pub created_at    : i64,
+AccessGrant {
+  id: GrantId
+  resource_type: ResourceKind
+  resource_id: text
+  principal_type: PrincipalKind
+  principal_id: text                    // user_id | group_id | "*"
+  permission: Permission
+  created_at: timestamp
 }
 ```
 
 ### 4.3 Core Query Functions
 
-```rust
+```text
 [REFERENCE]
-/// Check whether `user_id` holds at least `required` permission on resource.
-/// Checks: owner flag → direct user grant → group grant → public grant.
-pub fn has_access(
-    store       : &dyn GrantStore,
-    user_id     : &str,
-    is_owner    : bool,        // caller pre-computes ownership
-    resource_type: ResourceKind,
-    resource_id : &str,
-    required    : Permission,
-    groups      : &[GroupId],  // caller pre-fetches user's groups
-) -> Result<bool>;
+// Check whether user_id holds at least `required` permission on the resource.
+// Checks: owner flag → direct user grant → group grant → public grant.
+has_access(store: GrantStore, user_id: text,
+           is_owner: bool,                          // caller pre-computes ownership
+           resource_type: ResourceKind, resource_id: text,
+           required: Permission,
+           groups: list of GroupId)                 // caller pre-fetches the user's groups
+    -> bool | error
 
-/// Load all grants for a single resource.
-pub fn get_grants(
-    store        : &dyn GrantStore,
-    resource_type: ResourceKind,
-    resource_id  : &str,
-) -> Result<Vec<AccessGrant>>;
+// Load all grants for a single resource.
+get_grants(store, resource_type, resource_id) -> list of AccessGrant | error
 
-/// Batch-load grants for N resources in a single query (avoids N+1).
-pub fn get_grants_batch(
-    store        : &dyn GrantStore,
-    resource_type: ResourceKind,
-    resource_ids : &[&str],
-) -> Result<HashMap<String, Vec<AccessGrant>>>;
+// Batch-load grants for N resources in a single query (avoids N+1).
+get_grants_batch(store, resource_type, resource_ids: list of text)
+    -> map of resource_id to list of AccessGrant | error
 
-/// Set the complete grant list for a resource (replace-all semantics):
-/// delete all existing grants, insert the new set, emit audit events.
-/// Refuses with `NotAuthorized` unless `actor` owns the resource or holds `write`
-/// on it (RS-9) — a read holder cannot reach this function's effect.
-pub fn set_grants(
-    store        : &dyn GrantStore,
-    actor        : &Principal,
-    resource_type: ResourceKind,
-    resource_id  : &str,
-    grants       : &[GrantInput],
-) -> Result<()>;
+// Set the complete grant list for a resource (replace-all semantics):
+// delete all existing grants, insert the new set, emit audit events.
+// Refuses with NotAuthorized unless `actor` owns the resource or holds `write`
+// on it (RS-9) — a read holder cannot reach this function's effect.
+set_grants(store, actor: Principal, resource_type, resource_id, grants: list of GrantInput)
+    -> ok | error
 
-/// Remove all grants for a deleted resource (call on resource deletion,
-/// by the path that deletes the resource and has already authorized it).
-pub fn delete_grants_for_resource(
-    store        : &dyn GrantStore,
-    resource_type: ResourceKind,
-    resource_id  : &str,
-) -> Result<()>;
+// Remove all grants for a deleted resource (call on resource deletion,
+// by the path that deletes the resource and has already authorized it).
+delete_grants_for_resource(store, resource_type, resource_id) -> ok | error
 ```
 
 ### 4.4 Access Resolution Flow
@@ -175,11 +134,11 @@ graph TD
 
 When listing resources (e.g., the skill list endpoint returns 30 items), load all grants in one query:
 
-```sql
+```text
 [REFERENCE]
-SELECT * FROM access_grant
-WHERE resource_type = ?
-  AND resource_id IN (?, ?, ?, ...)
+select all from access_grant
+  where resource_type = <type>
+    and resource_id in (<id>, <id>, <id>, …)
 ```
 
 Then map each row into a `HashMap<resource_id, Vec<AccessGrant>>` for O(1) per-item enrichment. This is the primary pattern for eliminating N+1 in listing endpoints.
@@ -188,10 +147,10 @@ Then map each row into a `HashMap<resource_id, Vec<AccessGrant>>` for O(1) per-i
 
 Group membership is read once per request (or session) and passed to `has_access` as a pre-fetched slice:
 
-```rust
+```text
 [REFERENCE]
 // At request start:
-let user_groups: Vec<GroupId> = groups::get_user_groups(store, &user_id)?;
+user_groups = groups.get_user_groups(store, user_id)
 
 // Passed into every has_access call during the request.
 ```
@@ -236,5 +195,6 @@ Like every engine call, these functions are synchronous (`l2-core-library` §2).
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.2 | 2026-10-22 | Core Team | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): two SQL blocks (the access-grant table, the batch query) and three Rust blocks (the grant shapes, the access functions, the per-request group load) rewritten as pseudo-schema and pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.1 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): RS-9 (non-escalating grants, read-only read surface) was unmapped, and `set_grants` took no acting principal, so any caller could rewrite a resource's grants — it now requires the owner or a write holder, and the read surface exposes no mutating operation. The functions were async over an async SQL pool and lived in an `access-grants` crate the minting rule does not allow — synchronous, split between domain and `store-local` behind a `GrantStore` seam. The batch audit event lists every grant created and revoked (RS-7). Typed-ID prefix notation aligned with the ID system; section numbering corrected. |
 | 1.0.0 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

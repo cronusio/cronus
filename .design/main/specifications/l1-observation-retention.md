@@ -1,6 +1,6 @@
 # Observation Retention
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ This spec owns the *shape and honesty* of the retained record. What is measured 
 ## Related Specifications
 
 - [l1-operational-health.md](l1-operational-health.md) - The producer and primary consumer of the retained record; its trend windows (OH-4) and cost accounting (OH-6) are answered from these tiers.
-- [l1-anomaly-consensus.md](l1-anomaly-consensus.md) - Supplies the per-sample anomalous flag whose fraction a coarse point must preserve (OR-2/AC-3).
+- [l1-anomaly-consensus.md](l1-anomaly-consensus.md) - Supplies the per-sample anomalous flag whose fraction a coarse point must preserve (OR-2/ANC-3).
 - [l1-change-attribution.md](l1-change-attribution.md) - Ranks change over a window; depends on OR-7 resolution honesty to refuse a question the retained resolution cannot answer.
 - [l1-storage-model.md](l1-storage-model.md) - Where the record physically lives, its durability tier, and its encryption posture.
 - [l1-operational-ledger.md](l1-operational-ledger.md) - The accounting record whose long-horizon totals must survive rotation of the fine tier.
@@ -156,5 +156,6 @@ Each tier owns a storage budget. When a tier reaches its budget, the **oldest wh
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `AC-n` of `l1-anomaly-consensus` is now `ANC-n`. No requirement was added, removed or reworded. |
 | 1.1.0 | 2026-08-20 | Core Team | Amended §2 — the non-numeric exclusion (events, log lines, traces) now names its owner instead of leaving the plane unclaimed: `l1-evidence-archive` takes the raw evidentiary trace, inheriting OR-5 append-only immutability and OR-7 resolution honesty while deliberately **not** inheriting multi-resolution tiering, because a numeric series coarsens with bounded loss (extremes and anomalous fraction stay exact) whereas the only coarsening text admits is a summary — the artifact whose unverifiability that spec exists to prevent. Related Specifications extended with l1-evidence-archive. |
 | 1.0.0 | 2026-07-23 | Core Team | Initial spec — multi-resolution retention of the operational record: one logical series at several resolutions with automatic tier selection (OR-1), aggregate sufficiency so coarse tiers answer avg/min/max/anomaly-rate exactly rather than storing a mean (OR-2), gaps recorded as distinguishable values with covered-vs-expected counts so absence is never read as zero (OR-3), budget-bounded retention with a measured-and-reported horizon (OR-4), append-only immutable history with whole-segment rotation (OR-5), derived-and-backfilled coarse tiers never independently collected (OR-6), resolution + truncation honesty on every answer (OR-7), working set bounded by active series not by horizon or query range (OR-8), local and inspectable retention policy (OR-9). Concept-only. |

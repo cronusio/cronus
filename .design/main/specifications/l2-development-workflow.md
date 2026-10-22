@@ -1,6 +1,6 @@
 # Development Workflow — Cronus Implementation
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-development-workflow.md
@@ -152,8 +152,9 @@ Trigger: plan file ready.
 
 **Startup:**
 
-```bash
-cat "$(git rev-parse --show-toplevel)/.cronus/dev/progress.md"
+```text
+read the file <repository root>/.cronus/dev/progress.md
+  // the repository root is the top level of the current working tree
 ```
 
 Tasks listed there as complete are DONE — skip them. Resume at the first incomplete task.
@@ -397,10 +398,10 @@ Implementation complete. What would you like to do?
 
 2. Worktree cleanup (Merge and Discard only):
 
-```bash
-cd "$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)"
-git worktree remove "$WORKTREE_PATH"
-git worktree prune
+```text
+from the repository's main working tree root:
+  remove the worktree at WORKTREE_PATH
+  prune stale worktree records
 ```
 
 Only clean up worktrees under `.worktrees/` or `worktrees/` — never clean up worktrees that the platform created independently.
@@ -461,6 +462,7 @@ The `session-start` script reads `skills/bootstrap/SKILL.md` and emits the `addi
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): two shell blocks (the progress read, the worktree cleanup) rewritten as step descriptions. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.2.0 | 2026-10-22 | Invariant Compliance rows for DW-12…DW-14 (authorship and follow-up declaration, tested-means-done-and-seen, foreign project admission rules), all Pending. |
 | 1.1.0 | 2026-10-03 | DW-5 / §4.8: the progress ledger no longer doubles as the completion authority. The workflow's resume rule ("skip tasks listed as complete") and the ledger's Status column made a file in the feature branch a second answer to "is this task done", beside the board that the rest of the corpus makes the single surface for all work (CONV-1) — and this spec never mentioned the board. A plan task is now a board card (`task_ref` = the task id), moved to `running` on dispatch and `done` on approval; the ledger's Status column is a projection; the ledger stays authoritative for what was approved and committed. Evidence is written first, so a crash between the record and the card move leaves a stranded transition the resume step completes, while a card `done` with no approving record is surfaced rather than trusted. Related Specifications extended with `l1-work-convergence` and `l2-kanban-board`. Realizes `l1-development-workflow` 1.2.0. |
 | 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): Missing Motivation and Constraints sections added and sections renumbered to the standard layout (internal references updated). DW-11 (release notes describe the delivered system) was unmapped — Partial row, and the pull-request description follows it. DW-6: the design document was committed before any branch existed and the setup skill committed a `.gitignore` entry — both on the base branch the invariant protects; the design document becomes the branch's first commit and an unignored worktree is placed outside the repository. DW-2 rested on an instruction block — the coordinator now refuses Execute without a host-recorded human approval. The review fix loop had no bound — capped, then BLOCKED to the human; the coordinator's stop conditions include the run budget. Human choices at Deliver are accepted only from a human surface; Merge refuses a dirty main working tree. Host-harness tool names replaced by the execution-workspace provider and the office's shell tool. |

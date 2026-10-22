@@ -1,6 +1,6 @@
 # Reasoning Spend
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -14,9 +14,9 @@ This spec names the class, states how it shares capacity with the visible answer
 
 ## Related Specifications
 
-- [l1-generation-shaping.md](l1-generation-shaping.md) — GS-3 floored effort/reasoning-depth modulation is the **control**; this spec is the **meter** that control moves. GS decides how much deliberation a turn warrants; nothing there says what the deliberation costs or how it is accounted.
+- [l1-generation-shaping.md](l1-generation-shaping.md) — GSH-3 floored effort/reasoning-depth modulation is the **control**; this spec is the **meter** that control moves. GS decides how much deliberation a turn warrants; nothing there says what the deliberation costs or how it is accounted.
 - [l1-generation-budget.md](l1-generation-budget.md) — GB governs output **length**. RSN-2 states the capacity GB caps is **shared** with reasoning and pre-empted by it, which splits GB-2's truncation signal into two causes with opposite remedies.
-- [l1-cost-rating.md](l1-cost-rating.md) — CR-2 rates per unit class and forbids one blended rate; reasoning is the class its list was missing. CR-4's fail-visible unknown rate is the pattern RSN-3/RSN-10 apply to an unreported **count**.
+- [l1-cost-rating.md](l1-cost-rating.md) — CRT-2 rates per unit class and forbids one blended rate; reasoning is the class its list was missing. CRT-4's fail-visible unknown rate is the pattern RSN-3/RSN-10 apply to an unreported **count**.
 - [l1-usage-allowance.md](l1-usage-allowance.md) — UA-1/UA-2: reasoning consumes the provider allowance like any other generated token, so a readout that omits it appears to lose balance without spending it.
 - [l1-outcome-attributed-cost.md](l1-outcome-attributed-cost.md) — OAC-1 attributes every unit of accounted spend to a durable output or explicitly to none; RSN-6 keeps invisible spend inside that denominator, where it is most likely to be dropped and most distorting when it is.
 - [l1-model-benchmarking.md](l1-model-benchmarking.md) — MB-3's three-dimensional scorecard reports tokens separately from quality and time; RSN-7 requires reasoning to be a **separately reported** token figure, because two candidates with identical answers and a tenfold reasoning gap are not the same proposition.
@@ -44,7 +44,7 @@ There is also a reporting asymmetry no other class has: some providers return th
 
 ## 2. Constraints & Assumptions
 
-- **The system does not control whether deliberation happens.** It can request a depth (GS-3) and choose a model; the production of internal reasoning is the provider's, inside a single call.
+- **The system does not control whether deliberation happens.** It can request a depth (GSH-3) and choose a model; the production of internal reasoning is the provider's, inside a single call.
 - **Visibility is a provider property, not a setting the system can rely on.** All three states — content, count-only, neither — are normal and must be representable.
 - **Reasoning is generated output.** It is produced by the same generation pass, priced at generation rates, and drawn from the same capacity; it is not an input-side or context-side quantity.
 - **The count, where reported, is authoritative over any local estimate**, on the same basis as every other provider-reported figure.
@@ -54,7 +54,7 @@ There is also a reporting asymmetry no other class has: some providers return th
 
 Rules every Layer 2 implementation MUST NOT violate. They are technology-neutral.
 
-- **RSN-1 (A distinct accounting class):** generation the principal is billed for but never receives is a **first-class unit class** in metering, rating, allowance, and attribution — never folded into the delivered-output class. It extends the per-class rate discipline (CR-2) rather than reusing a neighbouring class's rate, because the two behave differently in every dimension that matters: one is readable and one is not, one is amortizable by prefix reuse and one is not (RSN-4), one is governed by a length target and one by a depth dial (RSN-5). A single blended figure cannot answer "did the bill rise because answers got longer or because the model started thinking harder", which is the first question anyone asks.
+- **RSN-1 (A distinct accounting class):** generation the principal is billed for but never receives is a **first-class unit class** in metering, rating, allowance, and attribution — never folded into the delivered-output class. It extends the per-class rate discipline (CRT-2) rather than reusing a neighbouring class's rate, because the two behave differently in every dimension that matters: one is readable and one is not, one is amortizable by prefix reuse and one is not (RSN-4), one is governed by a length target and one by a depth dial (RSN-5). A single blended figure cannot answer "did the bill rise because answers got longer or because the model started thinking harder", which is the first question anyone asks.
 
 - **RSN-2 (Shared capacity, deliberation first):** the generation capacity a turn is granted is **shared** between deliberation and the visible answer, and deliberation is produced **first**. A cap sized for the expected answer alone can therefore be **fully consumed before one visible token exists**, producing an empty or stub response at full cost. Truncation detection (GB-2) MUST distinguish the two causes — *answer cut off mid-production* versus *capacity exhausted before the answer began* — because their remedies are opposite: the first continues from the preserved partial (GB-3), the second must **raise the cap or lower the depth**, and continuing from a partial that does not exist silently re-spends the whole budget on deliberation again.
 
@@ -72,7 +72,7 @@ Rules every Layer 2 implementation MUST NOT violate. They are technology-neutral
 
 - **RSN-9 (Counted against the external allowance):** reasoning consumes the provider allowance and quota window like any other generated token (UA-1). A readout that meters only delivered output will show a balance falling faster than its own accounting explains — the honest presentation attributes the consumption to this class rather than leaving an unexplained gap that reads as a defect in the meter.
 
-- **RSN-10 (Honest degradation, declared lower bounds):** when the count is unavailable (RSN-3 *not reported*), the class is recorded as **unmeasured**, and every aggregate that includes an unmeasured turn is published as a **declared lower bound** — never a confident total, never a silent zero. This is CR-4's fail-visible discipline applied to the count rather than the rate: an under-reported spend corrupts every figure derived from it, and does so most on the providers that reveal least.
+- **RSN-10 (Honest degradation, declared lower bounds):** when the count is unavailable (RSN-3 *not reported*), the class is recorded as **unmeasured**, and every aggregate that includes an unmeasured turn is published as a **declared lower bound** — never a confident total, never a silent zero. This is CRT-4's fail-visible discipline applied to the count rather than the rate: an under-reported spend corrupts every figure derived from it, and does so most on the providers that reveal least.
 
 ## 4. Detailed Design
 
@@ -83,7 +83,7 @@ Rules every Layer 2 implementation MUST NOT violate. They are technology-neutral
 | Fresh input | n/a (consumed) | partially (cached prefix) | context budget | yes |
 | Cache read / creation | n/a | that *is* the amortization | cache policy | usually |
 | Delivered output | **yes** | no | length budget (GB) | yes |
-| **Reasoning** | **no** | **no** (RSN-4) | **depth dial (GS-3)** | **no** (RSN-3) |
+| **Reasoning** | **no** | **no** (RSN-4) | **depth dial (GSH-3)** | **no** (RSN-3) |
 
 The last row is the one the cost pipeline never had. Every column differs from the row above it, which is the whole argument against a blended figure.
 
@@ -98,7 +98,7 @@ granted generation capacity
 failure mode: capacity ends before this point
   → response empty or stub, full cost, and GB-2 reports "truncated"
   → GB-3 continuation has no partial answer to continue from
-  → correct remedy: raise the cap, or lower the depth (GS-3)
+  → correct remedy: raise the cap, or lower the depth (GSH-3)
 ```
 
 Distinguishing the two truncation causes is mechanical, not a judgment call: a truncation with **zero delivered output tokens and non-zero (or unmeasured-but-deep-configured) reasoning** is capacity exhaustion before the answer; a truncation with substantial delivered output is an answer cut off. The second case is GB's existing continuation path and is unaffected by this spec.
@@ -110,7 +110,7 @@ An unmeasured turn propagates as a lower bound, not as an absence:
 ```
 turn (unmeasured reasoning)
   → session total: "≥ N tokens"        (never "N")
-  → session cost:  "≥ $X"              (CR-4 pattern)
+  → session cost:  "≥ $X"              (CRT-4 pattern)
   → per-outcome:   denominator flagged incomplete (OAC-7 dispersion + abstention)
   → benchmark:     candidate's token dimension marked unmeasured, not zero (MB-9 kinship)
 ```
@@ -122,12 +122,12 @@ The rule is uniform: an unmeasured input never becomes a confident output. A sys
 | Consumer | Change |
 | --- | --- |
 | Metering | records the class separately, with its visibility state |
-| Rating (CR-2) | rates it at its own rate; unpriced → `UNKNOWN`, not $0 |
+| Rating (CRT-2) | rates it at its own rate; unpriced → `UNKNOWN`, not $0 |
 | Generation budget (GB-2) | splits truncation into two causes (§4.2) |
 | Allowance (UA-3) | attributes the consumption the user cannot see |
 | Attribution (OAC-1) | keeps invisible spend inside the denominator |
 | Benchmarking (MB-3) | reports it as its own dimension |
-| Shaping (GS-3) | unchanged — it moves the dial; this spec says what the dial spends |
+| Shaping (GSH-3) | unchanged — it moves the dial; this spec says what the dial spends |
 
 ### 4.5 Demarcation — the system's own reflection is not this
 
@@ -152,9 +152,9 @@ The inner-monologue channel is background cognition the **system** schedules, bu
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[SHAPING]` | `.design/main/specifications/l1-generation-shaping.md` | GS-3 depth dial — the control this spec meters |
+| `[SHAPING]` | `.design/main/specifications/l1-generation-shaping.md` | GSH-3 depth dial — the control this spec meters |
 | `[GENBUDGET]` | `.design/main/specifications/l1-generation-budget.md` | The length budget whose capacity RSN-2 shares |
-| `[RATING]` | `.design/main/specifications/l1-cost-rating.md` | CR-2 per-class rates, CR-4 fail-visible unknown |
+| `[RATING]` | `.design/main/specifications/l1-cost-rating.md` | CRT-2 per-class rates, CRT-4 fail-visible unknown |
 | `[ATTRIBUTION]` | `.design/main/specifications/l1-outcome-attributed-cost.md` | OAC-1 denominator this spend stays inside |
 | `[BENCH]` | `.design/main/specifications/l1-model-benchmarking.md` | MB-3 separated dimensions RSN-7 extends |
 | `[CACHE]` | `.design/main/specifications/l1-inference-cache.md` | Prefix reuse RSN-4 excludes this class from |
@@ -163,4 +163,5 @@ The inner-monologue channel is background cognition the **system** schedules, bu
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
-| 1.0.0 | 2026-08-06 | Core Team | Initial concept: accounting contract for **billed generation the principal never receives**. The system already owned the depth **dial** (GS-3) and the length **budget** (GB) but never the **meter** between them, so model deliberation — routinely larger than the answer it precedes — was implicitly folded into delivered output. A distinct unit class extending CR-2's per-class rates, justified by differing on delivery, amortization, governance, and reportability (RSN-1); **shared capacity with deliberation produced first**, splitting GB-2's truncation signal into two causes with opposite remedies — answer-cut-off (continue) versus capacity-exhausted-before-the-answer (raise cap or lower depth), where continuing from a partial that does not exist re-spends the budget on deliberation again (RSN-2); three never-conflated visibility states content / count-only / **not reported**, the last a gap marker never a zero, since a turn that did not think and a turn whose thinking went unreported are the same number and opposite facts (RSN-3); **not amortized by prefix reuse**, so warmth-driven cost decay must exclude it or under-forecast worst on the deepest turns (RSN-4); depth as a declared fidelity axis moving cost and quality together, making cross-depth figures incomparable without the depth (RSN-5); attributed **especially on turns that produced nothing**, the case most likely to be dropped from a denominator and most distorting when it is (RSN-6); separately reported under measurement, since equal answers with a tenfold deliberation gap are economically different (RSN-7); visible reasoning treated as untrusted model-authored **trace, never a record of action** — a claim is never verified against it (RSN-8); counted against the provider allowance so a readout has no unexplained gap (RSN-9); and honest degradation as **declared lower bounds** when unmeasured, CR-4's fail-visible discipline applied to the count rather than the rate (RSN-10). §4.5 demarcates it from the system's own inner-monologue channel — separate budgets, and an inner-monologue call has its own reasoning spend under this contract. Nodus realization: `l1-nodus-environment` NE-15 (declared budget scope). |
+| 1.0.0 | 2026-08-06 | Core Team | Initial concept: accounting contract for **billed generation the principal never receives**. The system already owned the depth **dial** (GSH-3) and the length **budget** (GB) but never the **meter** between them, so model deliberation — routinely larger than the answer it precedes — was implicitly folded into delivered output. A distinct unit class extending CRT-2's per-class rates, justified by differing on delivery, amortization, governance, and reportability (RSN-1); **shared capacity with deliberation produced first**, splitting GB-2's truncation signal into two causes with opposite remedies — answer-cut-off (continue) versus capacity-exhausted-before-the-answer (raise cap or lower depth), where continuing from a partial that does not exist re-spends the budget on deliberation again (RSN-2); three never-conflated visibility states content / count-only / **not reported**, the last a gap marker never a zero, since a turn that did not think and a turn whose thinking went unreported are the same number and opposite facts (RSN-3); **not amortized by prefix reuse**, so warmth-driven cost decay must exclude it or under-forecast worst on the deepest turns (RSN-4); depth as a declared fidelity axis moving cost and quality together, making cross-depth figures incomparable without the depth (RSN-5); attributed **especially on turns that produced nothing**, the case most likely to be dropped from a denominator and most distorting when it is (RSN-6); separately reported under measurement, since equal answers with a tenfold deliberation gap are economically different (RSN-7); visible reasoning treated as untrusted model-authored **trace, never a record of action** — a claim is never verified against it (RSN-8); counted against the provider allowance so a readout has no unexplained gap (RSN-9); and honest degradation as **declared lower bounds** when unmeasured, CRT-4's fail-visible discipline applied to the count rather than the rate (RSN-10). §4.5 demarcates it from the system's own inner-monologue channel — separate budgets, and an inner-monologue call has its own reasoning spend under this contract. Nodus realization: `l1-nodus-environment` NE-15 (declared budget scope). |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `CR-n` of `l1-cost-rating` is now `CRT-n`; `GS-n` of `l1-generation-shaping` is now `GSH-n`. No requirement was added, removed or reworded. |

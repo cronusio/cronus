@@ -1,6 +1,6 @@
 # GitHub Issue Reporting
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-error-reporting.md
@@ -87,17 +87,16 @@ Normalization strips machine-specific and address-layout-specific noise, so the 
 
 #### Dedup table
 
-```sql
--- [REFERENCE] illustrative, not final DDL
-CREATE TABLE error_fingerprints (
-    hash             TEXT NOT NULL,
-    episode_id       TEXT NOT NULL,
-    occurrence_count INTEGER NOT NULL DEFAULT 1,
-    first_seen       INTEGER NOT NULL,
-    last_seen        INTEGER NOT NULL,
-    PRIMARY KEY (hash, episode_id)
-);
-CREATE INDEX error_fp_hash ON error_fingerprints(hash, last_seen DESC);
+```text
+[REFERENCE] illustrative, not final DDL
+table error_fingerprints
+  hash  text, required
+  episode_id  text, required
+  occurrence_count  integer, required, default 1
+  first_seen  integer, required
+  last_seen  integer, required
+  primary key (hash, episode_id)
+index error_fp_hash on error_fingerprints(hash, last_seen descending)
 ```
 
 Each `(hash, episode_id)` pair tracks how many times a given fingerprint appeared within a specific episode. When a capture records an error, the pipeline:
@@ -134,5 +133,6 @@ total_occurrences(hash: &str) -> i64
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.0.3 | 2026-10-22 | Core Team | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one SQL block (the dedup table) rewritten as a pseudo-schema. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): ERR-6…ERR-9 were unmapped — ERR-6 resolves the default-consent TBD to `ask` (confirm) with the mode held on the authority plane; ERR-7 Partial (regression reopening pending); ERR-8 refusals name their causes; ERR-9 Pending. The ERR-3 row keyed dedup on a signature including the version while §4.3 fingerprints without it — the fingerprint is deliberately version-independent so regressions find their report. Free-form text (messages, pre-filled prior resolutions) now passes the same redaction, and a confirmed payload is filed byte-for-byte as shown (CB-2). |
 | 1.0.1 | — | Core Team | Last version before this section was added; earlier revisions are recorded in version control. |

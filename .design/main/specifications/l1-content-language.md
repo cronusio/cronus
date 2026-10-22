@@ -1,6 +1,6 @@
 # Content Language
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -37,7 +37,7 @@ technical artifacts in another. A single global locale forces one of the two to 
 - [l1-memory-consolidation.md](l1-memory-consolidation.md) — MC-6's redundancy→merge action is silently defeated by a bilingual corpus: two records saying the same thing in two languages are not detected as redundant, so the corpus grows a permanent parallel branch.
 - [l1-user-model.md](l1-user-model.md) — UM-4 (explicit overrides inferred) is exactly how CL-7 resolves an unstated preference; language is a user attribute like any other and carries the same provenance and confidence discipline.
 - [l1-intent-resolution.md](l1-intent-resolution.md) — an inferred language policy is a **recorded assumption** (IR-3), surfaced at a checkpoint (IR-6), never a silent guess.
-- [l1-generation-shaping.md](l1-generation-shaping.md) — the sibling output-side lever on a **different axis**: shaping governs verbosity and effort (how much, how hard), this governs the language the output is written in. Both steer the generator; neither may trade correctness (GS-4).
+- [l1-generation-shaping.md](l1-generation-shaping.md) — the sibling output-side lever on a **different axis**: shaping governs verbosity and effort (how much, how hard), this governs the language the output is written in. Both steer the generator; neither may trade correctness (GSH-4).
 - [l1-project-wiki.md](l1-project-wiki.md) / [l1-notes.md](l1-notes.md) / [l1-knowledge-base.md](l1-knowledge-base.md) — durable authored corpora subject to CL-3 and to the CL-8 retrieval-gap rule.
 - [l1-search.md](l1-search.md) — where the cross-language gap becomes visible: an empty result set caused by a language mismatch is a different answer from "nothing matched".
 - [l1-data-lineage.md](l1-data-lineage.md) — a translation is a **derived** artifact with provenance (CL-4/CL-9), not an in-place rewrite of the record it came from.
@@ -328,3 +328,4 @@ concern maps onto the provider surface.
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-08-05 | Core Team | Initial spec — the language of **model-generated content**, the question interface localization does not answer and nothing else owned: declared per surface rather than emerging from the prompt, the model's bias, or the provider (CL-1); keyed on **artifact kind** rather than one global locale, because the real requirement is usually split — conversation in the person's language, technical artifacts in the project's — and one locale makes one of them wrong by construction (CL-2); one stable language per durable corpus kind, a **retrieval-integrity** requirement since drift silently halves lexical recall, defeats duplicate detection, and blocks consolidation merges without reporting anything (CL-3); language of record separate from language of display, a translation being a derived projection with provenance and never an in-place rewrite (CL-4); quoted and technical material — user words, tool output, error strings, identifiers, paths — reproduced never translated, since exactness is their value (CL-5); enforced structurally where the field is not model-authored, checked where it is, with instruction-only acceptable solely where nothing durable depends on it (CL-6); unstated preference grounded through declaration → user model → default and otherwise a recorded correctable assumption (CL-7); a cross-language retrieval gap bridged or stated but never rendered as a bare empty result, which asserts absence where the truth is *not found the way you asked* (CL-8); language changes forward-only with an explicit, audited, reversible migration (CL-9); and consistency measured from the corpus rather than asserted (CL-10). Nodus projection needs no new primitive — the validated configuration surface carries the policy field, value provenance already expresses the derived-translation relation, and schema/vocabulary prose classifies with the technical artifacts. Concept-only. |
+| 1.0.1 | 2026-10-22 | Core Team | Citations updated for the requirement-ID prefix renames that make each prefix name one specification (RULES §1, 1.8.0, the person's decision of 2026-10-22): `GS-n` of `l1-generation-shaping` is now `GSH-n`. No requirement was added, removed or reworded. |

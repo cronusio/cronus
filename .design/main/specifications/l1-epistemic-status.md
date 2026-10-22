@@ -1,6 +1,6 @@
 # Epistemic Status
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -40,7 +40,7 @@ Mapped against the corpus, half of that list already has a mechanism, and the me
 ## 2. Constraints & Assumptions
 
 - Standing is assigned to **consequential** assertions — those a decision, an action or a downstream artifact depends on. Phrasing, explanation and conversational text are not labelled sentence by sentence.
-- **Assumption (forecast):** the user-visible form is compact — a marker on the statements that are not observed, computed or sourced, and an explicit section for unknowns when there are any — not a full label on every line. Runner-up: every statement labelled. Override: `/magic.spec amend l1-epistemic-status "label every statement"`.
+- **Confirmed (2026-10-22, the person's decision):** the user-visible form is compact — a marker on the statements that are not observed, computed or sourced, and an explicit section for unknowns when there are any — not a full label on every line. Not taken: every statement labelled.
 - Generation settings that reduce variance (a low temperature for factual task classes) help and are recorded with each run, but they are a setting per task class, never a substitute for the checks.
 
 ## 3. Core Invariants
@@ -140,3 +140,4 @@ Assertion {
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — EPS-1…EPS-12: a closed standing set for consequential assertions (observed, computed, sourced, inferred, assumed, proposed, unknown) granted only by mechanism; action claims only as observed; named identifiers and citations resolved before emission; required standing set by the action-gating consequence class; stop at the step; user statements kept as premises; unknown as a finding and never as an exit; self-retraction with history kept; checks on the output path plus one steering line; a trap corpus with controls on every model change; standing statistics on the device. Motivated by a user request to design an AI hallucination filter from a set of drafted regulations, and by the finding that half of what those drafts ask already has a mechanism in the corpus (receipts, completion verification, computed grounding, claim verification) while standing, identifier resolution, stop-at-step, premise handling and measurement have none. |
+| 1.0.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

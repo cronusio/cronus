@@ -1,6 +1,6 @@
 # Crate Topology (Core Decomposition)
 
-**Version:** 1.2.0
+**Version:** 1.3.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-architecture.md
@@ -49,7 +49,7 @@ This spec closes that gap. It is not a new architectural decision; it is the mis
 - **A crate boundary is a compilation boundary, never a process or network boundary.** All crates link into one deployable (INV-8). Nothing here introduces a service, an on-box network hop, or an orchestration dependency.
 - **The public contract does not change.** The facade crate re-exports the current module paths, so `cronus::memory::…` and every existing frontend call site keep working. This is a physical reorganization, not an API redesign.
 - **`l2-technology-stack.md` §"One crate → desktop + mobile is real"** is read as *one Rust codebase serves both targets*, not *exactly one Cargo crate*. Every crate defined here builds for desktop and mobile targets; the property is preserved. This reading is confirmed against the stack spec's INV-1 row — "Core is a **Rust** library crate with a C-ABI/FFI surface; linkable into Tauri, CLI/TUI binaries, and external host programs": the constraint is on the *embeddable unit*, which the `cronus` facade preserves (§3 INV-1), not on the Cargo-crate count. The workspace already ships five crates (`core`, `nodus`, `cli`, `tui`, `codegraph`), so a literal one-crate reading is already inconsistent with the shipped tree and was never the intended meaning.
-- **The domain tier performs no I/O and links no C toolchain, platform service, or cryptographic implementation.** It may depend on pure-computation, leaf, no-I/O crates (see §4.3 allowlist). This is a weaker rule than nodus's absolute LP-1 zero-dependency contract, and deliberately so: the core is a host, not a portable library.
+- **The domain tier is meant to perform no I/O, and links no C toolchain, platform service, or cryptographic implementation.** It may depend on pure-computation, leaf crates that open nothing themselves (see §4.3 allowlist). This is a weaker rule than nodus's absolute LP-1 zero-dependency contract, and deliberately so: the core is a host, not a portable library. `[MODIFIED v1.3.0]` "Meant to" is the honest word: the tree does not yet meet the no-I/O half (§4.3, *Disclosed deviation*), and the person has decided it will (§4.3, *Decision*).
 - **No async runtime in the domain tier.** The core is synchronous by design (`l2-core-library` §2, `l2-model-runtime` §2), matching the tree (§6.5). Should a runtime ever be adopted, it belongs to the adapter and facade tiers, where I/O lives — never to the domain tier.
 - Crate count is a cost. This topology minted five crates, not fifty; later ones entered only through the minting rule (§4.4), which is what keeps the count there.
 
@@ -112,7 +112,7 @@ Two properties fall out of the graph and are worth naming because they are what 
 | Crate | Path | Depends on | External deps | Contents |
 | --- | --- | --- | --- | --- |
 | `cronus-contract` | `crates/contract` | — | **none** | Shared types (`MemoryEntry`, typed prefixed IDs, `ThinkingLevel`, error taxonomy) and the seam traits: `UserDataStore`, `AuthProvider`, `IdentityProvider`, plus `StateStore`, `ModelProvider`, `CheckpointWriter`, `Compactor`, `BusSender`, `ArchiveSink`, and the later-added `InferenceBackend` (model-transport call surface, realized by `cronus-model-local`) and `WikiCache`/`WikiReadSurface` (project-wiki projection, realized by `cronus-store-local`). |
-| `cronus-domain` | `crates/domain` | `cronus-contract`, `nodus` | pure-computation allowlist only (§4.3) | The 47 pure-`std` modules — orchestration, router, kanban, roles, session, quality, autonomy, tool_security, redact, … — plus the domain halves of the six infrastructure modules (§4.6). No I/O. |
+| `cronus-domain` | `crates/domain` | `cronus-contract`, `nodus` | pure-computation allowlist only (§4.3) | The 47 pure-`std` modules — orchestration, router, kanban, roles, session, quality, autonomy, tool_security, redact, … — plus the domain halves of the six infrastructure modules (§4.6). No I/O is the target; §4.3 records where the tree deviates. |
 | `cronus-store-local` | `crates/store-local` | `cronus-contract` | `rusqlite`, `aes-gcm`, `argon2`, `keyring` | The on-device `UserDataStore` default (DN-2): SQLite persistence for memory / inbox / workspace, at-rest encryption, keychain-held keys. |
 | `cronus-auth-local` | `crates/auth-local` | `cronus-contract` | `bcrypt`, `hmac`, `sha1`, `getrandom` | The on-device `AuthProvider` default (DN-2): password hashing, session tokens, TOTP. Also carries the trivial single-principal `IdentityProvider` default. |
 | `cronus-model-local` | `crates/model-local` | `cronus-contract` | `serde_json` (+ blocking HTTP/TLS on the remote path) | The on-device model-transport adapter: implements `contract::InferenceBackend` (streaming generate, embed, describe, pull, cancellation) over a loopback HTTP endpoint, plus egress-gated remote profiles. Minted by §4.4(a) — it needs network I/O the domain tier may not hold — realizing the l2-model-runtime transport. It is a fourth **adapter** crate, **not** one of the three DN-2 provider planes; the CI boundary guard forbids `cronus-domain → cronus-model-local` exactly as for the other adapters. |
@@ -130,14 +130,20 @@ Crates minted after this table was first written, each through §4.4:
 
 ### 4.3 The domain dependency allowlist
 
-`cronus-domain` may depend only on crates that are **leaf, pure-computation, no-I/O, no-C, no-platform**. Today that admits exactly three, each already in the tree:
+`cronus-domain` may depend only on crates that are **leaf, pure-computation, no-C, no-platform, and open nothing themselves**. `[MODIFIED v1.3.0]` Today that admits six, each already in the tree or planned against it:
 
 | Crate | Used by | Why it is not infrastructure |
 | --- | --- | --- |
 | `blake3` | `error_reporting` (content-addressed report dedup) | Pure hash function; no I/O, no allocation of platform resources. |
 | `chrono`, `cron` | `scheduler` (cron-expression parsing, wake times) | Pure calendar arithmetic and expression parsing; the *effect* of a wake is domain logic, and nothing here touches a clock the domain cannot inject. |
+| `serde`, `serde_json` `[ADDED v1.3.0]` | `agent_registry`, `extensions`, the session journal and its writer | Derive-based (de)serialization of the tier's own records to and from text. It performs no I/O of its own: it reads and writes the strings or readers the caller hands it. Admitted after the fact — both were added to the manifest on 2026-09-10 without this section being amended, which turned the boundary guard red for six weeks. |
+| `tracing` `[ADDED v1.3.0]` | event emission at state-change sites (`l2-diagnostic-log`) | The emission facade only. A macro call does nothing until a binary or the facade installs a subscriber, so the tier emits events without knowing where they go. The subscriber and the rotating writer are infrastructure and live in the facade and adapter crates; `tracing-subscriber` and `tracing-appender` are **not** admitted here. |
 
-Anything that opens a file, a socket, a database, a keychain, or a C library is infrastructure by definition and belongs to an adapter crate. A candidate that is merely *convenient* fails the project's standing dependency policy before it reaches this allowlist.
+Anything that opens a database, a socket, a keychain, or a C library is infrastructure by definition and belongs to an adapter crate. A candidate that is merely *convenient* fails the project's standing dependency policy before it reaches this allowlist. The guard script's allowlist and this table are one fact; amending one without the other is what produced the six-week red gate.
+
+**Disclosed deviation `[ADDED v1.3.0]`.** The tier's "performs no I/O" half does not hold in the tree. A scan on 2026-10-22 found production-path filesystem access or process spawning in twenty-one of its 109 source files — among them `kanban`, `roles`, `backup`, `checkpoint`, `scheduler`, `state`, `store`, the session writer and journal, `extensions` and `secrets` — and `quality` starts processes until the execution-sandbox work puts the quality-gate runner behind a process port. The boundary guard reads manifests only, so a `std::fs` call is invisible to it: the guard proves *no forbidden crate*, never *no I/O*. What does hold today: no database, no socket, no keychain, no C library and no cryptographic implementation in the tier.
+
+**Decision (2026-10-22, the person's): the tier is made I/O-free.** The rule is kept as the target, not restated downward: the filesystem and process modules move behind contract seams into adapter crates, as the user-data store already did (§4.5, §4.6). Two things follow. First, a ratchet in the guard starts now: the guard scans the production code of every domain source file for filesystem, process and socket calls and compares the files that have them against a committed baseline (`scripts/domain-io-baseline.json`, twenty-one files on the day it was written). The baseline only shrinks — a file outside it that gains such a call fails the build, and a file that no longer needs its entry must drop it — so the tier can no longer drift the other way, and each migrated module is visible as a deleted entry. Second, the migration itself is planned work, decomposed module by module when it is taken; the quality-gate runner's process spawning is already owned by the execution-sandbox work, which puts it behind a process port. A new module that needs file access is written against a seam from the start and does not add itself to the baseline.
 
 The distinction from nodus's LP-1 is intentional: nodus is a portable library that must name no host at all, so its zero-dependency bar is absolute. The core *is* the host. Its domain tier needs the weaker, checkable property "performs no I/O", which is what makes the tier fast to compile, trivial to test, and impossible to couple to a backend.
 
@@ -176,18 +182,16 @@ Exactly one provider is active per plane (DN-5). The facade selects it; the doma
 
 Contract sketch — illustrative shape, not the final signature:
 
-```rust
-// [REFERENCE] crates/contract/src/seams.rs
-pub trait MemorySearch {
-    fn search_fts(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
-}
+```text
+[REFERENCE] crates/contract/src/seams.rs
+interface MemorySearch
+  search_fts(query: text, limit: count) -> list of MemoryEntry | error
 
-/// The DN-2 user-data plane. `MemorySearch` is one facet; the full seam also
-/// covers write, prune, and export (DN-7 portability).
-pub trait UserDataStore: MemorySearch + Send + Sync {
-    fn put(&self, entry: &MemoryEntry) -> Result<()>;
-    fn export(&self) -> Result<Vec<MemoryEntry>>;   // DN-7: always able to come home
-}
+// The DN-2 user-data plane. MemorySearch is one facet; the full seam also
+// covers write, prune, and export (DN-7 portability).
+interface UserDataStore extends MemorySearch     (shared across threads)
+  put(entry: MemoryEntry) -> ok | error
+  export() -> list of MemoryEntry | error        // DN-7: always able to come home
 ```
 
 The seam trades in **contract types**, never an adapter's own representation (INV-10). `cronus-store-local` maps its `rusqlite` row struct to and from `MemoryEntry` inside the adapter; the row struct is private to the crate and never appears in `cronus-domain`. A remote provider maps its own DTO the same way. Both representations evolve independently of the domain, which is what lets the pure-`std` domain compile and unit-test with an in-memory provider and no backend at all.
@@ -311,3 +315,6 @@ Recorded here because each bears on the topology, and each is independently acti
 | 1.1.3 | 2026-09-23 | Consistency pass (2026-09-23): §2 and §6.5 carried the core-library's Tokio claim — resolved: the core is synchronous. Three shipped crates (`activation-os`, `conformance`, `simulation`) were absent from the crate set and the minting rule could not account for the two harnesses — the table lists them and clause (d) records verification harnesses confined to the contract tier; the tier diagram shows the model and activation adapters. §6.4 (CLI opening a database connection) is recorded as resolved — `codegraph` keeps its storage private and the CLI dropped `rusqlite`. Duplicate 1.0.0 history rows merged and the table restored to ascending order. |
 | 1.1.4 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.2.0 | 2026-10-03 | §4.4 plans a third instrument crate under clause (d), `cronus-drive`, the shared library of the surface driver (`l2-surface-driver`): standard library and serialization only, no Cronus crate, linked by the simulation harness and — as a dev-dependency — only by a frontend crate that carries a dev-only host, with a manifest check that no product crate depends on it otherwise. The host is an example target of its frontend crate and not a feature of the shipped binary, for the reasons §7 already gives against features as a boundary. The crate does not exist yet; the minted-crates table is unchanged. Post-Update Review PASS. |
+| 1.3.0 | 2026-10-22 | §4.3 amended to the tree's real dependency set (design-layer audit 2026-10-22, decision recorded the same day): `serde` and `serde_json` are admitted — both entered `cronus-domain`'s manifest on 2026-09-10 without this section being amended, which left the boundary guard red and kept the CI job's build, lint and test steps from running — and the `tracing` emission facade is admitted so the domain tier can emit events (`l2-diagnostic-log`); `tracing-subscriber` and `tracing-appender` stay out as infrastructure. The guard script's allowlist is amended in the same change and gains a self-test assertion for the subscriber side. §2 and §4.2 now say the domain tier is *meant* to perform no I/O, and §4.3 records the *Disclosed deviation*: twenty-one of 109 domain source files do filesystem or process I/O on a production path, which the manifest-only guard cannot see; whether to make the tier I/O-free or restate the rule is left as a marked TBD. |
+| 1.3.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one Rust block (the seam sketch) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
+| 1.3.2 | 2026-10-22 | The domain tier is to be made I/O-free — the person's decision, recorded in §4.3 (*Decision*) in place of the marked TBD. The boundary guard gains a shrink-only I/O ratchet over `scripts/domain-io-baseline.json` (twenty-one files on the day it was written): a domain file outside the baseline that gains filesystem, process or network calls fails the build, and a baseline entry that no longer needs to be there must be removed. The migration itself is planned work. |

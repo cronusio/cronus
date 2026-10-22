@@ -1,6 +1,6 @@
 # Knowledge Store (Implementation)
 
-**Version:** 1.2.0
+**Version:** 1.2.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-knowledge-base.md
@@ -60,89 +60,77 @@ The memory store is per-user, conversational, and ephemeral by design. A separat
 
 ### 4.1 Schema
 
-```sql
+```text
 [REFERENCE]
--- Collections
-CREATE TABLE knowledge_collection (
-    id          TEXT PRIMARY KEY,          -- col/ prefix
-    owner_id    TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    meta        TEXT,                      -- JSON
-    created_at  INTEGER NOT NULL,
-    updated_at  INTEGER NOT NULL
-);
+// Collections
+table knowledge_collection
+  id  text, primary key   // col/ prefix
+  owner_id  text, required
+  name  text, required
+  description  text, required, default ''
+  meta  text   // JSON
+  created_at  integer, required
+  updated_at  integer, required
 
--- Directory tree (optional per-collection hierarchy)
-CREATE TABLE knowledge_directory (
-    id            TEXT PRIMARY KEY,        -- kdir/ prefix
-    collection_id TEXT NOT NULL REFERENCES knowledge_collection(id),
-    parent_id     TEXT REFERENCES knowledge_directory(id),
-    name          TEXT NOT NULL,
-    created_at    INTEGER NOT NULL,
-    updated_at    INTEGER NOT NULL,
-    UNIQUE (collection_id, parent_id, name)
-);
-CREATE INDEX ix_kdir_collection ON knowledge_directory(collection_id);
+// Directory tree (optional per-collection hierarchy)
+table knowledge_directory
+  id  text, primary key   // kdir/ prefix
+  collection_id  text, required, references knowledge_collection(id)
+  parent_id  text, references knowledge_directory(id)
+  name  text, required
+  created_at  integer, required
+  updated_at  integer, required
+  unique (collection_id, parent_id, name)
+index ix_kdir_collection on knowledge_directory(collection_id)
 
--- Documents (one per source file/URL)
-CREATE TABLE knowledge_document (
-    id            TEXT PRIMARY KEY,        -- doc/ prefix
-    collection_id TEXT NOT NULL REFERENCES knowledge_collection(id),
-    directory_id  TEXT REFERENCES knowledge_directory(id),
-    source_file_id TEXT,                   -- FileId if source is an uploaded file
-    source_url    TEXT,                    -- URL if source is a web page
-    name          TEXT NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'pending',  -- pending|indexing|ready|error|deleted (index state)
-    origin        TEXT NOT NULL DEFAULT 'agent',    -- human|agent authorship zone (KB-9)
-    curation      TEXT,                             -- draft|reviewed|stable (KB-10); NULL for origin='human'
-    error_msg     TEXT,
-    meta          TEXT,                    -- JSON: word count, language, custom tags
-    created_at    INTEGER NOT NULL,
-    updated_at    INTEGER NOT NULL
-);
-CREATE INDEX ix_kdoc_collection ON knowledge_document(collection_id);
-CREATE INDEX ix_kdoc_status     ON knowledge_document(status);
-CREATE INDEX ix_kdoc_curation   ON knowledge_document(collection_id, curation);
+// Documents (one per source file/URL)
+table knowledge_document
+  id  text, primary key   // doc/ prefix
+  collection_id  text, required, references knowledge_collection(id)
+  directory_id  text, references knowledge_directory(id)
+  source_file_id  text   // FileId if source is an uploaded file
+  source_url  text   // URL if source is a web page
+  name  text, required
+  status  text, required, default 'pending'   // pending|indexing|ready|error|deleted (index state)
+  origin  text, required, default 'agent'   // human|agent authorship zone (KB-9)
+  curation  text   // draft|reviewed|stable (KB-10); NULL for origin='human'
+  error_msg  text
+  meta  text   // JSON: word count, language, custom tags
+  created_at  integer, required
+  updated_at  integer, required
+index ix_kdoc_collection on knowledge_document(collection_id)
+index ix_kdoc_status on knowledge_document(status)
+index ix_kdoc_curation on knowledge_document(collection_id, curation)
 
--- Chunks (split from documents)
-CREATE TABLE knowledge_chunk (
-    id          TEXT PRIMARY KEY,          -- chk/ prefix
-    document_id TEXT NOT NULL REFERENCES knowledge_document(id),
-    text        TEXT NOT NULL,
-    position    INTEGER NOT NULL,          -- ordinal within document
-    source_ref  TEXT,                      -- JSON: {page?, section?, byte_start?, byte_end?}
-    created_at  INTEGER NOT NULL
-);
-CREATE INDEX ix_kchunk_doc ON knowledge_chunk(document_id);
+// Chunks (split from documents)
+table knowledge_chunk
+  id  text, primary key   // chk/ prefix
+  document_id  text, required, references knowledge_document(id)
+  text  text, required
+  position  integer, required   // ordinal within document
+  source_ref  text   // JSON: {page?, section?, byte_start?, byte_end?}
+  created_at  integer, required
+index ix_kchunk_doc on knowledge_chunk(document_id)
 
--- FTS5 virtual table for keyword search
-CREATE VIRTUAL TABLE knowledge_chunk_fts USING fts5(
-    text,
-    content='knowledge_chunk',
-    content_rowid='rowid'
-);
+// FTS5 virtual table for keyword search
+full-text table knowledge_chunk_fts (fts5: text, content='knowledge_chunk', content_rowid='rowid')
 
--- Embedding index generations (KB-18, §4.8): one row per derivation of the vector index
-CREATE TABLE knowledge_index_generation (
-    generation   INTEGER PRIMARY KEY,      -- monotonic
-    model_id     TEXT NOT NULL,            -- embedding model identity as the embedding seam reports it
-    dimension    INTEGER NOT NULL,
-    metric       TEXT NOT NULL,            -- distance metric the generation's vector table uses
-    state        TEXT NOT NULL,            -- building|active|retained|released
-    identity_src TEXT NOT NULL,            -- recorded|assumed (a pre-generation table adopted at migration)
-    comparison   TEXT,                     -- retrieval-evaluation run reference + verdict, or 'unmeasured'
-    created_at   INTEGER NOT NULL,
-    activated_at INTEGER,
-    released_at  INTEGER
-);
+// Embedding index generations (KB-18, §4.8): one row per derivation of the vector index
+table knowledge_index_generation
+  generation  integer, primary key   // monotonic
+  model_id  text, required   // embedding model identity as the embedding seam reports it
+  dimension  integer, required
+  metric  text, required   // distance metric the generation's vector table uses
+  state  text, required   // building|active|retained|released
+  identity_src  text, required   // recorded|assumed (a pre-generation table adopted at migration)
+  comparison  text   // retrieval-evaluation run reference + verdict, or 'unmeasured'
+  created_at  integer, required
+  activated_at  integer
+  released_at  integer
 
--- sqlite-vec virtual table, one per live generation (dense vectors)
--- Dimension comes from the generation row, not from a compile-time constant
-CREATE VIRTUAL TABLE knowledge_chunk_vec_g{generation} USING vec0(
-    chunk_id TEXT PRIMARY KEY,
-    embedding FLOAT[{dimension}]
-);
+// sqlite-vec virtual table, one per live generation (dense vectors)
+// Dimension comes from the generation row, not from a compile-time constant
+vector table knowledge_chunk_vec_g{generation} (vec0: chunk_id text primary key, embedding float[{dimension}])
 ```
 
 ### 4.2 Ingestion Pipeline
@@ -176,34 +164,34 @@ graph TD
 
 ### 4.3 Retrieval
 
-```rust
+```text
 [REFERENCE]
-pub struct RetrievalRequest {
-    pub query        : String,
-    pub collection_ids: Vec<CollectionId>,
-    pub top_k        : usize,             // default 5
-    pub min_score    : Option<f32>,       // default 0.0
-    pub min_curation : Option<Curation>,  // KB-10 trust floor; None = no filter
+RetrievalRequest {
+  query: text
+  collection_ids: list of CollectionId
+  top_k: count                          // default 5
+  min_score: optional real              // default 0.0
+  min_curation: optional Curation       // KB-10 trust floor; none = no filter
 }
 
-pub struct RetrievedChunk {
-    pub chunk_id    : ChunkId,
-    pub document_id : DocumentId,
-    pub collection_id: CollectionId,
-    pub text        : String,
-    pub source_ref  : Option<SourceRef>,
-    pub score       : f32,
+RetrievedChunk {
+  chunk_id: ChunkId
+  document_id: DocumentId
+  collection_id: CollectionId
+  text: text
+  source_ref: optional SourceRef
+  score: real
 }
 
-pub struct RetrievalResult {                    // [ADDED v1.2.0] KB-19
-    pub chunks    : Vec<RetrievedChunk>,
-    pub truncated : Option<Truncation>,         // Some only when a hard bound stopped a channel short (CW-3)
+RetrievalResult {                       // [ADDED v1.2.0] KB-19
+  chunks: list of RetrievedChunk
+  truncated: optional Truncation        // present only when a hard bound stopped a channel short (CW-3)
 }
 
-pub struct Truncation {
-    pub channel : Channel,                       // vector | keyword | sub-query n
-    pub bound   : usize,                         // the bound that stopped it
-    pub returned: usize,
+Truncation {
+  channel: vector | keyword | sub-query n
+  bound: count                          // the bound that stopped it
+  returned: count
 }
 ```
 
@@ -224,36 +212,27 @@ Two orthogonal columns on `knowledge_document` govern how the agent may write, l
 
 **Authorship zone (KB-9).** `origin` places each document in a write-zone. Human-authored rows are agent-read-only; a write is refused unless the caller presents an explicit override — a typed token, never a default flag:
 
-```rust
+```text
 [REFERENCE]
-pub enum WriteOverride {
-    None,
-    HumanDirected { audit_ref: AuditRef },   // user-directed correction routed through the agent
-}
+WriteOverride = None | HumanDirected { audit_ref: AuditRef }   // user-directed correction routed through the agent
 
-fn write_document(doc: &Document, ov: WriteOverride) -> Result<(), StoreError> {
-    if let Some(existing) = get_document(doc.id)? {
-        if existing.origin == Origin::Human && matches!(ov, WriteOverride::None) {
-            return Err(StoreError::ReadOnlyZone);   // KB-9: refused at the store, not discouraged
-        }
-    }
-    persist(doc)
-}
+write_document(doc: Document, override: WriteOverride) -> ok | error
+  existing = get_document(doc.id)
+  if existing is present and existing.origin == Human and override is None:
+      return error ReadOnlyZone         // KB-9: refused at the store, not discouraged
+  persist(doc)
 ```
 
 `origin` is assigned from the ingestion source at document creation — an uploaded file or human-owned record is `human`, an agent-synthesized document is `agent` — not chosen by a later agent write, so the agent cannot mint a `human` row to smuggle authority. A **URL** source takes the origin of whoever added it: a page a person added to the collection is `human`; a page the agent fetched and ingested on its own initiative is `agent` with `curation = 'draft'`. Otherwise external content the agent chose would join the always-eligible authoritative set of §4.3 step 6 and pass every `min_curation` floor. The `HumanDirected` override carries an `audit_ref` so every write into a human zone is attributable on the durable audit path — the override is audited, never a silent default.
 
 **Curation lifecycle (KB-10).** Agent-synthesized rows carry `curation` advancing `draft → reviewed → stable`. The agent owns `draft`; advancing requires human authorization presented to the store:
 
-```rust
+```text
 [REFERENCE]
-fn set_curation(id: DocumentId, next: Curation, auth: Option<HumanAuth>) -> Result<(), StoreError> {
-    match (next, auth) {
-        (Curation::Draft, _)                             => transition(id, next),  // agent-free
-        (Curation::Reviewed | Curation::Stable, Some(_)) => transition(id, next),
-        (Curation::Reviewed | Curation::Stable, None)    => Err(StoreError::HumanApprovalRequired),
-    }
-}
+set_curation(id: DocumentId, next: Curation, auth: optional HumanAuth) -> ok | error
+  if next is Draft                              -> transition(id, next)   // agent-free
+  if next is Reviewed or Stable, auth present   -> transition(id, next)
+  if next is Reviewed or Stable, no auth        -> error HumanApprovalRequired
 ```
 
 A new agent document defaults to `curation = 'draft'`; `origin = 'human'` rows leave `curation` NULL (editorial trust is an agent-document concept). Retrieval's `min_curation` filter (§4.3) lets a high-trust query exclude provisional `draft` chunks while keeping authoritative human sources always eligible.
@@ -262,18 +241,17 @@ A new agent document defaults to `curation = 'draft'`; `origin = 'human'` rows l
 
 An optional preparation step sits between the caller's request and the embedding/search. It reshapes the query to improve recall but never narrows the caller's reach:
 
-```rust
+```text
 [REFERENCE]
-pub trait QueryPreparer {
-    /// Returns the prepared retrieval query plus any sub-queries; may return the
-    /// input unchanged. MUST NOT touch collection scope or attribution.
-    fn prepare(&self, raw: &str, meta: &CollectionMeta) -> PreparedQuery;
-}
+interface QueryPreparer
+  // Returns the prepared retrieval query plus any sub-queries; may return the
+  // input unchanged. MUST NOT touch collection scope or attribution.
+  prepare(raw: text, meta: CollectionMeta) -> PreparedQuery
 
-pub struct PreparedQuery {
-    pub retrieval_query: String,       // == raw when preparation yields nothing usable
-    pub subqueries     : Vec<String>,  // empty when the query is atomic
-    pub raw            : String,       // always preserved for transparency + fallback
+PreparedQuery {
+  retrieval_query: text       // == raw when preparation yields nothing usable
+  subqueries: list of text    // empty when the query is atomic
+  raw: text                   // always preserved for transparency + fallback
 }
 ```
 
@@ -404,12 +382,13 @@ Because the pinned build scans exhaustively, `exact(E)` touches |E| vectors wher
 
 ## 5. Implementation Notes
 
-1. The `EmbeddingEngine` is shared with `crates/memory-store`; import from a shared `crates/embeddings` crate (or trait object) to avoid duplicating the model-load logic.
+1. The embedding engine is shared with the memory store through the inference port in `cronus-contract`, not through a crate of its own: ingestion and retrieval take an `EmbeddingBackend` (realized over the model-transport adapter by an `InferenceEmbeddingBackend`), so no model-load logic is duplicated. There is no `crates/embeddings` and no `crates/memory-store`; the memory store lives in `cronus-store-local` (`l2-crate-topology`).
 2. Post-filtering a fixed vector window by `collection_id` returns short results for a collection holding a small share of the database; §4.9 replaces it with exact restricted scoring and a sized, widened window (KB-19). A partitioned vector table is the measured option (CW-6), not the default.
 3. Web scraping in `UrlIngester` should respect `robots.txt` and rate-limit requests.
 4. Mark ingestion jobs with a correlation ID so status can be polled via the document `status` field without a separate job-tracking table.
 5. Authorship-zone (KB-9) and curation (KB-10) checks live at the single `db.rs` write seam, never in the ingestion adapters or the service layer, so no caller can bypass them. The `WriteOverride::HumanDirected` path records an `audit_ref`; a human-zone write with no audit reference is a bug, not a fast path.
 6. Query preparation (KB-11) is a pure `QueryPreparer` seam with a no-op default; a wired preparer (keyword expansion / decomposition) is model-backed and MUST honor the fallback-to-raw floor so a preparer outage degrades recall rather than breaking retrieval.
+7. Fetching a URL is a security boundary, not a convenience: the address in the URL is the person's input and, once an agent or an automation can invoke `knowledge add-url`, a model's. The shipped fetcher carries a small interim guard — it resolves the host itself, refuses loopback, link-local (the cloud metadata address included), private, carrier-grade-NAT, unspecified and unique-local addresses and named metadata hosts, connects to the very address it checked, and refuses a response over a fixed size rather than truncating it. The full guard (`l2-security` §4.4: operator setting for private ranges, redirect re-validation, one parser, audit entries) replaces it and takes the fetcher as a consumer; until then the loopback and private ranges have no off switch. A knowledge source on a local or private address is reached by ingesting its content as a file or record.
 
 ## 7. Drawbacks & Alternatives
 
@@ -432,6 +411,9 @@ Because the pinned build scans exhaustively, `exact(E)` touches |E| vectors wher
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.2.3 | 2026-10-22 | Core Team | §5 note 1 no longer names the `crates/embeddings` and `crates/memory-store` crates, which do not exist: the embedding engine is shared through the inference port in `cronus-contract`, and the memory store lives in `cronus-store-local` (design-layer audit, 2026-10-22). |
+| 1.2.2 | 2026-10-22 | Core Team | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one SQL block (the collection, directory, document, chunk, generation and index tables) and four Rust blocks (the retrieval shapes, the write override, the curation transition, the query preparer) rewritten as pseudo-schema and pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
+| 1.2.1 | 2026-10-22 | Core Team | §5 note 7 records that URL fetching is a security boundary and describes the interim address guard shipped on 2026-10-22 (loopback, link-local, private, carrier-grade-NAT, unspecified and unique-local addresses and named metadata hosts refused; the checked address is the connected address; an oversized response is refused, not truncated), to be replaced by the `l2-security` §4.4 guard, which takes the fetcher as a consumer. Found by the design-layer audit: `knowledge add-url` connected to any `http://host:port` with no guard and no size cap. |
 | 1.2.0 | 2026-10-21 | Core Team | Realizes parent `l1-knowledge-base` 1.6.0. KB-18 (§4.8): `knowledge_index_generation` registry (model, dimension, metric, state, identity source, comparison), one vector table per live generation, dual-write while building or retained, RE-7 fixture comparison before an atomic switch, revert as a switch, release reclaims; the pre-generation table adopted as generation 1 with an *assumed* identity; `[DR]` one active generation per database. KB-19 (§4.9): keyword channel joins eligibility inside the FTS5 query; vector channel scores a small eligible set exactly and otherwise sizes and widens its window, never truncating because the restricted scan is the fallback; `RetrievalResult` carries a `Truncation` mark; defaults labelled estimates. Both rows **Pending** against code: one unversioned vector table checked only by dimension, and a fixed `max(4·top_k, top_k + 20)` window filtered afterwards in both channels. §2, §4.1, §4.2 re-indexing, §4.3 steps 2–4 and 8, §5 note 2, §7 updated. |
 | 1.1.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): KB-12…KB-17 compliance rows added (KB-12/13 pending — plain extraction and sentence-window chunking are the named fallbacks; KB-14…17 optional parts not provided). URL-ingested pages had no defined origin: a page a person added is `human`, one the agent fetched on its own is `agent`/`draft` — otherwise agent-chosen web content joined the always-eligible set and bypassed every `min_curation` floor. Canonical reference range corrected. |
 | 1.1.1 | 2026-09-12 | Core Team | **Module-placement correction** (Retro L2 finding, `/magic.spec main`): this spec's §4.7 assumed a single dedicated `crates/knowledge-store/` crate, minted before `l2-crate-topology.md` (2026-07-10) later decomposed the whole workspace on the dependency/seam axis instead. The subsystem was built correctly against that later decision — split across `crates/store-local/src/knowledge.rs`, `crates/domain/src/knowledge_{access,ingest,retrieval}.rs`, and `crates/core/src/knowledge_bootstrap.rs` — but §4.7 and the dead `l2-source-layout.md` citation (a spec that never covered this placement) were never updated to say so. Verified by direct inspection that the schema, table names, authorship-zone/curation guards, and retrieval flow all match §4.1–§4.6 exactly — this correction touches only the module-layout claim; no invariant, schema, or behavior description changes. |

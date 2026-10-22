@@ -1,6 +1,6 @@
 # Memory Consolidation (Local Realization)
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-memory-consolidation.md
@@ -63,16 +63,15 @@ The synchronous `remember`/`recall`/`answer` paths are unchanged and untouched. 
 
 ### 4.2 The derived-signal store (MC-5, the load-bearing new table)
 
-```sql
--- [REFERENCE] per-scope; disposable, rebuildable, never authored fact
-CREATE TABLE memory_signal (
-    item_id     INTEGER NOT NULL,        -- → memory_item.id
-    signal_kind TEXT    NOT NULL,        -- centrality | cluster_id | recency | archived
-    value       REAL    NOT NULL,        -- numeric; cluster_id stored as a stable REAL key
-    version     INTEGER NOT NULL,        -- signal-algorithm version
-    computed_at INTEGER NOT NULL,        -- unix secs
-    PRIMARY KEY (item_id, signal_kind)
-);
+```text
+[REFERENCE] per-scope; disposable, rebuildable, never authored fact
+table memory_signal
+  item_id  integer, required   // → memory_item.id
+  signal_kind  text, required   // centrality | cluster_id | recency | archived
+  value  real, required   // numeric; cluster_id stored as a stable REAL key
+  version  integer, required   // signal-algorithm version
+  computed_at  integer, required   // unix secs
+  primary key (item_id, signal_kind)
 ```
 
 Recall loads a hit's signals in one indexed lookup; a row whose `version` does not match the recall path's expected version, or that is missing, contributes a factor of `1.0` (MC-8) — so a schema/algorithm bump degrades ranking gracefully rather than breaking recall, and a never-yet-maintained corpus ranks on base text relevance alone. Dropping the whole table is a valid reset; it costs ranking quality, never data.
@@ -154,6 +153,7 @@ Optimistic concurrency (not locking) because human edits are rare and the cost o
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.4 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): one SQL block (the derived-signal table) rewritten as a pseudo-schema. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.0.3 | 2026-09-23 | Consistency pass (2026-09-23): Remaining `notes/*.md` references removed (MC-5 row, §4.5 write step) — v1.0.2 fixed only MC-3. MC-1 said `consolidated` = the MEMORY.md file while MC-3 edges live in the consolidated item's content: consolidated now means memory_item rows written by a consolidation action, raw exists only as files, MEMORY.md is not a depth tier. With the layer active the store's additive recency term is held at 0 so recency is not counted twice. |
 | 1.0.2 | 2026-07-15 | Patch: corrected the MC-3 parenthetical that referenced `notes/*.md` as the source of truth — after l1-memory-model MEM-4 v1.1 the item's own `content` is authoritative (the learned corpus is store-authoritative, not note-authoritative). MC-3 logic unchanged: edges live in `content`, the relational rows remain a rebuildable projection. Reference correction only, no logic change. |
 | 1.0.1 | 2026-07-11 | Promoted RFC→Stable via Post-Update Review (spec-critic + prompt-engineer PASS). One review finding fixed: §4.4/MC-8 had overclaimed that it "subsumes" `l2-memory-store` §4.2.2's recency knob — reworded to make the relationship explicitly compositional (§4.2's additive fuse is the untouched `base_text_relevance` factor; MC-8 multiplies the NEW derived signals over it, realizing a *different* L1 than §4.2 does), so no Stable-spec contradiction exists and `l2-memory-store` needs no edit. No other change. Stable = design agreed; concrete schemas/algorithms validated during implementation. |
