@@ -84,4 +84,3 @@ indent_style = tab
 # ── Dockerfile ────────────────────────────────────────────────────────────────
 [Dockerfile*]
 indent_size = 4
-
