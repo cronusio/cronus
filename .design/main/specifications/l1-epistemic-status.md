@@ -1,6 +1,6 @@
 # Epistemic Status
 
-**Version:** 1.0.1
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -59,6 +59,7 @@ Rules every Layer 2 implementation MUST NOT violate:
 - **EPS-10 (Checks on the path, one line in the prompt):** the filter is realized by checks on the output path — standing assignment, receipt matching, identifier resolution, citation verification — and by a short instruction that names the target behaviour. It is never realized by a long list of prohibitions copied into every prompt.
 - **EPS-11 (Measured by a trap corpus with controls):** the filter is evaluated by a corpus of trap tasks — a figure with no source, quotations from a text that contains none, a false premise, a request for invented test data that must be labelled invented, a multi-step task whose premise is missing at a named step, a claim that a check "was already done", a request to list the sources relied on, a task whose right answer is "the data is insufficient" — together with **control** tasks whose right answer is a direct answer. Both halves run on every model or configuration change; passing the traps by failing the controls is a failure.
 - **EPS-12 (Standing is observable in aggregate):** the distribution of standings, the rate of unresolved identifiers removed, stops at a step, and retractions are recorded per model, role and task class, as agent-action statistics that stay on the device.
+- **EPS-13 (An open unknown is a revisioned record that names what would settle it):** [ADDED v1.1.0] an unknown that survives EPS-8 — the system looked and cannot establish the answer here — is recorded, within the investigation or work it belongs to, as its own record: the question, the **evidence or authority still required** to answer it (a running program, a device, a person, a source not yet available), and the evidence that bears on it, **supporting and contradicting** kept separately. The record carries a **revision**; an update names the revision it read, and an update against a stale revision is refused and re-read rather than retried blindly, so two actors resolving one unknown cannot silently overwrite each other. An unknown is resolved **only by evidence of the standing it named** — an inference does not resolve an unknown that asked for an observation — and a resolution keeps its earlier states in the record. A summary of open unknowns lists the **current** heads, never resolved ones as if open nor open ones as if absent; a bounded negative search reports its boundary, so "not found in what was searched" is never restated as "does not exist".
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -139,5 +140,6 @@ Assertion {
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Core Team | Added EPS-13 — an open unknown is a revisioned record naming the evidence or authority that would settle it, with supporting and contradicting evidence kept apart; updates name the revision read and a stale one is refused and re-read; resolution only by evidence of the named standing; summaries list current heads; a bounded negative search reports its boundary. From a reference-mining pass over an external reverse-engineering toolkit's residual-unknown registry. |
 | 1.0.0 | 2026-10-22 | Core Team | Initial concept — EPS-1…EPS-12: a closed standing set for consequential assertions (observed, computed, sourced, inferred, assumed, proposed, unknown) granted only by mechanism; action claims only as observed; named identifiers and citations resolved before emission; required standing set by the action-gating consequence class; stop at the step; user statements kept as premises; unknown as a finding and never as an exit; self-retraction with history kept; checks on the output path plus one steering line; a trap corpus with controls on every model change; standing statistics on the device. Motivated by a user request to design an AI hallucination filter from a set of drafted regulations, and by the finding that half of what those drafts ask already has a mechanism in the corpus (receipts, completion verification, computed grounding, claim verification) while standing, identifier resolution, stop-at-step, premise handling and measurement have none. |
 | 1.0.1 | 2026-10-22 | Core Team | The forecast assumption is confirmed by the person (design-layer audit survey, 2026-10-22) and recorded as a decision; the runner-up is now the alternative not taken and the override hint is dropped. No requirement changed. |

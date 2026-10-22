@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** nodus
-**Updated:** 2026-10-22 14:57
+**Updated:** 2026-10-22 17:21
 **Phase:** 34 — Command Seam & Labelled Simulation
 **Status:** Active
 
 ## Current Position
 
-- **Task:** design-layer audit remediation, nodus half (2026-10-22): `l2-nodus-testing` 1.6.0 (Motivation added, NT-1…NT-12 headings, Rust blocks rewritten as pseudo-code under RULES 1.8.0 §5), citation updates for the main workspace's renamed requirement-ID prefixes, INDEX hygiene. No phase, task or nodus invariant changed; nothing landed in `crates/nodus`. Phase 34 untouched and current.
-- **Spec:** INDEX v1.0.107 / PLAN v1.55.0 / TASKS v2.48.0. RULES v1.8.0. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–38 Planned.
-- **Next Action:** Run /magic.run nodus — T-34D01 first; Phase 34 order D01 → A01 → A02 → C01 → B01 → B02 → B03 → B04 → T01 → T02 → E01 → T03. Run `cargo` through PowerShell; retry with `-j 2` on a rustc crash.
+- **Task:** nodus sub-pass of a reference-mining pass (2026-10-22; INDEX v1.0.108): NT-13…NT-15 (`l1-nodus-testing` 1.3.0), HO-22 (`l1-nodus-observability` 1.14.0), NL-31/NL-32 (`l1-nodus-language` 1.20.0); L2 rows in `l2-nodus-testing` 1.7.0, `l2-nodus-observability` 1.8.0, `l2-nodus-runtime` 1.9.0 (NT-13, HO-22, NL-31 vacuous today; NT-14, NT-15, NL-32 Pending). Nothing landed in `crates/nodus`; Phase 34 untouched and current.
+- **Spec:** INDEX v1.0.108 / PLAN v1.55.0 / TASKS v2.48.0. RULES v1.8.0. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–38 Planned.
+- **Next Action:** Run /magic.task nodus — slot the Pending rows (NT-15 not-run outcome, NL-32 named firing bound, NT-14 with the future fixture recorder) after Phase 34; then /magic.run nodus — T-34D01 first. Run `cargo` through PowerShell; retry with `-j 2` on a rustc crash.
 
 ## Progress
 

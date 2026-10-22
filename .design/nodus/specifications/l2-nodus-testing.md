@@ -1,6 +1,6 @@
 # Nodus DSL Testing — Rust Implementation
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** [l1-nodus-testing.md](l1-nodus-testing.md)
@@ -14,7 +14,7 @@ diagnostics for test-related issues.
 
 ## Related Specifications
 
-- [l1-nodus-testing.md](l1-nodus-testing.md) — parent contract; defines NT-1…NT-12 invariants
+- [l1-nodus-testing.md](l1-nodus-testing.md) — parent contract; defines NT-1…NT-15 invariants
 - [l2-nodus-runtime.md](l2-nodus-runtime.md) — Rust runtime module structure and `Executor`
 - [l1-nodus-language.md](l1-nodus-language.md) — `@test:` block as a language-level declaration; **NL-6** dual-representation (compact → human → compact must be AST-equal), the invariant §10.4's round-trip rule realizes for `TestBlock`
 - [l2-nodus-control-flow.md](l2-nodus-control-flow.md) — its §3 NL-6 row governs the same round-trip guard for control-flow statements; §10.5 records why `@test:` bodies were initially outside that guard's assertion scope
@@ -213,7 +213,7 @@ into a hard validate-before-run failure on files that parse today. Note the inte
 in source but an empty one in the AST, so it emits **both** `W015` (the pairs were dropped) and
 `W009` (nothing is asserted). That pairing is the intended signal, not a duplicate report.
 
-## 8. NT-1…NT-12 Compliance Table
+## 8. NT-1…NT-15 Compliance Table
 
 | Invariant | Status | Implementation |
 | --- | --- | --- |
@@ -229,6 +229,9 @@ in source but an empty one in the AST, so it emits **both** `W015` (the pairs we
 | NT-10 Route coverage advisory | **Implemented** | `W006` emitted by pre-existing `Validator::w006_route_test_coverage` |
 | NT-11 Differential parity [ADDED v1.3.0] | **Vacuous in core** | See §11 — the crate has one execution path, so §4.7's `check_parity(fixture, path_B)` has no second `path_B` to run against `path_A`'s recorded fixture |
 | NT-12 Expected outcome [ADDED v1.5.0] | **Pending** | `parse_test_body` must accept the reserved keys `@status` and `@error` and the validator must reject an unknown value for either (NT-9); `evaluate_test_block` already receives `&run_result.status`, so the change there is to compare against the declared status (default *completed*) instead of hard-wiring `Status::Ok`, and to receive `run_result.errors` so a declared code can be looked up. The status names follow HO-21, so a status beyond today's `Status` set waits on that realization. |
+| NT-13 Order at the promised strength, committed contract [ADDED v1.7.0] | **Vacuous in core** | A standing requirement. Like NT-11 (§11), it needs a second conforming path to compare against, and the crate has one. Its executor runs `~PARALLEL` branches sequentially in declared order (`l2-nodus-runtime.md` §4.4), so today's traces never show a cross-branch interleaving. Whatever parity harness a second path brings MUST group branch events by branch and compare across branches unordered, and MUST carry the fixture's comparison contract (config, declared non-deterministic fields, normalization version). |
+| NT-14 Fixtures hold secret references [ADDED v1.7.0] | **Pending** | No fixture recorder exists yet. The crate records no NT-11 fixtures, so nothing leaks today. The recorder, when built, takes the declared secret set from the `§config` surface (`l2-nodus-config.md`) and writes references for those fields and for matching values in observed `vars`. |
+| NT-15 Not-run is reported [ADDED v1.7.0] | **Pending** | `TestResult` carries `passed: bool` and `TestReport` counts `passed`/`failed` only (`workflows.rs`), so a block cannot be not-run. The change: a three-valued outcome (`Passed`, `Failed`, `NotRun { capability }`), a `not_run` count, a report that does not pass while `not_run > 0`, and a required mode that maps `NotRun` to `Failed`. Tag-filtered blocks stay absent (NT-6). |
 
 ## 9. Test Coverage
 
@@ -390,6 +393,7 @@ with no further design work here.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.7.0 | 2026-10-22 | Compliance rows for NT-13 (vacuous in core like NT-11, with the grouping and contract requirements stated for a future second path), NT-14 (Pending; no fixture recorder yet) and NT-15 (Pending; `TestResult` is boolean). Heading and parent-contract line now say NT-1…NT-15. |
 | 1.6.0 | 2026-10-22 | New Motivation section (RULES §5 requires one and this spec had none); the compliance heading and the parent-contract line say NT-1…NT-12 — the table already carried the NT-12 row, the headings still said NT-11 (design-layer audit, 2026-10-22). |
 | 1.5.1 | 2026-10-22 | Implementation code rewritten as pseudo-code under RULES §5 as amended in 1.8.0 (the person's decision, 2026-10-22): five Rust blocks (the test block, the run result, the entry points, the report, the evaluator) rewritten as pseudo-code. Data shapes, constraints and comments are carried over; no behaviour or requirement changed. |
 | 1.5.0 | 2026-10-22 | Invariant Compliance row for NT-12 (a block may declare the outcome it expects through `@status` / `@error`), Pending; the evaluator already has the run status in hand. |

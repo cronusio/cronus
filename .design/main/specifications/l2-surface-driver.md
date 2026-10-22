@@ -1,6 +1,6 @@
 # Surface Driver Realization
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-surface-driver.md
@@ -35,6 +35,8 @@ pipe never takes (§7.1).
 - [l2-crate-topology.md](l2-crate-topology.md) — Where `cronus-drive` sits and why no product crate may depend on it outside `dev-dependencies` (§4.1).
 - [l2-execution-sandbox.md](l2-execution-sandbox.md) — §4.4's environment allowlist, which already keeps anything not named out of a child the product starts.
 - [l1-process-integrity.md](l1-process-integrity.md) — PI-5 and PI-8: the allowlist rule that is why the enabling signal is an argument and not an inheritable variable (DRV-1).
+- [l1-owned-process-supervision.md](l1-owned-process-supervision.md) — [ADDED v1.1.0] how the terminal lane's process is owned, ended and cleaned up (§4.7.1).
+- [l1-observation-comparison.md](l1-observation-comparison.md) — [ADDED v1.1.0] the comparison contract, per-dimension truncation and normalization versioning the terminal lane's records satisfy (§4.7.1).
 - [l1-surface-parity.md](l1-surface-parity.md) — SP-13's three resolution outcomes, which a shortcut inherits by going through the product's own dispatch (DRV-8), and its refusal to fold *unavailable* into *empty* (DRV-6).
 - [l1-browser-control.md](l1-browser-control.md) — BC-2 and BC-3: the addressing and fail-loud invalidation the graphical shell's structural observation follows (§4.8).
 - [l1-acceptance-oracle.md](l1-acceptance-oracle.md) · [l1-invariant-tripwires.md](l1-invariant-tripwires.md) — AO-5 and TW-1…TW-6: the rules the calibration checks and the structural scans are held to (DRV-12, §4.11).
@@ -354,6 +356,53 @@ interface — its raw mode, byte decoding and diffing — as the floor-covering 
   dependency, replays deterministically and closes the keystroke gap. This lane follows and
   closes the consent-flow gap.
 
+#### 4.7.1 What a terminal-lane run records and how it ends <!-- [ADDED v1.1.0] -->
+
+The terminal lane starts a real process, so it inherits the obligations of
+`l1-owned-process-supervision.md` and produces observations that are compared under
+`l1-observation-comparison.md`. The concrete rules for this lane:
+
+- **Scheduled input.** Keys, resizes and signals an actor sends are recorded as events in
+  milliseconds from launch, in order, and each must fall within the run's timeout; an input
+  the actor marks **sensitive** is delivered to the process and recorded only as a byte-count
+  placeholder. The environment the run sets explicitly is recorded; the environment it inherits
+  is not, and its influence stays unknown (PSV-10).
+- **Geometry is checked, never clamped.** The emulated screen's working buffer
+  (columns × (rows + scrollback)) has a declared ceiling, and every scheduled resize must fit it;
+  a session asking for more is **refused before launch** with the bound named. Silently shrinking
+  the screen would change what the program draws and make every later frame a different
+  observation (OBC-1).
+- **Raw and normalized frames are both kept.** The comparison text is the byte stream after the
+  session's normalization (temporary ports, paths, times); where normalization changed a chunk, the
+  original chunk is retained beside it. The normalization rule set and its version are part of the
+  session's comparison contract, so frames normalized under different rule versions are refused for
+  comparison rather than compared (OBC-8). A token whose end falls in the next chunk is left as it is.
+- **Truncation is accounted per dimension.** Raw output, normalized output, rendered screens,
+  files before and after, and process samples each carry their own bound and their own record of
+  what was omitted; a chunk that does not fit is omitted whole (a later, smaller one may still fit).
+  An exhausted bound makes **that** dimension unknown in a comparison and leaves the others intact
+  (OBC-4). A file digest is either over the complete file or absent with a reason — never a digest
+  of a prefix presented as the file's.
+- **Files are snapshots, not a trace.** Where the session names paths to observe, entries before
+  and after are classified created / deleted / modified / unchanged only for paths whose enumeration
+  was exhausted; anything else is unknown with its reason. Observation paths select what is recorded,
+  not what the process may touch.
+- **Ending the run.** A deadline (total or idle) may grant a finalization interval: a graceful
+  termination request, continued observation, then at most one forced stop (PSV-4). Cancellation
+  stops at once. Every signal attempt is recorded with its delivery result, the exit is recorded only
+  when observed, and the end reason keeps the initiating cause (PSV-3). Cleanup of the process group,
+  the emulator and the temporary root is reported separately from the observations, which are
+  returned whatever cleanup's outcome (PSV-6, PSV-7).
+- **Progress and output never share a stream.** While the run lasts, the client may print live
+  status lines (phase, counts observed, elapsed) on the diagnostic stream at a bounded rate, the
+  last one carrying the end reason and cleanup states; the observation record goes to the data
+  stream (SSC-3). Progress never copies the program's output.
+- **A host that cannot verify descendant cleanup does not offer the lane.** Where the platform's
+  pseudo-terminal adapter cannot enumerate and end the program's descendants, the lane reports
+  itself **unavailable** on that host with the reason, rather than running with cleanup that cannot
+  be verified (PSV-5). Comparing previously recorded terminal observations remains available there,
+  since it launches nothing. <!-- TBD: whether the chosen pseudo-terminal mechanism on Windows can enumerate and end descendants (decides whether this lane is available on that host); owner: the task that builds this lane, settled together with the crate-choice TBD above -->
+
 ### 4.8 The graphical shell
 
 The shell is the one surface whose realization this spec does not schedule; it specifies what
@@ -602,4 +651,5 @@ Recorded because each bears on the driver and each is independently actionable.
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | §4.7.1 — what a terminal-lane run records and how it ends, from a reference-mining pass over an external reverse-engineering toolkit whose process capture is exactly this lane: scheduled input in milliseconds from launch with sensitive input recorded as a byte count; a geometry ceiling checked before launch, never clamped; raw and normalized frames both kept, the normalization version in the comparison contract; truncation accounted per dimension; files as exhausted-enumeration snapshots; a finalization interval and recorded signal delivery per `l1-owned-process-supervision`; progress on the diagnostic stream; the lane unavailable on a host whose pseudo-terminal cannot verify descendant cleanup (one TBD). Related links to `l1-owned-process-supervision` and `l1-observation-comparison`. The crate choice TBD above is unchanged. |
 | 1.0.0 | 2026-10-03 | Initial spec — the realization of `l1-surface-driver.md`: a generic zero-Cronus-dependency library (`cronus-drive`) holding the command table, the spool-directory channel with its privacy checks and request expiry, the step controller and the frame model; a stateless client generated from the table; a dev-only terminal host built as an example target over the loop's existing backend and renderer seams, with native-shaped injection through a shared fold, a capturing renderer, a declared floor and class `surface-held` verified on every step; a free lane (pseudo-terminal, class `free`) for the interactive branches a pipe never takes and as the floor-covering lane; the graphical shell bound to the contract with its preconditions and its realization deferred; and composition with the simulation harness — `session` verbs, `drive` transcript entries, a host evidence stream that keeps shortcuts out of coverage, and `[[drive]]` replay steps. Eight findings recorded (§7), among them that the command line's interactive consent flows are unreachable by the present wrapper, that the product has no clock it can be handed, and that no catalog of presentable states exists. Post-Update Review PASS-WITH-REWRITES, rewrites applied: four outcomes (ran, guided, error, unreachable) so an unresolvable call is success-shaped guidance as the tool-ergonomics rules require, a calibration surface renamed away from any studied project's vocabulary, and several clarifications (floor, staleness, protocol number, crash evidence). |

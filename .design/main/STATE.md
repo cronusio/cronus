@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-22 15:30
+**Updated:** 2026-10-22 17:21
 **Phase:** 42 — Diagnostic Log
 **Status:** Active
 
 ## Current Position
 
-- **Task:** design-layer audit remediation (2026-10-22; INDEX v1.0.236, PLAN v2.83.0, TASKS v1.67.0, RULES v1.8.0) — the person's decisions applied across the corpus. No phase opened or closed. Code changed in two places: the boundary guard's allowlist and CI job, and an interim address guard on the knowledge URL fetcher. Phases 47–49 recorded; `l2-agent-runtime` (RFC) is the Backlog's one entry.
+- **Task:** reference-mining pass via `/magic.spec main` (2026-10-22; INDEX v1.0.237): an external reverse-engineering toolkit mined into three new Stable L1s — `l1-parity-obligations` (POB-1…10), `l1-observation-comparison` (OBC-1…10), `l1-owned-process-supervision` (PSV-1…10) — and amendments ATE-15…18, TCT-11, CP-12, EPS-13, HNR-13, REC-14, `l2-surface-driver` 1.1.0 §4.7.1 (terminal-lane capture and ending). No code changed; no phase opened or closed. The new L1s are concept-only (no L2 yet).
 - **Findings:** The boundary guard is green again (`serde`, `serde_json`, `tracing` admitted; T-42B03 unblocked); `l2-crate-topology` §4.3 now discloses that 21 of 109 domain files do filesystem or process I/O the manifest-only guard cannot see; the person decided the tier will be made I/O-free, the guard ratchets from now on (`scripts/domain-io-baseline.json`, shrink-only) and Phase 50 plans the migration. The engine's `Overall` counter undercounts phases (reported; real progress is 34 of 51 rows, not 31/33). The live secret list is still empty on every surface (LL-7 rests on the denylist and `journal_raw_input`).
-- **Next Action:** Run /magic.run main "phase-42" — T-42A01 first (Phase 33 follows Phase 42). `l2-agent-runtime` needs a review by someone other than its author before it can be promoted; `l1-scripted-surface-contract`'s forecast assumption still awaits the person; Phase 50 (domain I/O migration) is `Planned` and undecomposed.
+- **Next Action:** Run /magic.task main — plan the new concept-only L1s (the terminal lane of `l2-surface-driver` §4.7.1 and any process-spawning subsystem are the first consumers of PSV/OBC) beside the existing order: Phase 42 then Phase 33 (T-42A01 first). Still open from before: `l2-agent-runtime` needs a review by someone other than its author; `l1-scripted-surface-contract`'s forecast assumption awaits the person; Phase 50 (domain I/O migration) is `Planned` and undecomposed.
 
 ## Progress
 

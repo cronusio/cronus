@@ -166,7 +166,7 @@
 - [ ] <https://github.com/usestrix/strix>
 - [ ] <https://github.com/affaan-m/agentshield>
 - [ ] <https://github.com/affaan-m/claude-swarm>
-- [ ] <https://github.com/morluto/rea>
+- [1] <https://github.com/morluto/rea>
 - [1] <https://github.com/cli/cli>
 
 ## Audio

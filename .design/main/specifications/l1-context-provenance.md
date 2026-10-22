@@ -1,6 +1,6 @@
 # Context Provenance & Trusted Composition
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** concept
 
@@ -190,6 +190,22 @@ Rules every Layer 2 implementation MUST NOT violate:
   (`l1-provenance-taint` PT-6). Locally authored decoration — this system's own colour and
   layout — is not foreign and is governed by where it may appear
   (`l1-scripted-surface-contract` SSC-4), not by this rule.
+- **CP-12 A tool result's provenance is declared by the tool's contract, on by default, and travels with failures too**: [ADDED v1.4.0]
+  CP-1 requires every composed fragment to carry provenance; the fragment a tool result becomes
+  gets it from **the tool's own contract**, declared once per tool, not inferred per call. The
+  declaration is **untrusted by default**: a tool is marked as returning foreign content unless it
+  has been audited into a short, named exception list of tools whose results and errors contain
+  only this system's own state or values the caller supplied — and a **new tool is marked until
+  that audit admits it**. The marker rides on the result's metadata, separately from its content,
+  so hosts, interceptors and approval policy can read it without parsing the payload (for example,
+  to require approval for a process-launching or device-changing call **after** foreign content
+  was read in the turn). **Failures carry it too**: an error from a marked tool can quote the
+  foreign input that caused it — a rejected value, captured output, a partial observation kept
+  from a cancelled run — so error replies, budget-replacement errors and errors the protocol
+  layer builds on the tool's behalf (input validation) inherit the tool's marking. A tool that
+  echoes stored values an imported record could have supplied is foreign, even when it "only
+  reads session state". The marker never alters the content it labels and counts against any
+  reply-size budget like any other bytes.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -300,6 +316,7 @@ channel in the first place.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.4.0 | 2026-10-22 | Core Team | Added CP-12 — a tool result's provenance is declared by the tool's contract, untrusted by default, with an audited named exception list and new tools marked until admitted; the marker rides in metadata, readable by interceptors and approval policy without parsing content; error replies (including protocol-built validation errors and budget replacements) inherit it, since a failure can quote the foreign input that caused it. From a reference-mining pass over an external reverse-engineering toolkit whose tool contracts carry exactly this default-on marker. |
 | 1.3.0 | 2026-10-22 | Core Team | Added CP-11 — display-control neutralization, the byte-level twin of CP-10. Foreign text reaching a character-cell display can carry control sequences that move the cursor, overwrite earlier lines, retitle the window, write the clipboard or disguise a hyperlink's target, so a fetched body or a tool's output can forge an approval prompt or erase a warning while the person sees only the result. Foreign content is labelled untrusted on entry and its ordinary rendering neutralizes control sequences (safe on every print path by type, not by call-site discipline); raw bytes leave through one explicit, searchable exit reserved for non-display sinks; the label survives deserialization and round-trips faithfully. Mined from an external command-line tool that wraps all remote content in such a type. |
 | 1.2.0 | 2026-09-04 | Core Team | Added CP-10 — reader-facing provenance: foreign text is quoted or replaced, never paraphrased into the product's voice. CP-1…CP-9 govern the model-facing composition boundary (CP-7: *every model-facing surface*), leaving the human-facing dual unstated. Text authored elsewhere — a remote manifest, an upstream notice, a fetched summary — now either travels quoted and attributed, or is replaced by a fixed locally-authored statement plus a pointer to the original; it is never summarized, translated, or paraphrased into the product's own wording, because a paraphrase makes the product the author of a claim it did not verify and removes the reader's only cue to apply a different standard of belief. The substitution is not cosmetic: a paraphrase is indistinguishable from the product's own voice, so a remote party gains a channel speaking with the product's authority — the human-facing form of exactly the injection CP-2 neutralizes on the model side. A local replacement states only what the local system knows (that something exists, its version, where to read it). From an external artifact-generation skill whose update notifier shows a fixed local sentence plus a release-notes link and explicitly forbids quoting, summarizing, or translating the remote manifest's own summary. |
 | 1.1.0 | 2026-07-10 | Core Team | Added CP-9 control-channel unforgeability at the encoding boundary — where the receiving model distinguishes a control sub-alphabet (frame/turn/role/channel/stop markers), neutralization is enforced at the point a fragment enters that alphabet and not only by escaping its text: an untrusted fragment can never emit a control symbol by construction of the encoder rather than by a sanitizer applied after it, and content that merely resembles one is refused by default and thereafter either encoded inertly or minted per an explicit auditable per-surface disposition (CP-3 kinship), never silently promoted nor silently inerted. This is the structural floor beneath CP-6: a delimiter built from ordinary content is a string an adversary must fail to forge, whereas an unreachable sub-alphabet removes the forgery capability; CP-6 remains the defense-in-depth layer for flat prompt surfaces with no control alphabet, where it is the only structure available. §4.2 extended — the realization table gains the alphabet-level row and is reordered by guarantee strength. Governed by the new l1-tokenization-boundary TB-4/TB-5. Additive: no existing invariant weakened. |

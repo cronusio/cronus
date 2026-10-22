@@ -1,6 +1,6 @@
 # Tool-Call Transport
 
-**Version:** 1.0.1
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -157,6 +157,25 @@ Layer 2 realizations and concrete backends MUST NOT violate these.
   Decode honors the context-provenance trust boundary (CP-1/CP-2): the encoded transport's tokens
   carried inside untrusted fragments are neutralized as data, so the text protocol is never an
   injection vector.
+
+- **TCT-11 The advertised schema may be a projection; validation is always canonical.** [ADDED v1.1.0]
+  TCT-4 renders every advertisement from one schema source. Real consumers then impose limits that
+  source cannot always meet as written — a serialized size cap per tool, a nesting-depth limit, a
+  budget on shared-definition references after which fields render as untyped, no union at the root.
+  Where an advertisement must be reduced to fit, it is a **projection** of the canonical schema
+  selected by a declared **advertisement profile** (fixed for the life of the serving process and
+  reported with its identity), and four rules hold. **(a)** The receiving side **always validates
+  against the canonical schema**: a call that follows a reduced advertisement into a malformed shape
+  gets the canonical typed rejection, never silent acceptance. **(b)** A projection may drop prose,
+  examples and nested detail, may merge a root union into one object that names its accepted input
+  groups, and may inline shared definitions within the budget — it may never advertise a field the
+  canonical schema rejects, and every advertised example is a **valid, distinct canonical input**.
+  **(c)** Advertised examples never embed large records; where a tool accepts a reference to a
+  retained record, the example shows the reference, because examples sent to a model are context
+  spent on every turn. **(d)** Compatibility is verified **after the actual consumer's conversion**
+  of the schema, not by inspecting what was sent: what reaches the model is what the consumer's
+  converter produced. Output schemas carry a content-bound identity, so a changed schema is a new
+  identity and an unchanged one can be reused by validators across catalog refreshes.
 
 > A Layer 2 spec cannot reach RFC status until every TCT-n invariant above is addressed in its
 > "Invariant Compliance" section.
@@ -342,5 +361,6 @@ feedback lifecycle), it graduates via a spec amendment then — not speculativel
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Added TCT-11 — an advertised schema may be a projection selected by a declared profile when consumers impose size, depth, reference or root-union limits, while the receiving side always validates against the canonical schema; projections never advertise what the canonical schema rejects, every advertised example is a valid distinct canonical input, examples carry references instead of large records, compatibility is verified after the actual consumer's conversion, and output schemas carry a content-bound identity. From a reference-mining pass over an external reverse-engineering toolkit that ships a compact advertisement profile for function-calling providers with literal schema-size caps. |
 | 1.0.1 | 2026-09-24 | Consistency pass (2026-09-24): Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.0 | 2026-07-09 | Initial model: transport-neutral tool-call contract — logical/wire separation (TCT-1), deterministic bidirectional encode/decode round-trip (TCT-2), capability-detected transport selection with encoded universal fallback and recorded override (TCT-3), single schema source rendered per transport (TCT-4), reasoning isolation (TCT-5), multi-call fidelity (TCT-6), streaming-safe incremental decode (TCT-7), typed recoverable malformed-call containment (TCT-8), result re-injection symmetry across transports (TCT-9), provenance-gated decode closing the text-protocol injection hole (TCT-10); ideas-to-adopt mapping (mined from studied open-source agent frameworks' native-vs-prompted tool-calling) + nodus-relevance disposition (Reuse behind the ModelProvider LP-2 seam, no new nodus invariant). |
