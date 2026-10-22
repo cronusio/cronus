@@ -1,6 +1,6 @@
 # Loop Governance
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** concept
 
@@ -203,6 +203,45 @@ Layer 2 realizations and any conforming loop MUST honour these.
   restart, never silently double-committed. A restart is a re-run, not an undo; undo is a separate concern.
 
 - **LG-12 Termination on a best-so-far objective, not only on a count.** [ADDED v1.3.0] LG-6's hard ceiling bounds a loop that never converges; it says nothing about one that has **stopped improving**, and a repair loop can burn an entire ceiling making changes that neither fix nor worsen the objective. A loop whose iterations act against a **measurable objective** (an error count, a defect list, a score) therefore also declares a **stagnation bound**: it records the **best value reached so far**, and terminates when a declared number of consecutive iterations fail to reach a **new** best — not when they fail to improve on the *previous* iteration, which a loop oscillating between two states satisfies forever. Three rules bind it. The objective is the **same one the oracle owns** (LG-4), so the loop cannot terminate itself on a metric it chose; the two bounds are **independent and both live** (the count ceiling still applies, and whichever fires first ends the loop); and exhaustion by stagnation is a **reportable outcome, not a failure to conceal** — the loop reports the best state reached and **the specific unresolved items truthfully**, since a repair loop that stops with three known defects and says so is a better result than one that spends its whole ceiling and says nothing.
+
+- **LG-13 Review backpressure.** [ADDED v1.4.0] A loop whose output is a change awaiting
+  human review **does not start producing the next one while its previous output is still
+  waiting**. The check runs at the start of every scheduled run, before any work, and a
+  pending review stops the run unchanged. A stalled review therefore halts production instead
+  of letting unreviewed changes queue behind it — the queue a reviewer trusts is the scarce
+  resource, and a loop that outruns it converts *skim and approve* into *ignore*, at which point
+  every later output costs more than it delivers. (Composes `l1-review-checkpoint` RC-10: the
+  pending review is a visible, owned state; this makes it a gate on the loop that produced it.)
+
+- **LG-14 Steering and memory are separate channels with different authority.** [ADDED v1.4.0]
+  A long-running loop is steered through a durable file it reads at the start of each run, and
+  it also records what it learned there. The two are kept apart. The **steering** part — what
+  to work on now, what is off limits — is human-owned and outside the loop's mutation manifest
+  (LG-2, extending LG-3 from the criteria to the focus): a loop that rewrites its own
+  instructions and then obeys them is a loop with no human in it; a change it wants is proposed
+  in its output for a person to make. The **memory** part, which runs append to, is trusted
+  asymmetrically: an entry is **binding as an exclusion** — skip this target, this approach
+  failed, this finding is a false positive — because obeying a wrong exclusion costs one wasted
+  run; but any **factual claim** in it that a run is about to rely on — a count, *this failure
+  is pre-existing*, *this area is clean* — is re-verified first and corrected when stale,
+  because once written a run's unreviewed conclusion is indistinguishable from a person's entry
+  (`l1-operational-ledger` OL-3 places agent memory last). Entries are dated, and the memory has
+  a size budget enforced by consolidating findings in the same reviewable change — never by
+  trimming the steering part or any instruction to make room.
+
+- **LG-15 Unattended conduct is the only conduct.** [ADDED v1.4.0] A loop that may run with
+  nobody watching behaves the same way whether or not a person happens to be present, because
+  what was tried by hand must be what runs on the schedule. Hence: it **never asks** — a target
+  that needs a human decision is abandoned for the next one; it **never reads silence as
+  approval** — a fact it cannot look up is a reason to abandon, not to guess; it **leaves the
+  person's workspace as a precondition, not a mess to clean** — uncommitted work in its way
+  stops the run unchanged, it is never stashed, reset or cleaned, and a checkout moved for the
+  run is restored afterwards; each attempt starts from the same clean base and a failed attempt
+  is **reverted completely** before the next, since a half-reverted attempt yields a change
+  nobody can explain; attempts per run are bounded (LG-6); and a run in which every attempt
+  failed produces **no outward artifact** — no change request, no issue, no comment — and
+  records why in its own run record (LG-8), because an unlucky hour must not become a
+  notification storm.
 
 ## 4. Detailed Design
 
@@ -456,6 +495,7 @@ already largely exists; the gaps are small):
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.4.0 | 2026-10-22 | Core Team | Added LG-13…LG-15 from an external project's scheduled, unattended maintenance loop that opens one small change per run. LG-13 review backpressure: a pending review of the previous output stops the next run before any work. LG-14 steering vs memory: the focus a person sets is outside the mutation manifest (LG-3 extended from criteria to focus) and changes to it are proposed, never made; run-written memory is binding as an exclusion but its factual claims are re-verified before use, entries dated, budget kept by consolidation and never by trimming instructions. LG-15 unattended conduct: same behaviour attended or not, never ask, never read silence as approval, never clean the person's workspace, full revert between attempts, bounded attempts, and total failure leaves no outward artifact while the run record keeps the reasons. The studied loop discards the notes of a run that landed nothing; that is not taken (LG-8 keeps them). |
 | 1.3.0 | 2026-09-04 | Core Team | Added LG-12 — termination on a best-so-far objective, not only on a count. LG-6's hard ceiling bounds a loop that never converges and says nothing about one that has stopped improving, so a repair loop can spend its entire ceiling on changes that neither fix nor worsen the objective. A loop acting against a measurable objective now also declares a **stagnation bound**: it records the best value reached and terminates when a declared number of consecutive iterations fail to reach a **new** best — deliberately not "fail to improve on the previous iteration", which a loop oscillating between two states satisfies forever. The objective is the one the oracle owns (LG-4), so a loop cannot terminate itself on a metric it chose; both bounds stay live and whichever fires first ends the loop; and stagnation exhaustion is a reportable outcome that names the unresolved items truthfully — stopping with three known defects and saying so beats spending the ceiling and saying nothing. From an external artifact-generation tool whose repair loop is bounded exactly this way. |
 | 1.2.0 | 2026-08-25 | Core Team | Related Specifications extended with `l1-acceptance-oracle` — the integrity complement to LG-4 oracle ownership. LG closed *criteria drift* (the actor rewriting the contract that judges it) and mandated an oracle outside the mutable set; it assumed that oracle meaningful. AO covers the independent failure where a properly owned, correctly frozen oracle is one that cannot fail — under which an execution loop terminates on its first iteration forever and an evolution loop optimizes against a constant. Link-only; no invariant changed. |
 | 1.0.0 | 2026-07-17 | Core Team | Promoted RFC→Stable via `/magic.spec` adversarial review (spec-critic + prompt-engineer PASS) — the governance-claim verification the 0.1.0/0.2.0 history named as the gate to Stable. No content change: LG-1…LG-10, the two loop classes with composition, the five-tier mutation-rights ladder with the criteria-immutability spine (LG-3), the separated-oracle contract, the independent ceiling, the escalation gate, and the objective-persistence guarantee were reviewed as-is and found technology-neutral, complete, and internally coherent. The keystone is now buildable via its L2 realization `l2-loop-runner` (promoted Draft→Stable in the same pass, LG-10 compliance row added, crate placement reconciled to the post-decomposition topology). |

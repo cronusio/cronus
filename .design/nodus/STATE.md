@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** nodus
-**Updated:** 2026-09-24 15:35
+**Updated:** 2026-10-22 10:17
 **Phase:** 34 — Command Seam & Labelled Simulation
 **Status:** Active
 
 ## Current Position
 
-- **Task:** `/magic.task nodus` — planned the command-execution seam the preceding `/magic.spec nodus` pass designed: Phase 34 Command Seam & Labelled Simulation (`Todo`, 12 tasks over 6 tracks in `tasks/phase-34.md`), Phase 35 Output Validators and Phase 36 Effect Identity, Command-Scoped Retry & the Command Record (both `Planned`, decomposed on entry). Plan only — nothing landed in `crates/nodus`.
-- **Spec:** INDEX v1.0.105 / PLAN v1.53.0 / TASKS v2.46.0. RULES v1.7.1. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–36 Planned. Pre-flight is clean: `ORPHANED_SPEC` and `SYNC_GAP` cleared by the plan; the `DESIGN_DEBT_PENDING` that survived it was a false positive from the split phase table and went away when the table was merged.
-- **Next Action:** Execute T-34D01 `COMMAND_FAILED` layer code beside `MODEL_CALL_FAILED` via /magic.run nodus — Phase 34, 12 tasks in the order D01 → A01 → A02 → C01 → B01 → B02 → B03 → B04 → T01 → T02 → E01 → T03. Run `cargo` through PowerShell; retry with `-j 2` on a rustc crash before suspecting the code. Not this workspace: the Cronus-side binding is `l2-workflow-runtime` §4.2 and waits on this build.
+- **Task:** `/magic.task nodus` (2026-10-22) — registry sync INDEX v1.0.105 → v1.0.106: the four Pending invariants of the last spec pass placed. Phase 37 Terminal Status Causes & Expected Outcomes (HO-21 + NT-12) and Phase 38 Admissible Sets on Name-Resolution Diagnostics (NL-29), both `Planned`, decomposed on entry; NL-30 parked in the Backlog beside NL-11 (no provenance on `Value` to carry — a `/magic.spec nodus` design item). Phase 34 untouched and current. Plan only — nothing landed in `crates/nodus`.
+- **Spec:** INDEX v1.0.106 / PLAN v1.54.0 / TASKS v2.47.0. RULES v1.7.1. 23 nodus specs, all Stable, 0 Draft, 0 RFC. Phases 1–33 Done, Phase 34 Todo, Phases 35–38 Planned.
+- **Next Action:** Run /magic.run nodus — T-34D01 first; Phase 34 order D01 → A01 → A02 → C01 → B01 → B02 → B03 → B04 → T01 → T02 → E01 → T03. Run `cargo` through PowerShell; retry with `-j 2` on a rustc crash.
 
 ## Progress
 

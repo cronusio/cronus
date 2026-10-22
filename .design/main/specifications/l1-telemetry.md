@@ -1,6 +1,6 @@
 # Telemetry
 
-**Version:** 1.0.3
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -34,6 +34,10 @@ The technology-agnostic model of improvement data: Cronus may collect anonymized
 - **TEL-3 (Transparent):** what is collected and what would be sent is inspectable by the user.
 - **TEL-4 (Purpose-bound):** shared data is used only to improve the product.
 - **TEL-5 (Local-first):** telemetry is recorded locally; sending is a separate, gated step that the user controls.
+- **TEL-6 (An unreadable or unrecognized preference never resolves to sharing):** `[ADDED v1.1.0]` when the stored preference cannot be read — a damaged or unreadable configuration — sending is off for that run, because a preference that cannot be honoured is treated as a refusal. A value that is present but not one of the recognized ones is a reported configuration error, never read as consent. Precedence is fixed and visible, and every source above the stored preference can only turn sending **off**: a cross-tool *do not track* signal first, then an explicit per-invocation override, then the stored preference (realized in `l2-security` §4.9).
+- **TEL-7 (Eligibility is decided for the whole invocation, and can be withdrawn retroactively):** an invocation's events are sent together or not at all. If, at any point in the invocation, the work enters a context excluded from sharing — a workspace, host or tenant the user or an administrator has marked as never-egress — every event recorded during that invocation is discarded, including those recorded before the exclusion was discovered. A sampling decision, where sampling is used, is likewise taken once per invocation, so related events are never split between sent and dropped.
+- **TEL-8 (Inspection shows the exact payload, and says when it is empty):** besides *off* and *on* there is an *inspect* mode that writes, locally and visibly, the exact payload that would have been sent and sends nothing. When nothing would be sent — the invocation was excluded (TEL-7), not sampled, or recorded no events — inspection says so explicitly rather than printing nothing, so the absence of telemetry is observable and not confused with telemetry that is broken. This is the operational form of TEL-3.
+- **TEL-9 (A payload in transit is not visible to other local users):** where sending is delegated to a separate process so the user's command does not wait for the network, the payload reaches it through a private channel (a pipe, a file readable only by the user), never through command-line arguments, which other users on the machine can list. Delivery stays best-effort: a failed send is dropped quietly and never retried in a way that delays or fails the user's command.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -66,6 +70,7 @@ Examples of program metrics: operation latencies, error/repair counts, feature u
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.1.0 | 2026-10-22 | Core Team | Added TEL-6…TEL-9 from an external command-line tool's three-state (off / on / log-instead-of-send) telemetry: an unreadable preference means off and an unrecognized value is an error, never consent, with a fixed do-not-track → per-invocation override → stored-preference precedence in which every source above the stored choice can only turn sending off (TEL-6, matching `l2-security` §4.9; the studied tool lets its own override outrank do-not-track, which is not taken); eligibility and sampling are per invocation, and entering an excluded context discards every event of that invocation retroactively (TEL-7); an inspect mode prints the exact would-be payload and states an empty one explicitly (TEL-8, making TEL-3 operational); a payload handed to a sender process never travels in command-line arguments, and delivery never delays the command (TEL-9). |
 | 1.0.3 | 2026-10-22 | Core Team | Related Specifications extended with `l1-usage-analytics`, the on-device plane whose aggregates are the only usage data this contract could ever send. Link-only; no invariant changed. |
 | 1.0.2 | 2026-09-23 | Core Team | Consistency pass (2026-09-23): The open §4 TBD (default-on vs default-off first-run prompt; exact allowlist) contradicted TEL-1 and §5 and is resolved: the first-run choice is an explicit opt-in whose default is off, and the allowlist is `l2-security` §4.9, now linked as the realizing L2. |
 | 1.0.1 | 2026-08-05 | Core Team | Related Specifications extended with `l1-artifact-derived-observation` — the uninstrumented-source sibling, drawing the boundary explicitly: telemetry is what the product emits about itself by design; artifact-derived observation is what is reconstructed about a foreign tool from the trail it wrote for its own purposes, and its derived output crosses this same consent-gated egress. Link-only; no invariant changed. |

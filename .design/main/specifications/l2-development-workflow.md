@@ -1,6 +1,6 @@
 # Development Workflow — Cronus Implementation
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-development-workflow.md
@@ -49,6 +49,9 @@ An agent that writes code in one long session drifts: its context fills with his
 | DW-9 (Review neutrality) | The reviewer dispatch template states: "Treat the implementer's report as unverified claims. A stated rationale never changes a finding's severity." No prior-task rationale is included in reviewer context. |
 | DW-10 (Critical findings block) | On `Task Quality: Needs fixes`, the coordinator dispatches ONE fix agent with all Critical + Important findings combined; then re-dispatches the reviewer, for at most `MAX_FIX_ROUNDS` (default 3) rounds — a task still failing after them is BLOCKED and goes to the human rather than looping. Minor findings are appended to `.cronus/dev/progress.md` for the final review. |
 | DW-11 (Release notes describe the delivered system) | **Partial.** The Deliver stage's user-facing text — the pull-request description of Option 2 and any release note — states what a consumer can now do that they could not before, segregates contributor-facing changes, and says so in one sentence when nothing is consumer-facing. It draws on the diff between base and branch, never on the ledger, the review rounds, or the plan (§4.11). A lint that flags ledger or plan references in that text is pending. |
+| DW-12 (Authorship and follow-up declared, follow-up never inferred) | **Pending.** The Deliver stage's change-request text gains an authorship line and a follow-up line; the follow-up is filled from an explicit choice recorded for the session or from a standing instruction, and otherwise the coordinator asks before submitting. |
+| DW-13 (Tested means done and seen) | **Pending.** The change-request body's testing section lists performed actions and observed results only, omits suite output, and says *not exercised* when nothing was run against the changed behaviour; recordings follow the build-identity and true-order rules. |
+| DW-14 (Foreign project admission rules) | **Pending.** Applies when the office prepares a change for a repository it does not own: the coordinator reads the target's contribution policy and verifies eligibility from the issue record before the Execute stage, stopping otherwise. |
 
 ## 4. Detailed Design
 
@@ -458,6 +461,7 @@ The `session-start` script reads `skills/bootstrap/SKILL.md` and emits the `addi
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-22 | Invariant Compliance rows for DW-12…DW-14 (authorship and follow-up declaration, tested-means-done-and-seen, foreign project admission rules), all Pending. |
 | 1.1.0 | 2026-10-03 | DW-5 / §4.8: the progress ledger no longer doubles as the completion authority. The workflow's resume rule ("skip tasks listed as complete") and the ledger's Status column made a file in the feature branch a second answer to "is this task done", beside the board that the rest of the corpus makes the single surface for all work (CONV-1) — and this spec never mentioned the board. A plan task is now a board card (`task_ref` = the task id), moved to `running` on dispatch and `done` on approval; the ledger's Status column is a projection; the ledger stays authoritative for what was approved and committed. Evidence is written first, so a crash between the record and the card move leaves a stranded transition the resume step completes, while a card `done` with no approving record is surfaced rather than trusted. Related Specifications extended with `l1-work-convergence` and `l2-kanban-board`. Realizes `l1-development-workflow` 1.2.0. |
 | 1.0.1 | 2026-09-23 | Consistency pass (2026-09-23): Missing Motivation and Constraints sections added and sections renumbered to the standard layout (internal references updated). DW-11 (release notes describe the delivered system) was unmapped — Partial row, and the pull-request description follows it. DW-6: the design document was committed before any branch existed and the setup skill committed a `.gitignore` entry — both on the base branch the invariant protects; the design document becomes the branch's first commit and an unignored worktree is placed outside the repository. DW-2 rested on an instruction block — the coordinator now refuses Execute without a host-recorded human approval. The review fix loop had no bound — capped, then BLOCKED to the human; the coordinator's stop conditions include the run budget. Human choices at Deliver are accepted only from a human surface; Merge refuses a dirty main working tree. Host-harness tool names replaced by the execution-workspace provider and the office's shell tool. |
 | 1.0.0 | 2026-06-24 | Initial Stable — bundled skill catalog, dispatch templates, model-tier table, progress ledger, script helpers, workspace lifecycle |

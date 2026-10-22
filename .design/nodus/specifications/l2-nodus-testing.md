@@ -1,6 +1,6 @@
 # Nodus DSL Testing — Rust Implementation
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** [l1-nodus-testing.md](l1-nodus-testing.md)
@@ -224,6 +224,7 @@ in source but an empty one in the AST, so it emits **both** `W015` (the pairs we
 | NT-9 Parse-time validation | **Partial** | The test entry points validate first (§4), so `E015` duplicate names and the forward-reference variable checks (`E014`) gate the file; `E023` rejects an undeclared `input:` key and an `expected:` variable that can never exist; `W015` covers the silent-drop case NT-9's "not a silent assertion-miss" clause targets (§10.3). Two clauses remain open: a full `@test:`-specific forward-reference check is deferred, and an `input:` value that cannot be read as its field's declared type is coerced rather than reported (§6, literal kind) |
 | NT-10 Route coverage advisory | **Implemented** | `W006` emitted by pre-existing `Validator::w006_route_test_coverage` |
 | NT-11 Differential parity [ADDED v1.3.0] | **Vacuous in core** | See §11 — the crate has one execution path, so §4.7's `check_parity(fixture, path_B)` has no second `path_B` to run against `path_A`'s recorded fixture |
+| NT-12 Expected outcome [ADDED v1.5.0] | **Pending** | `parse_test_body` must accept the reserved keys `@status` and `@error` and the validator must reject an unknown value for either (NT-9); `evaluate_test_block` already receives `&run_result.status`, so the change there is to compare against the declared status (default *completed*) instead of hard-wiring `Status::Ok`, and to receive `run_result.errors` so a declared code can be looked up. The status names follow HO-21, so a status beyond today's `Status` set waits on that realization. |
 
 ## 9. Test Coverage
 
@@ -385,6 +386,7 @@ with no further design work here.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 1.5.0 | 2026-10-22 | Invariant Compliance row for NT-12 (a block may declare the outcome it expects through `@status` / `@error`), Pending; the evaluator already has the run status in hand. |
 | 1.4.0 | 2026-09-24 | Realization sync (2026-09-24): The test entry points validate before any block runs; `E023` rejects an `input:` key the workflow does not declare and an `expected:` variable that can never exist (NT-9); a block passes only when its assertions hold and the run ended `Ok` (NT-4). NT-2 and NT-9 stay Partial on one point: literal kind is still lost, so an `input:` value is typed from its spelling rather than its field's declared type. |
 | 1.3.1 | 2026-09-24 | Consistency pass (2026-09-24): Four spec-vs-code gaps recorded as pending. The test entry points never run the validator, so a workflow carrying `E015` still executes its blocks. An undeclared `input:` key is dropped rather than rejected (NT-9). Literal kind is lost: a quoted value is re-typed from its spelling and the `@in:` declared type is ignored (NT-2 now Partial). A block with non-empty `expected:` passes on `Status::Partial`, contrary to L1 §4.4. §5's parallel-safe-stub paragraph claimed `~PARALLEL` test blocks exercise real concurrent scheduling; branches run sequentially and `~JOIN` binds an empty map (`l2-nodus-runtime` §4.4). |
 | 1.3.0 | 2026-07-31 | Closes the NT-11 invariant-traceability gap flagged at the v1.29.0 nodus replan (differential parity, added to `l1-nodus-testing` v1.1.0, had never gained a §8 row). New §11 grounds and resolves the open fork that replan named: does NT-11 realize as vacuous-in-core, or does an in-crate second conforming host make it meaningful? Confirmed by direct inspection of `transpiler.rs` that `to_nodus(ast) -> String` emits source text, not an executable — nodus has exactly one execution path (`Executor`), so "interpreter↔transpiler parity" is not two paths to diff; that pairing's actual correctness property is NL-6 AST-equality (§10.4), a different invariant already realized. Also ruled out reusing `l2-nodus-portability.md` §4.8's LP-3 two-host admission record: that harness proves a satisfying and a non-satisfying host **diverge**, the opposite of NT-11's two-conforming-hosts-**agree** requirement. §8 gains the NT-11 row (Vacuous in core); Related Specifications gains `l1-nodus-portability`/`l2-nodus-portability` cross-references distinguishing the two two-host comparisons. Design-only finding — no code change, since there is no second path to build a harness against; §4.7's `Fixture`/`check_parity` shape stays specified and ready for whenever a real second conforming host exists. |

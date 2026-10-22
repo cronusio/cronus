@@ -61,39 +61,39 @@
 - <https://github.com/ruvnet/ruflo>
 - <https://github.com/ruvnet/agent-harness-generator>
 - <https://github.com/tinyhumansai/tinyagents>
-- <https://github.com/ShunsukeHayashi/gws-harness>
+- [ ] <https://github.com/ShunsukeHayashi/gws-harness>
 - <https://github.com/QwenLM/Qwen-Agent>
 - <https://gitverse.ru/gigachain/gigachain>
-- <https://github.com/affaan-m/JARVIS>
+- [ ] <https://github.com/affaan-m/JARVIS>
 
 ## Spec-Driven Development
 
-- <https://github.com/cronusio/magic-spec>
-- <https://github.com/github/spec-kit>
-- <https://github.com/bmad-code-org/BMAD-METHOD>
-- <https://github.com/Fission-AI/OpenSpec>
-- <https://github.com/gsd-build/get-shit-done>
-- <https://github.com/DietrichGebert/ponytail>
-- <https://github.com/eyaltoledano/claude-task-master>
+- [1] <https://github.com/cronusio/magic-spec>
+- [1] <https://github.com/github/spec-kit>
+- [1] <https://github.com/bmad-code-org/BMAD-METHOD>
+- [1] <https://github.com/Fission-AI/OpenSpec>
+- [1] <https://github.com/gsd-build/get-shit-done>
+- [1] <https://github.com/DietrichGebert/ponytail>
+- [1] <https://github.com/eyaltoledano/claude-task-master>
 
 ## Memory
 
-- <https://github.com/safishamsi/graphify>
-- <https://github.com/colbymchenry/codegraph>
-- <https://github.com/codegraph-ai/codegraph>
-- <https://github.com/anvanster/tempera>
-- <https://github.com/adminlove520/holographic-memory>
-- <https://github.com/plastic-labs/honcho>
-- <https://github.com/NevaMind-AI/memU>
-- <https://github.com/agentscope-ai/ReMe>
+- [1] <https://github.com/safishamsi/graphify>
+- [1] <https://github.com/colbymchenry/codegraph>
+- [1] <https://github.com/codegraph-ai/codegraph>
+- [1] <https://github.com/anvanster/tempera>
+- [1] <https://github.com/adminlove520/holographic-memory>
+- [1] <https://github.com/plastic-labs/honcho>
+- [1] <https://github.com/NevaMind-AI/memU>
+- [1] <https://github.com/agentscope-ai/ReMe>
 - <https://github.com/moorcheh-ai/memanto>
 - <https://github.com/tinyhumansai/tinyjuice>
 - <https://github.com/tinyhumansai/tinycortex>
 - <https://github.com/awrshift/claude-memory-kit>
 - <https://github.com/DeusData/codebase-memory-mcp>
-- <https://github.com/trailhq/Graft>
-- <https://github.com/thedotmack/claude-mem>
-- <https://github.com/TencentCloud/TencentDB-Agent-Memory>
+- [ ] <https://github.com/trailhq/Graft>
+- [ ] <https://github.com/thedotmack/claude-mem>
+- [ ] <https://github.com/TencentCloud/TencentDB-Agent-Memory>
 
 ## Tools
 
@@ -160,18 +160,18 @@
 - <https://github.com/remotion-dev/remotion>
 - <https://github.com/xiamuceer-j/MuMuAINovel>
 - <https://github.com/affaan-m/ECC>
-- <https://github.com/worldflowai/everything-claude-code>
-- <https://github.com/agentrhq/webcmd>
-- <https://github.com/anthropics/claude-cookbooks>
-- <https://github.com/usestrix/strix>
-- <https://github.com/affaan-m/agentshield>
-- <https://github.com/affaan-m/claude-swarm>
-- <https://github.com/morluto/rea>
-- <https://github.com/cli/cli>
+- [ ] <https://github.com/worldflowai/everything-claude-code>
+- [ ] <https://github.com/agentrhq/webcmd>
+- [ ] <https://github.com/anthropics/claude-cookbooks>
+- [ ] <https://github.com/usestrix/strix>
+- [ ] <https://github.com/affaan-m/agentshield>
+- [ ] <https://github.com/affaan-m/claude-swarm>
+- [ ] <https://github.com/morluto/rea>
+- [1] <https://github.com/cli/cli>
 
 ## Audio
 
-- <https://github.com/cjpais/Handy>
+- [ ] <https://github.com/cjpais/Handy>
 
 ## UI/UX
 

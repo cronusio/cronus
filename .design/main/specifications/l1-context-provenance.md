@@ -1,6 +1,6 @@
 # Context Provenance & Trusted Composition
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** concept
 
@@ -36,6 +36,8 @@ realizations of this one contract.
 - [l1-workflow-language.md](l1-workflow-language.md) — a workflow interpolates variables into prompts; those interpolations are composition boundaries governed here.
 - [l1-tokenization-boundary.md](l1-tokenization-boundary.md) — TB-4/TB-5 supply the **structural floor** beneath CP-2/CP-6: where the model has a control sub-alphabet, no content can encode into it, so a frame cannot be forged rather than merely being hard to forge. CP-9 is the composing invariant.
 - [l1-nodus-language.md](../../nodus/specifications/l1-nodus-language.md) — the nodus realization: NL-11 provenance-safe `$var` interpolation.
+- [l1-provenance-taint.md](l1-provenance-taint.md) — [ADDED v1.3.0] the at-rest taint a stored value keeps when read back; CP-11(c) is its decode-time face for display.
+- [l1-scripted-surface-contract.md](l1-scripted-surface-contract.md) — [ADDED v1.3.0] SSC-4 decides where this system's own decoration may appear; CP-11 decides what foreign bytes may do on the same display.
 - [l1-confidentiality-flow.md](l1-confidentiality-flow.md) — [ADDED v1.1.1] the orthogonal **outbound** axis: this spec defends inbound (untrusted-in neutralized), confidentiality-flow defends outbound (sensitive-out bounded per sink); a single trust label cannot hold both, and the two together cut the injection→exfiltration chain (CF-1/CF-5).
 
 ## 1. Motivation
@@ -164,6 +166,30 @@ Rules every Layer 2 implementation MUST NOT violate:
   a locally-authored replacement is used, it says only what the local system knows to be true
   (that something exists, its version, where to read it) and the reader reaches the foreign
   content by following the pointer, in a context where its origin is unambiguous.
+- **CP-11 Display-control neutralization — foreign bytes never command the reader's display**: [ADDED v1.3.0]
+  CP-10 governs the *words* foreign text reaches a person in; this governs its *bytes*. A
+  character-cell display (a terminal, a console pane, a log viewer that honours control
+  sequences) treats certain byte sequences as **commands** — move the cursor, erase or
+  overwrite earlier lines, change the window title, write the clipboard, attach a hyperlink
+  whose visible text differs from its target, hide what follows. Foreign text that reaches such
+  a display unneutralized can therefore redraw an approval prompt above the real one, make a
+  link read as one address and open another, or erase the warning printed just before it — the
+  display-side form of the injection CP-2 neutralizes on the model side, and a **silent** one,
+  because the person sees only the forged result. Three rules bind it. **(a) Neutralized by
+  type, not by call site**: foreign content — a remote response body, a fetched file, a tool's
+  or a model's output, anything this system did not author — carries an untrusted label from
+  the moment it enters, and the label's *ordinary* rendering to text neutralizes control
+  sequences, so every print path is safe by default and none depends on a developer
+  remembering to sanitize. **(b) Raw bytes have one explicit, searchable exit**, reserved for
+  non-display sinks — hashing, writing a file, piping to another program — and never passed to
+  a display writer; an audit can find every use of it by name. **(c) The label survives
+  decoding**: a field decoded from a structured payload keeps its untrusted label even though
+  the surrounding transport was never sanitized, and re-encoding round-trips the raw content
+  unchanged — so provenance is not lost at the very boundary (deserialization) where most
+  foreign text enters, and a stored value read back is as untrusted as when it was written
+  (`l1-provenance-taint` PT-6). Locally authored decoration — this system's own colour and
+  layout — is not foreign and is governed by where it may appear
+  (`l1-scripted-surface-contract` SSC-4), not by this rule.
 
 > L2 specs cannot reach RFC status until all invariants here are addressed in their "Invariant Compliance" section.
 
@@ -274,6 +300,7 @@ channel in the first place.
 
 | Version | Date | Author | Notes |
 | --- | --- | --- | --- |
+| 1.3.0 | 2026-10-22 | Core Team | Added CP-11 — display-control neutralization, the byte-level twin of CP-10. Foreign text reaching a character-cell display can carry control sequences that move the cursor, overwrite earlier lines, retitle the window, write the clipboard or disguise a hyperlink's target, so a fetched body or a tool's output can forge an approval prompt or erase a warning while the person sees only the result. Foreign content is labelled untrusted on entry and its ordinary rendering neutralizes control sequences (safe on every print path by type, not by call-site discipline); raw bytes leave through one explicit, searchable exit reserved for non-display sinks; the label survives deserialization and round-trips faithfully. Mined from an external command-line tool that wraps all remote content in such a type. |
 | 1.2.0 | 2026-09-04 | Core Team | Added CP-10 — reader-facing provenance: foreign text is quoted or replaced, never paraphrased into the product's voice. CP-1…CP-9 govern the model-facing composition boundary (CP-7: *every model-facing surface*), leaving the human-facing dual unstated. Text authored elsewhere — a remote manifest, an upstream notice, a fetched summary — now either travels quoted and attributed, or is replaced by a fixed locally-authored statement plus a pointer to the original; it is never summarized, translated, or paraphrased into the product's own wording, because a paraphrase makes the product the author of a claim it did not verify and removes the reader's only cue to apply a different standard of belief. The substitution is not cosmetic: a paraphrase is indistinguishable from the product's own voice, so a remote party gains a channel speaking with the product's authority — the human-facing form of exactly the injection CP-2 neutralizes on the model side. A local replacement states only what the local system knows (that something exists, its version, where to read it). From an external artifact-generation skill whose update notifier shows a fixed local sentence plus a release-notes link and explicitly forbids quoting, summarizing, or translating the remote manifest's own summary. |
 | 1.1.0 | 2026-07-10 | Core Team | Added CP-9 control-channel unforgeability at the encoding boundary — where the receiving model distinguishes a control sub-alphabet (frame/turn/role/channel/stop markers), neutralization is enforced at the point a fragment enters that alphabet and not only by escaping its text: an untrusted fragment can never emit a control symbol by construction of the encoder rather than by a sanitizer applied after it, and content that merely resembles one is refused by default and thereafter either encoded inertly or minted per an explicit auditable per-surface disposition (CP-3 kinship), never silently promoted nor silently inerted. This is the structural floor beneath CP-6: a delimiter built from ordinary content is a string an adversary must fail to forge, whereas an unreachable sub-alphabet removes the forgery capability; CP-6 remains the defense-in-depth layer for flat prompt surfaces with no control alphabet, where it is the only structure available. §4.2 extended — the realization table gains the alphabet-level row and is reordered by guarantee strength. Governed by the new l1-tokenization-boundary TB-4/TB-5. Additive: no existing invariant weakened. |
 | 1.0.0 | 2026-07-02 | Core Team | Initial spec — content provenance & trusted composition: per-fragment provenance with unknown=untrusted (CP-1); untrusted-by-default neutralization at the composition boundary (CP-2); explicit auditable per-fragment trust elevation (CP-3); sticky monotonic provenance, trusted+untrusted=untrusted (CP-4); structural neutralization primary, detection complementary (CP-5); delimiter integrity, content can't escape its quarantine (CP-6); every model-facing surface guarded not only a wrapper (CP-7); trust decisions observable for attribution/regression (CP-8). Elevates the scattered l2-tool-security spotlighting + classifier into one L1 contract they realize; composes with l1-security / l1-claim-verification / l1-memory-model / l1-workflow-language; nodus realization = l1-nodus-language NL-11. |

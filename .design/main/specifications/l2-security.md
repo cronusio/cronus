@@ -1,6 +1,6 @@
 # Security
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-security.md, l1-telemetry.md
@@ -52,6 +52,10 @@ The model's guarantees need concrete enforcement points: file locations, ignore 
 | TEL-3 Transparent | The §4.9 allowlist is the complete schema of what may leave and is inspectable before opting in; once opted in, daily totals are held in `<state>/telemetry.json` before any send, readable by the user. |
 | TEL-4 Purpose-bound | The endpoint receives only the allowlisted product-improvement events; no other consumer is fed from them. |
 | TEL-5 Local-first | Events are recorded locally and aggregated into daily totals; the send is a separate step that happens only while the user's opt-in stands. |
+| TEL-6 Unreadable or unrecognized preference | **Pending.** An unreadable `telemetry.json`/settings file means off for the run; an unrecognized value is reported, never treated as consent. §4.9's priority order already places `DO_NOT_TRACK` first and lets every override only disable. |
+| TEL-7 Per-invocation eligibility | **Pending.** Events are buffered per invocation and discarded as a whole when the invocation touches a never-egress workspace; any sampling keys on the invocation identity. |
+| TEL-8 Inspect mode | **Pending.** A third setting, `inspect`, writes the would-be payload to standard error and sends nothing, printing an explicit *no payload* line when empty. |
+| TEL-9 Payload never in arguments | **Pending.** If sending moves to a detached child, the payload goes over its standard input; today's fire-and-forget send (§4.9 timeout) must keep the command's exit independent of it. |
 
 ## 4. Detailed Design
 
@@ -713,5 +717,6 @@ Rationale: calling platform APIs at startup on an incompatible OS version can em
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.2.0 | 2026-10-22 | Invariant Compliance rows for TEL-6…TEL-9 (fail-closed preference reading, per-invocation retroactive eligibility, inspect mode with an explicit empty payload, payload never on a command line), all Pending. |
 | 1.1.1 | 2026-09-23 | Consistency pass (2026-09-23): Telemetry default corrected from enabled to disabled: §4.9 contradicted `l1-telemetry` TEL-1, `l1-security` §4.2 (telemetry opt-in) and this spec's own egress diagram; the shipped store is already opt-in. `Implements` gains `l1-telemetry` with TEL-1…TEL-5 rows, since §4.9 is that model's only realization. §4.5: `require_admin` no longer lets a model-callable "privilege escalation / config write" internal tool write the authority plane (on a single-user machine the user is the admin — SEC-10); token compared in constant time. §4.4: the SSRF guard owns agent-, client- and content-derived targets, while human-configured loopback model endpoints (MR-1) go through their profile — the "every outbound request" wording blocked local-first models. §4.6 shields: confinement is the boundary, `chattr +i`/read-only flags are best-effort (the engine never runs elevated), the seal detects rather than prevents (SEC-12). §4.7: `File` credential mode labeled at-rest obfuscation. §4.8: trust-registry lookup — `trusted` matches only its exact directory. Stale Related row for the sandbox backend updated. §4.8 trust-sensitive keys now include opened or widened channels (sender/group policy, admitted users) — the reachability half of SEC-10, cf. `l2-extension-registry` §4.13. |
 | 1.1.0 | 2026-09-19 | §4.3 now points at `l2-execution-sandbox` and no longer carries the sandbox backend as an open question. §4.8 workspace trust: **trusting a folder no longer lets its settings relax the safety envelope** — trust-sensitive keys (approval mode, sandbox off, autonomy and execution levels, guardrail disables, durable allow-rules, a wider egress policy) are honored only from the user or managed tier, a project may only tighten, and a loosening value is reported as `project_relaxation_ignored`; the fingerprint rotation covers the **whole trust scope** (`scope_hash`) instead of hooks alone — tool-server declarations are approved per server and bound to the hash of their resolved declaration, security-relevant setting changes re-open the dialog, rejection wins on conflict, and a subprocess-launching entry never starts in an untrusted folder; `trusted-parent` covers settings but never pre-approves executable artifacts; the auto-trust variable is read only from the process environment; and the earlier advice to commit approved fingerprints into the project's own configuration is **withdrawn** — it let a repository vouch for its own hooks (SEC-10). §4.4 SSRF: unique-local, unspecified and carrier-grade-NAT ranges added, mapped-address unwrapping, one parser for guard and connector, metadata hostnames blocked by name. Distilled from a cross-check of eight external agent command-line tools against this corpus (the trust model itself was already here; these are the places it was narrower than the converged practice). (Document History section introduced at this revision per RULES §5; prior version lineage tracked in `INDEX.md`.) |

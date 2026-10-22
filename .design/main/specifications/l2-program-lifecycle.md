@@ -1,6 +1,6 @@
 # Program Lifecycle (Installation, Command Registration, Update)
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-program-lifecycle.md
@@ -48,6 +48,8 @@ The layout says where the program lives but no specification says how it gets th
 | PLC-10 Owner updates | `install.json` records `origin` (§4.1). For `package-manager:<name>`, `store` and `source`, `update check` still reports a newer release but `apply` is refused with the owner's command (`winget upgrade Cronus`, `scoop update cronus`, `brew upgrade cronus`, the distribution's package command) or the store page; a source build reports `source build — not self-updating`. |
 | PLC-11 Uninstall keeps the state | §4.5: the Windows uninstaller and `cronus uninstall` (archive installs) disable activation, run `shell unregister`, and remove `<program>/`; `<state>/` stays unless `--remove-state` was chosen, which offers `backup create` first. Every registration removed is listed in the outcome. |
 | PLC-12 One verb set | `update status\|check\|apply\|rollback\|channel`, `shell status\|register\|unregister` and `uninstall` join the installation declaration (`l2-invocable-registry` §4.7.1) with classes `Inspect` (status, check, shell status), `Install` (channel, shell register/unregister) and `Recompose` (apply, rollback, uninstall). The terminal UI and desktop render them under the same names; the command line answers all of them without composing the office. |
+| PLC-13 Stable entry in every registration | **Pending — to verify.** The search-path entry already names `<program>/bin`, which the switch keeps stable (§4.4); the engine's login/service registration and any completion or helper registration must name the same stable entry, never a staged release directory, and `doctor` must check each against it. |
+| PLC-14 Announcement timing | **Partial.** The engine already checks at most once per day (PLC-7 row). Owed: a command-line check only when standard error is a terminal and never under CI, abandoned at exit if unfinished; package-manager origins announced only after the channel carries the release or a declared grace period; per-extension throttling. |
 
 ## 4. Detailed Design
 
@@ -184,3 +186,4 @@ Settings: `update.check` (default `true`), `update.auto` (default `false`), `upd
 | Version | Date | Notes |
 | --- | --- | --- |
 | 1.0.0 | 2026-10-22 | Initial realization of `l1-program-lifecycle`: installation routes and `install.json` (origin, scope, channel, pending switch, kept previous, migration backup); a signed per-channel manifest with per-artifact digests and plain-language notes in English and Russian; command registration per OS (Windows per-user path plus the settings broadcast, a symlink into `~/.local/bin` elsewhere, profile edits only inside a marked block) with a status that resolves `cronus` as a new shell would; staged switch by rename-aside, previous release kept 14 days, post-switch health check with automatic return, explicit rollback restoring the migration backup; uninstall keeping the state tier; the `update`, `shell` and `uninstall` installation verbs with their effect classes. All Pending in code. Open: release-key rotation. |
+| 1.1.0 | 2026-10-22 | Invariant Compliance rows for PLC-13 (registrations name the stable entry) and PLC-14 (announcement timing: terminal only, never delays the command, channel lag, per-extension throttle). |
