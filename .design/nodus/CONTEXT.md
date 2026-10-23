@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-10-22
+**Generated:** 2026-10-23
 
 ## Active Technologies
 
@@ -95,7 +95,8 @@
 ├── pnpm-workspace.yaml
 ├── rust-toolchain.toml
 ├── scripts/
-│   └── check-domain-boundary.mjs
+│   ├── check-domain-boundary.mjs
+│   └── domain-io-baseline.json
 └── simulations/
     ├── README.md
     ├── broad/

@@ -5,8 +5,22 @@
 
 use std::process::Command;
 
+/// One disposable state tier for this whole test process. Every run of the
+/// program writes a diagnostic log under the `<logs>` root, so a test that did
+/// not isolate its state tier would write into the developer's real one.
+fn disposable_state() -> &'static std::path::Path {
+    static STATE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    STATE.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("cronus-smoke-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    })
+}
+
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_cronus"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cronus"));
+    command.env("CRONUS_PORTABLE_DIR", disposable_state());
+    command
 }
 
 #[test]
@@ -921,7 +935,7 @@ fn init_confines_the_skeleton_to_a_dot_cronus_directory() {
     );
 
     // `status` from the same directory finds it.
-    let status = std::process::Command::new(env!("CARGO_BIN_EXE_cronus"))
+    let status = bin()
         .current_dir(&dir)
         .arg("status")
         .status()
@@ -1425,4 +1439,60 @@ fn session_say_with_no_model_server_exits_1_and_says_where_the_turn_was_recorded
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("s-down"), "{stderr}");
+}
+
+// ── Diagnostic log ───────────────────────────────────────────────────────────
+
+/// What `cronus status --format json` printed in an initialized project named
+/// `proj` before the diagnostic log existed — captured from the program as it
+/// was, so the log can be shown not to have changed a byte of what a script
+/// reads.
+const STATUS_JSON_BEFORE_THE_LOG: &[u8] = b"{\"workspace\":\"proj\",\"phase\":\"ready\"}\n";
+
+#[test]
+fn a_run_writes_its_session_header_to_its_own_log_and_leaves_stdout_alone() {
+    let state = isolated_state("log-header");
+    let project = state.join("proj");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let init = bin_in(&state)
+        .arg("init")
+        .arg(&project)
+        .output()
+        .expect("spawn");
+    assert!(init.status.success(), "init must exit 0: {init:?}");
+    let status = bin_in(&state)
+        .current_dir(&project)
+        .args(["status", "--format", "json"])
+        .output()
+        .expect("spawn");
+    assert!(status.status.success(), "status must exit 0: {status:?}");
+
+    assert_eq!(
+        status.stdout, STATUS_JSON_BEFORE_THE_LOG,
+        "the log must not change what the command prints"
+    );
+    assert!(
+        status.stderr.is_empty(),
+        "a quiet run writes nothing to the console: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    let log = std::fs::read_to_string(state.join("logs").join("cli.jsonl"))
+        .expect("the run leaves a log under <logs>");
+    let lines: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("every log line is JSON"))
+        .collect();
+    assert_eq!(
+        lines[0]["msg"], "session.start",
+        "the header is the first line"
+    );
+    assert_eq!(lines[0]["kind"], "cli");
+    assert_eq!(lines[0]["v"], 1);
+    let headers = lines
+        .iter()
+        .filter(|line| line["msg"] == "session.start")
+        .count();
+    assert_eq!(headers, 2, "one header per process: init and status");
 }

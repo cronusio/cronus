@@ -229,10 +229,15 @@ impl World {
     /// world; two calls that agree mean it did not. Not a security digest —
     /// only a "did anything change here" signal, and only ever compared
     /// against another digest from the same world in the same process.
+    ///
+    /// The product's own diagnostic log (`global/logs/`) is not part of the
+    /// signal: every run of the program appends to it, a read-only one
+    /// included, so counting it would make "did anything change" always true.
     pub fn state_digest(&self) -> io::Result<u64> {
         use std::hash::{Hash, Hasher};
         let mut entries = Vec::new();
         collect_entries(&self.root, &self.root, &mut entries)?;
+        entries.retain(|(rel, _, _)| !rel.starts_with("global/logs/"));
         entries.sort();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         entries.hash(&mut hasher);

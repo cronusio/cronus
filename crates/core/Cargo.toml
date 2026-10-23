@@ -24,6 +24,13 @@ serde_json = { workspace = true }
 # guard allowlist, so it lives here instead, the same reason cronus-auth-local
 # already depends on it for secret generation.
 getrandom = { workspace = true }
+# The diagnostic log (`diagnostics`): events are emitted through the `tracing`
+# facade, formatted by `tracing-subscriber`, and written through
+# `tracing-appender`'s non-blocking worker over an in-house size-rotating
+# writer (the library's own appender rotates by calendar time, not size).
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # Benchmarks use a std-only timing harness (no external bench crate — see the
 # dependency policy). Each bench target is a plain `fn main()` gated behind

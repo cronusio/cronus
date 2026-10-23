@@ -1,6 +1,6 @@
 # Model Runtime (Transport & Provider Connectivity)
 
-**Version:** 1.0.4
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-model-runtime.md
@@ -37,6 +37,7 @@ cancellable, without introducing an async runtime into the core.
 - [l2-crate-topology.md](l2-crate-topology.md) - The contract · domain · infra-crate · facade partition this transport crate slots into (DN-2 seam as a crate boundary).
 - [l1-security.md](l1-security.md) - Egress gate and secret isolation governing remote backends and credentials.
 - [l1-routing.md](l1-routing.md) - RTG-10 credential lanes carried through to the transport's authentication headers.
+- [l2-tool-call-transport.md](l2-tool-call-transport.md) - `[ADDED v1.1.0]` Owns how tool declarations, tool calls and tool results are carried over this spec's request and stream (§4.2.1).
 
 ## 1. Motivation
 
@@ -82,7 +83,7 @@ An HTTP+TLS client is such a necessity; an async runtime is not.
 | MR-5 Portable model definition | **Delegated (v1):** definition-based customization forwards to the provider's definition mechanism where present; the transport records the resolved definition digest in `describe` output so a customized model stays reproducible. |
 | MR-6 Explicit load/unload lifecycle | Load/unload hints map to the provider's residency controls (e.g. keep-alive/TTL parameters); resident-model introspection surfaces via the provider status endpoints; where a provider lacks a control, the transport reports the capability as absent rather than emulating it silently. |
 | MR-7 Fit-gated hardware scheduling | The feasibility gate stays in the router's hardware-fit module; the transport contributes honest inputs (model size/quant from `describe`) and refuses a load the gate rejected. |
-| MR-8 Streaming inference contract | Generate/chat/embed over the industry-compatible `/v1` shape (and provider-native shapes behind the same trait); incremental output is a pull-based token/event iterator fed by a worker thread; cancellation is a first-class handle (atomic flag + connection drop) honored mid-stream. |
+| MR-8 Streaming inference contract | Generate/chat/embed over the industry-compatible `/v1` shape (and provider-native shapes behind the same trait); incremental output is a pull-based token/event iterator fed by a worker thread; cancellation is a first-class handle (atomic flag + connection drop) honored mid-stream. `[ADDED v1.1.0]` The same stream carries tool calls, reasoning and usage as typed events (§4.2.1); the worker produces none of the three today. |
 | MR-9 Catalog management | List/details/remove forward to provider catalog endpoints through the same contract surface clients use; no manual file surgery — a provider without a management endpoint reports the gap explicitly. |
 | MR-10 Managed server with observability | Federated servers are supervised, not owned: reachability probes (800 ms thread-scoped, per stack §4.4), health + resident state surfaced to the doctor and process-monitor planes; start/stop of provider processes is deferred to the doctor's authorized repair path. |
 | MR-11 Thin clients over the server | CLI/TUI/GUI bind `model` verbs to the library methods only (`model list/status/pull/describe`); no frontend holds model state; offline provider ⇒ graceful degraded listing, marked unreachable. |
@@ -128,7 +129,8 @@ steps run against real models the moment the facade is wired.
 ```plaintext
 [REFERENCE] — shape, not code
 generate(request, cancel: CancelHandle) -> TokenStream
-  TokenStream: blocking pull-iterator of Event { Token | ToolCall | Usage | Done | Error }
+  TokenStream: blocking pull-iterator of Event { Token | Reasoning | ToolCall | Usage | Done | Error }
+               // Reasoning is new in 1.1.0; ToolCall gains a call identity (§4.2.1)
   CancelHandle: atomic flag; set → worker drops the connection, iterator yields Error(Cancelled)
 ```
 
@@ -155,6 +157,13 @@ completion marker, as a `ModelError` whose description names the failure kind an
 payload, which can hold fragments of the response. The executor turns it into a
 `NODUS:MODEL_CALL_FAILED` step error that reaches `@err:` dispatch, so a failed call is a failed step,
 never a short answer.
+
+#### 4.2.1 Tool-call carriage `[ADDED v1.1.0]`
+
+The request and the stream also carry tool calls, and this spec's trait, worker and bounded channel carry them unchanged. What they carry is owned by [l2-tool-call-transport.md](l2-tool-call-transport.md): the structured message list and tool declarations the request gains (the flat `prompt` stays valid and means a one-message conversation), the call identity on a tool-call event, the reasoning event, the capability flag on the endpoint profile, the per-model tool-support fact `describe` reports, the choice between native and text-encoded carriage, and the wire mapping for the OpenAI-compatible family. Two obligations stay here because they belong to the transport and its honesty rule:
+
+- **A capability the family does not implement is reported as absent.** The profile's flags gain `tool_calls`, true only for a protocol family whose adapter implements tool carriage; a profile without it answers a request that offers tools with `Error(Unsupported)`, as it does for embeddings, pull and residency (MR-6); the choice to run a turn without tools, and the stated reason, are made upstream by selection and never by the adapter silently dropping the tools. The native-protocol family's generate call, as read in the tree, posts a chat-shaped body to its generate path and reads the same framing as the compatible family; it is not yet a distinct wire shape and carries no tools.
+- **The usage event is produced.** The stream already names it and the worker never emits it. The final frame's usage field is decoded to it, because the turn's token ceiling (`l2-agent-session` §4.2) cannot see what a call cost otherwise. Pending.
 
 ### 4.3 Provider endpoint profiles
 
@@ -240,6 +249,7 @@ Per the shipped-surface honesty rule, these verbs appear on a frontend only once
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.1.0 | 2026-10-23 | New §4.2.1 *Tool-call carriage*: the request and stream carry tool declarations, calls, results and reasoning, specified in the new `l2-tool-call-transport` (which is a separate spec, not an amendment of this one: a different parent, a different tier, a different compliance table). This spec keeps two obligations that belong to the transport's honesty: a capability the family does not implement is reported as absent, with a `tool_calls` profile flag and the observation that the native-protocol family's generate call is not yet a distinct wire shape; and the usage event the stream names is produced, since the worker never emits it. The stream reference gains the reasoning event. MR-8 row restated. Post-Update Review: spec-critic by a fresh pass (round one FAIL with two blockers and eleven should-fix items, all applied; round two PASS, three should-fix items applied), then prompt-engineer by a fresh pass (FAIL on five composition findings and eight smaller ones, all applied); the fresh passes were not the authoring pass. Promoted to Stable on that result. |
 | 1.0.4 | 2026-09-24 | Realization sync (2026-09-24): §4.2: the fallible provider surface is in place (`try_generate` / `try_analyze` returning `ModelError`); the bridge reports an error event or an incomplete stream as a failed call, which the executor raises as `NODUS:MODEL_CALL_FAILED` into `@err:` dispatch. |
 | 1.0.3 | 2026-09-24 | Consistency pass (2026-09-24): §4.2 said nothing about `Error` events in the nodus bridge, and the shipped bridge returns the text received before an error as a successful generation — an error is never folded into text; the call fails into the workflow's error handler (WFL-8). The fallible nodus `generate` this needs is recorded as pending. Bare `LP-n` citations of the nodus portability contract are now written `nodus LP-n`: this workspace's `l1-lookahead-planning` defines LP-1…LP-6 as well, so the bare form pointed a reader at the wrong invariant. No requirement changed. |
 | 1.0.2 | 2026-09-23 | Consistency pass (2026-09-23): The nodus bridge was said to delegate to `contract::ModelProvider`, which is routing metadata with no generate method — it delegates to the inference trait this spec defines. The Overview called credential lanes implemented (they are specified, RTG-10). Compliance gains MR-15 and MR-16 (Pending) and the parent range reads MR-1…MR-16. |

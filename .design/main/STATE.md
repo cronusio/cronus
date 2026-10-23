@@ -4,20 +4,20 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-22 17:21
+**Updated:** 2026-10-23 12:39
 **Phase:** 42 — Diagnostic Log
 **Status:** Active
 
 ## Current Position
 
-- **Task:** reference-mining pass via `/magic.spec main` (2026-10-22; INDEX v1.0.237): an external reverse-engineering toolkit mined into three new Stable L1s — `l1-parity-obligations` (POB-1…10), `l1-observation-comparison` (OBC-1…10), `l1-owned-process-supervision` (PSV-1…10) — and amendments ATE-15…18, TCT-11, CP-12, EPS-13, HNR-13, REC-14, `l2-surface-driver` 1.1.0 §4.7.1 (terminal-lane capture and ending). No code changed; no phase opened or closed. The new L1s are concept-only (no L2 yet).
+- **Task:** T-42B01 Install the sink first in every product binary
 - **Findings:** The boundary guard is green again (`serde`, `serde_json`, `tracing` admitted; T-42B03 unblocked); `l2-crate-topology` §4.3 now discloses that 21 of 109 domain files do filesystem or process I/O the manifest-only guard cannot see; the person decided the tier will be made I/O-free, the guard ratchets from now on (`scripts/domain-io-baseline.json`, shrink-only) and Phase 50 plans the migration. The engine's `Overall` counter undercounts phases (reported; real progress is 34 of 51 rows, not 31/33). The live secret list is still empty on every surface (LL-7 rests on the denylist and `journal_raw_input`).
-- **Next Action:** Run /magic.task main — plan the new concept-only L1s (the terminal lane of `l2-surface-driver` §4.7.1 and any process-spawning subsystem are the first consumers of PSV/OBC) beside the existing order: Phase 42 then Phase 33 (T-42A01 first). Still open from before: `l2-agent-runtime` needs a review by someone other than its author; `l1-scripted-surface-contract`'s forecast assumption awaits the person; Phase 50 (domain I/O migration) is `Planned` and undecomposed.
+- **Next Action:** Run /magic.run main — Phase 42, T-42B02 next (first events at the state-change sites); then Phase 33. The `/magic.spec main` pass on the three R1 questions is finished (INDEX v1.0.239, all Stable): the next `/magic.task main` absorbs it (PLAN is on v1.0.238; `l2-tool-call-transport` is not yet planned). Also open: `l1-scripted-surface-contract`'s forecast assumption; Phase 50 undecomposed; `ReceiptSession::new` has an `.expect` on a production path.
 
 ## Progress
 
 ```
-Phase 42: [0/11] ░░░░░░░░ 0%
+Phase 42: [4/11] ███░░░░░ 36%
 Overall: [31/33] ████████ 94%
 ```
 
@@ -25,6 +25,8 @@ Overall: [31/33] ████████ 94%
 
 <!-- Last 3-5 locked decisions. Older entries are dropped (not archived) — see PLAN.md / CHANGELOG.md for phase history. -->
 
+- 2026-10-23 **Decision:** `/magic.task main` — **`l2-agent-runtime` Stable; no phase change.** `[DR]` the runtime's asks of the guard-and-gate work go into Phase 34, not Phase 49: the door taking the decision path's verdict, the policy check at the head of the path, classification inputs, framing and the audit record change code Phases 23 and 34 own, and R1 cannot start without them (override: `/magic.task main "move runtime asks to phase 49"`). Phase 33 unchanged — its process port and coverage declaration are what the runtime asks of the sandbox. Phase 49 stays `Held`: the implementation spec for the tool-call transport, the effect declaration's home and the tool-using-turn command are `/magic.spec` acts, not planning's.
+- 2026-10-23 **Decision:** `/magic.task main` — **registry sync, no phase change.** The three reference-mined L1s enter Phase 0 as `concept-only` (no `Implements:` on any of them). `[DR]` PSV is not planned against Phase 33 even though T-33D02's job-object kill is the nearest code: `l2-execution-sandbox` does not cite PSV, and a build task may not carry a requirement its specification does not state; T-33D02 records instead whether its kill result separates "requested" from "observed gone" (override: `/magic.spec main` to add PSV rows to `l2-execution-sandbox`, then `/magic.task main`). `l2-surface-driver` §4.7.1 stays deferred with §4.7 — its Windows descendant-cleanup TBD is settled by the task that builds the lane. Order unchanged: Phase 42, then Phase 33. Planner audit and instruction review (PASS-WITH-REWRITES, two reference fixes) applied.
 - 2026-10-22 **Decision:** design-layer audit remediation — **the person's decisions, applied.** Domain tier may use `serde`, `serde_json` and the `tracing` facade (spec and guard amended together); update checks are **off by default** and asked once, unticked (DN-1/DN-4/HSO-4 stand); a phone is a spoke in the core, phone-as-server an optional plugin; `[x]` on an L2 means reachable, `[/]` + `domain-only` marks logic without a surface (RULES C31); the agent runtime is specified now (`l2-agent-runtime`, RFC) and built after Phases 33–34; requirement-ID prefixes made unique (the later spec's prefix renamed, 14 renames); RULES 1.8.0 — C6 follows C27, a non-blocking TBD may stay in Stable, executable code fences become pseudo-code, C1/C11/C14/C17/C20 removed. `[DR]` thirty unrealized L1s marked `concept-only`, no authoring freeze (override: `/magic.task main "freeze new L1"`). Report: `.drafts/scratch/design-audit-2026-10-22.md`.
 - 2026-10-22 **Decision:** `/magic.task main` — **Phase 42 (Diagnostic Log) taken before Phase 33.** `[DR]` the recorded next action ordered logging first, and every later phase (Phase 33's partial-hardening reports included) needs a sink; Phase 33's 25 tasks are untouched and it is next. Sink first in `main`, ahead of Phase 33's self-hardening; `CRONUS_LOG` read before any environment scrub. Pending rows of the v1.0.232–v1.0.235 waves split into Phases 43–46 by subsystem, each decomposed on entry. (Override: `/magic.task main "keep phase 33 current"`.)
 

@@ -209,6 +209,11 @@
 - <https://github.com/emilk/egui>
 - <https://github.com/storytold/photocraft>
 
+### WGUI
+
+- <https://github.com/gfx-rs/wgpu>
+- <https://github.com/zed-industries/wgpu>
+
 ## Misc
 
 - [Ralph loop агенты, оракул и право на мутацию: как не путать execution loop с evolution loop](https://habr.com/ru/articles/1017180)

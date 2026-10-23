@@ -97,6 +97,11 @@ impl InstallationRendering for Block {
 /// What is on disk under a root: every path, whether it is a directory, and its
 /// size. An inspection that creates, removes or rewrites anything shows up as
 /// a difference between two of these.
+///
+/// The diagnostic log (`<portable>/logs`) is left out. It is the running
+/// program's own record of itself — a separate plane, machine-local and never
+/// backed up — not the installation and not a store the verb reads, and every
+/// run of the program writes to it, an inspection included.
 fn tree(root: &Path) -> Vec<(String, bool, u64)> {
     fn walk(root: &Path, dir: &Path, into: &mut Vec<(String, bool, u64)>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -105,6 +110,9 @@ fn tree(root: &Path) -> Vec<(String, bool, u64)> {
         for entry in entries.flatten() {
             let path = entry.path();
             let Ok(meta) = entry.metadata() else { continue };
+            if path.strip_prefix(root) == Ok(Path::new("portable").join("logs").as_path()) {
+                continue;
+            }
             let relative = path
                 .strip_prefix(root)
                 .unwrap_or(&path)
@@ -122,6 +130,16 @@ fn tree(root: &Path) -> Vec<(String, bool, u64)> {
     }
     let mut found = Vec::new();
     walk(root, root, &mut found);
+    // The state root holding nothing but the log is not an installation yet:
+    // the program creates the directory to write its log into it.
+    let portable = Path::new("portable");
+    let holds_content = found.iter().any(|(path, _, _)| {
+        let path = Path::new(path);
+        path != portable && path.starts_with(portable)
+    });
+    if !holds_content {
+        found.retain(|(path, _, _)| Path::new(path) != portable);
+    }
     found.sort();
     found
 }

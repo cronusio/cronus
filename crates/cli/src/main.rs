@@ -45,11 +45,37 @@ fn launch_mode(args: &[String]) -> LaunchMode {
     LaunchMode::Verb
 }
 
+/// Which kind of process this invocation is, for the diagnostic log's file
+/// family: the terminal UI when the launcher is about to bring it up (a bare
+/// `cronus`, or `cronus tui`), a one-shot command otherwise. A pure function of
+/// the argument list, like [`launch_mode`].
+fn process_kind(args: &[String]) -> cronus_core::diagnostics::ProcessKind {
+    use cronus_core::diagnostics::ProcessKind;
+    if launch_mode(args) == LaunchMode::DefaultComposition
+        || args.get(1).map(String::as_str) == Some("tui")
+    {
+        ProcessKind::Tui
+    } else {
+        ProcessKind::Cli
+    }
+}
+
 fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+
+    // The diagnostic sink is installed before anything else runs, so even a
+    // failure while the rest of the program is being put together leaves a
+    // record. Anything that later hardens or scrubs this process's
+    // environment must run after this line and must read `CRONUS_LOG` first —
+    // the sink reads it here, once — so what hardening reports has somewhere
+    // to go. The guard flushes the log when `main` returns.
+    let _diagnostics = cronus_core::diagnostics::install(
+        process_kind(&args),
+        &cronus_core::diagnostics::logs_root(),
+    );
+
     let installation_invocables = cronus_core::installation::declared_invocables();
     let installation_refs: Vec<&Invocable> = installation_invocables.iter().collect();
-
-    let args: Vec<String> = std::env::args().collect();
 
     match launch_mode(&args) {
         // A bare invocation is the default composition: meeting the
@@ -743,6 +769,21 @@ mod launch_mode_tests {
             LaunchMode::Verb,
             "a flag alone must not be treated as a bare invocation"
         );
+    }
+
+    /// The log's file family follows what the process is about to be: the
+    /// terminal UI for a bare launch and for `tui`, a one-shot command for
+    /// everything else (help and version requests included).
+    #[test]
+    fn the_terminal_ui_and_one_shot_commands_write_separate_log_families() {
+        use cronus_core::diagnostics::ProcessKind;
+
+        assert_eq!(process_kind(&argv(&[])), ProcessKind::Tui);
+        assert_eq!(process_kind(&argv(&["tui"])), ProcessKind::Tui);
+        assert_eq!(process_kind(&argv(&["status"])), ProcessKind::Cli);
+        assert_eq!(process_kind(&argv(&["board", "list"])), ProcessKind::Cli);
+        assert_eq!(process_kind(&argv(&["--help"])), ProcessKind::Cli);
+        assert_eq!(process_kind(&argv(&["--format", "json"])), ProcessKind::Cli);
     }
 }
 
