@@ -168,6 +168,11 @@
 - <https://github.com/affaan-m/claude-swarm>
 - <https://github.com/morluto/rea>
 - <https://github.com/cli/cli>
+- <https://github.com/juliusbrussee/caveman>
+- <https://github.com/wheresryan22/anatomy>
+- <https://github.com/serafimcloud/21st>
+- <https://github.com/motiondivision/motion>
+- <https://github.com/agentskills/agentskills>
 
 ## Audio
 
