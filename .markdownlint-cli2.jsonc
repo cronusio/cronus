@@ -6,7 +6,8 @@
     "target/**",
     "node_modules/**",
     "docs/generated/**",
-    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/ISSUE_TEMPLATE/**",
+	".github/PULL_REQUEST_TEMPLATE.md",
     ".github/lines"
   ],
   "config": {
