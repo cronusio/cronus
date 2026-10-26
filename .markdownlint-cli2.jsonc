@@ -7,8 +7,7 @@
     "node_modules/**",
     "docs/generated/**",
     ".github/ISSUE_TEMPLATE/**",
-	".github/PULL_REQUEST_TEMPLATE.md",
-    ".github/lines"
+    ".github/PULL_REQUEST_TEMPLATE.md"
   ],
   "config": {
     "MD013": false, // Line length

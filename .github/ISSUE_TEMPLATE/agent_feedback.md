@@ -28,6 +28,6 @@ Blocked, workaround or minor.
 | Item | Value |
 | --- | --- |
 | Cronus | |
-| Addon | |
 | Rust | |
+| TypeScript | |
 | Platform | |
