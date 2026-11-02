@@ -82,7 +82,7 @@
 - <https://github.com/colbymchenry/codegraph>
 - <https://github.com/codegraph-ai/codegraph>
 - <https://github.com/anvanster/tempera>
-- <https://github.com/adminlove520/holographic-memory>
+- <https://github.com/writerslogic/holographic-memory>
 - <https://github.com/plastic-labs/honcho>
 - <https://github.com/NevaMind-AI/memU>
 - <https://github.com/agentscope-ai/ReMe>
@@ -173,6 +173,9 @@
 - <https://github.com/serafimcloud/21st>
 - <https://github.com/motiondivision/motion>
 - <https://github.com/agentskills/agentskills>
+- <https://github.com/JustVugg/colibri>
+- <https://github.com/aardappel/goose>
+- <https://github.com/storytold/craft-anything>
 
 ## Audio
 
