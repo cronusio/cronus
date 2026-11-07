@@ -65,6 +65,7 @@
 - <https://github.com/QwenLM/Qwen-Agent>
 - <https://gitverse.ru/gigachain/gigachain>
 - <https://github.com/affaan-m/JARVIS>
+- <https://github.com/deepseek-ai/dsh-superagent-prototype>
 
 ## Spec-Driven Development
 

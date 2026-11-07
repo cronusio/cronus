@@ -9,10 +9,10 @@ catalog:
   react: ^19.3.1
   react-dom: ^19.3.1
   typescript: ^7.0.2
-  vite: ^8.3.5
+  vite: ^8.3.6
   "@types/react": ^19.3.0
   "@types/react-dom": ^19.3.0
-  "@vitejs/plugin-react": ^6.1.2
+  "@vitejs/plugin-react": ^6.2.1
 
 minimumReleaseAgeExclude:
   - vite@8.3.0 || 8.3.3 || 8.3.5
@@ -54,31 +54,31 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
-  - '@biomejs/biome@2.5.13 || 2.6.2'
-  - '@biomejs/cli-darwin-arm64@2.5.13 || 2.6.2'
-  - '@biomejs/cli-darwin-x64@2.5.13 || 2.6.2'
-  - '@biomejs/cli-linux-arm64-musl@2.5.13 || 2.6.2'
-  - '@biomejs/cli-linux-arm64@2.5.13 || 2.6.2'
-  - '@biomejs/cli-linux-x64-musl@2.5.13 || 2.6.2'
-  - '@biomejs/cli-linux-x64@2.5.13 || 2.6.2'
-  - '@biomejs/cli-win32-arm64@2.5.13 || 2.6.2'
-  - '@biomejs/cli-win32-x64@2.5.13 || 2.6.2'
-  - '@tailwindcss/node@4.3.3'
-  - '@tailwindcss/oxide-android-arm64@4.3.3'
-  - '@tailwindcss/oxide-darwin-arm64@4.3.3'
-  - '@tailwindcss/oxide-darwin-x64@4.3.3'
-  - '@tailwindcss/oxide-freebsd-x64@4.3.3'
-  - '@tailwindcss/oxide-linux-arm-gnueabihf@4.3.3'
-  - '@tailwindcss/oxide-linux-arm64-gnu@4.3.3'
-  - '@tailwindcss/oxide-linux-arm64-musl@4.3.3'
-  - '@tailwindcss/oxide-linux-x64-gnu@4.3.3'
-  - '@tailwindcss/oxide-linux-x64-musl@4.3.3'
-  - '@tailwindcss/oxide-wasm32-wasi@4.3.3'
-  - '@tailwindcss/oxide-win32-arm64-msvc@4.3.3'
-  - '@tailwindcss/oxide-win32-x64-msvc@4.3.3'
-  - '@tailwindcss/oxide@4.3.3'
-  - '@tailwindcss/vite@4.3.3'
-  - tailwindcss@4.3.3
+  - '@biomejs/biome@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-darwin-arm64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-darwin-x64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-linux-arm64-musl@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-linux-arm64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-linux-x64-musl@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-linux-x64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-win32-arm64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@biomejs/cli-win32-x64@2.5.13 || 2.6.2 || 2.6.6'
+  - '@tailwindcss/node@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-android-arm64@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-darwin-arm64@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-darwin-x64@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-freebsd-x64@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-linux-arm-gnueabihf@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-linux-arm64-gnu@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-linux-arm64-musl@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-linux-x64-gnu@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-linux-x64-musl@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-wasm32-wasi@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-win32-arm64-msvc@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide-win32-x64-msvc@4.3.3 || 4.3.5'
+  - '@tailwindcss/oxide@4.3.3 || 4.3.5'
+  - '@tailwindcss/vite@4.3.3 || 4.3.5'
+  - tailwindcss@4.3.3 || 4.3.5
   - '@vitejs/plugin-react@6.1.1 || 6.1.2'
   - react-dom@19.3.0
   - react@19.3.0
@@ -107,5 +107,5 @@ minimumReleaseAgeExclude:
   - data-urls@8.0.0
   - tr46@7.0.0
   - whatwg-url@17.2.0
-  - '@biomejs/cli-android-arm64@2.6.2'
-  - '@biomejs/cli-android-x64@2.6.2'
+  - '@biomejs/cli-android-arm64@2.6.2 || 2.6.6'
+  - '@biomejs/cli-android-x64@2.6.2 || 2.6.6'
