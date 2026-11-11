@@ -6,6 +6,7 @@
 - <https://github.com/google-gemini/gemini-cli>
 - <https://github.com/openai/codex>
 - <https://github.com/QwenLM/qwen-code>
+- <https://github.com/pingdotgg/t3code>
 - <https://github.com/XiaomiMiMo/MiMo-Code>
 - <https://github.com/openclaw/openclaw>
 - <https://github.com/NVIDIA/NemoClaw>
@@ -29,7 +30,6 @@
 - <https://github.com/ag2ai/ag2>
 - <https://github.com/Rai220/anima>
 - <https://github.com/msitarzewski/agency-agents>
-- <https://github.com/obra/superpowers>
 - <https://github.com/alookai/alook>
 - <https://github.com/vellum-ai/vellum-assistant>
 - <https://github.com/FoundationAgents/MetaGPT>
@@ -98,6 +98,7 @@
 
 ## Tools
 
+- <https://github.com/obra/superpowers>
 - <https://github.com/AlexsJones/llmfit>
 - <https://github.com/shadcn/improve>
 - <https://github.com/nvidia/skillspector>
@@ -177,6 +178,8 @@
 - <https://github.com/JustVugg/colibri>
 - <https://github.com/aardappel/goose>
 - <https://github.com/storytold/craft-anything>
+- <https://github.com/frankbria/ralph-claude-code>
+- <https://github.com/louislam/uptime-kuma>
 
 ## Audio
 
