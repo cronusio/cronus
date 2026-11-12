@@ -180,6 +180,7 @@
 - <https://github.com/storytold/craft-anything>
 - <https://github.com/frankbria/ralph-claude-code>
 - <https://github.com/louislam/uptime-kuma>
+- <https://github.com/garrytan/gbrain>
 
 ## Audio
 
