@@ -18,10 +18,10 @@
   },
   "formatter": {
     "enabled": true,
+    "expand": "always",
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 100,
-    "expand": "always"
+    "lineWidth": 100
   },
   "linter": {
     "enabled": true,
