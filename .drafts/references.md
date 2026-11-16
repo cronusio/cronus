@@ -222,10 +222,14 @@
 - <https://github.com/emilk/egui>
 - <https://github.com/storytold/photocraft>
 
-### WGUI
+### WGPU
 
 - <https://github.com/gfx-rs/wgpu>
-- <https://github.com/zed-industries/wgpu>
+
+### GPUI
+
+- <https://github.com/zed-industries/zed/tree/main/crates/gpui>
+- <https://github.com/zed-industries/awesome-gpui>
 
 ## Misc
 

@@ -24,7 +24,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "jsdom": "^31.0.0",
+    "jsdom": "^31.0.1",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "^5.1.0"
